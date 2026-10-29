@@ -1,7 +1,15 @@
 // Bot Discord d'exemple hébergé par AstraPanel.
 // Le token est lu dans la variable d'environnement DISCORD_TOKEN (onglet « Variables » du panel).
-import os from 'node:os';
-import { Client, Events, GatewayIntentBits, SlashCommandBuilder } from 'discord.js';
+import {
+  ChannelType,
+  Client,
+  Events,
+  GatewayIntentBits,
+  InteractionContextType,
+  MessageFlags,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+} from 'discord.js';
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -13,7 +21,26 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const commands = [
   new SlashCommandBuilder().setName('ping').setDescription('Vérifie que le bot répond'),
-  new SlashCommandBuilder().setName('info').setDescription('Informations sur le bot et la machine qui l’héberge'),
+  new SlashCommandBuilder()
+    .setName('text')
+    .setDescription('Envoie un message par l’intermédiaire du bot')
+    .addStringOption((option) =>
+      option
+        .setName('message')
+        .setDescription('Le texte à envoyer (\\n pour aller à la ligne)')
+        .setRequired(true)
+        .setMaxLength(2000),
+    )
+    .addChannelOption((option) =>
+      option
+        .setName('salon')
+        .setDescription('Salon où envoyer le message (par défaut : le salon actuel)')
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
+    )
+    // Réservée par défaut aux membres qui peuvent gérer les messages (modifiable dans
+    // Paramètres du serveur → Intégrations), pour éviter que n'importe qui parle à la place du bot.
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setContexts(InteractionContextType.Guild),
 ];
 
 client.once(Events.ClientReady, async (c) => {
@@ -23,25 +50,41 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`📝 ${commands.length} commandes slash enregistrées`);
 });
 
+async function sendText(interaction) {
+  const message = interaction.options.getString('message', true).replaceAll('\\n', '\n');
+  const channel = interaction.options.getChannel('salon') ?? interaction.channel;
+
+  const permissions = channel?.permissionsFor(interaction.client.user);
+  if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) {
+    await interaction.reply({
+      content: `❌ Je n'ai pas la permission d'écrire dans ${channel ?? 'ce salon'}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Les mentions @everyone, @here et de rôles sont désactivées pour éviter les abus.
+  await channel.send({ content: message, allowedMentions: { parse: ['users'] } });
+  await interaction.reply({ content: `✅ Message envoyé dans ${channel}.`, flags: MessageFlags.Ephemeral });
+  console.log(`💬 ${interaction.user.tag} a envoyé un message dans #${channel.name}`);
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === 'ping') {
-    await interaction.reply(`🏓 Pong ! Latence : ${client.ws.ping} ms`);
-  }
+  try {
+    if (interaction.commandName === 'ping') {
+      await interaction.reply(`🏓 Pong ! Latence : ${client.ws.ping} ms`);
+    }
 
-  if (interaction.commandName === 'info') {
-    const ram = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
-    const uptime = Math.floor(process.uptime() / 60);
-    await interaction.reply(
-      [
-        '🤖 **Hébergé sur AstraPanel**',
-        `• Machine : ${os.hostname()} (${os.arch()})`,
-        `• Node.js : ${process.version}`,
-        `• RAM utilisée : ${ram} Mo`,
-        `• En ligne depuis : ${uptime} min`,
-      ].join('\n'),
-    );
+    if (interaction.commandName === 'text') {
+      await sendText(interaction);
+    }
+  } catch (err) {
+    console.error(`Erreur pendant /${interaction.commandName} :`, err);
+    const reply = { content: '❌ Une erreur est survenue.', flags: MessageFlags.Ephemeral };
+    if (interaction.replied || interaction.deferred) await interaction.followUp(reply).catch(() => {});
+    else await interaction.reply(reply).catch(() => {});
   }
 });
 

@@ -17,7 +17,7 @@ const SOURCES = [
 ];
 
 const TEMPLATE_INFO = {
-  bot: 'Un bot discord.js avec les commandes /ping et /info. Il suffit d’ajouter votre DISCORD_TOKEN plus bas.',
+  bot: 'Un bot discord.js avec les commandes /ping et /text (envoyer un message via le bot). Il suffit d’ajouter votre DISCORD_TOKEN plus bas.',
   node: 'Un petit serveur web Node.js sans dépendance, qui écoute sur le port fourni par le panel.',
   static: 'Une page d’accueil HTML/CSS à remplacer par votre site.',
 };

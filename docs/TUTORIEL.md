@@ -183,7 +183,7 @@ vos applications. Si le panel affiche « Sous-tension détectée », changez d'a
 3. Le modèle d'AstraPanel utilise uniquement les commandes slash et n'a besoin d'aucun *intent* privilégié. Si votre
    propre bot lit le contenu des messages, activez **Message Content Intent** dans ce même onglet.
 4. Invitez le bot sur votre serveur : onglet **OAuth2** → **URL Generator**, cochez les scopes **bot** et
-   **applications.commands**, puis les permissions utiles (au minimum *Send Messages*). Ouvrez l'URL générée et
+   **applications.commands**, puis les permissions utiles (au minimum *View Channels* et *Send Messages*). Ouvrez l'URL générée et
    choisissez votre serveur.
 
 ### 7.2 Lancer le bot d'exemple
@@ -201,7 +201,15 @@ Vous devez voir :
 📝 2 commandes slash enregistrées
 ```
 
-Sur Discord, tapez `/ping` ou `/info` : le bot répond. 🎉
+Sur Discord, tapez `/ping` : le bot répond. 🎉
+
+La commande **`/text`** fait parler le bot : `/text message:Bonjour à tous !` envoie le message dans le salon
+actuel, et l'option `salon` permet d'en choisir un autre. Écrivez `\n` pour aller à la ligne. Par sécurité :
+
+- seuls les membres qui ont la permission **Gérer les messages** voient la commande (un administrateur peut changer
+  ça dans **Paramètres du serveur → Intégrations → votre bot**) ;
+- les mentions `@everyone`, `@here` et de rôles sont désactivées dans les messages envoyés par `/text` ;
+- le bot doit avoir le droit d'écrire dans le salon choisi, sinon il vous le signale.
 
 Pour modifier le bot, ouvrez l'onglet **Fichiers**, cliquez sur `index.js`, éditez puis **Enregistrer** (ou Ctrl+S),
 et cliquez sur **Redémarrer**.
