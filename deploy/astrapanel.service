@@ -1,0 +1,31 @@
+# Service systemd d'AstraPanel (les valeurs @...@ sont remplies par install.sh)
+[Unit]
+Description=AstraPanel - hébergement de sites et de bots Discord
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+WorkingDirectory=@DIR@
+Environment=NODE_ENV=production
+Environment=HOME=@DATA@
+Environment=ASTRA_DATA_DIR=@DATA@
+Environment=ASTRA_PORT=@PORT@
+ExecStart=@NODE@ @DIR@/src/server.js
+Restart=always
+RestartSec=3
+# SIGTERM au panel seulement : il arrête proprement les applis, puis systemd nettoie le reste.
+KillMode=mixed
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+# Durcissement : le code du panel et le système sont en lecture seule pour le service.
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+ReadWritePaths=-/etc/caddy/astrapanel
+
+[Install]
+WantedBy=multi-user.target

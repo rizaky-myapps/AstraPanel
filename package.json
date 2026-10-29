@@ -1,0 +1,19 @@
+{
+  "name": "astrapanel",
+  "version": "1.0.0",
+  "description": "Panel auto-hébergé pour héberger des sites web et des bots Discord en JavaScript sur Raspberry Pi",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "astrapanel": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
+}
