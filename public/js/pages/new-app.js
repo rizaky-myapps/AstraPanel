@@ -1,7 +1,7 @@
 import { api, qs, upload } from '../api.js';
 import { refreshApps } from '../state.js';
 import { envEditor } from '../env-editor.js';
-import { $, filePicker, html, icon, routingWarnings, setHTML, toast, toggle } from '../ui.js';
+import { $, filePicker, html, icon, routingWarnings, setHTML, tip, toast, toggle } from '../ui.js';
 
 const TYPES = [
   { id: 'bot', title: 'Bot Discord', desc: 'Un bot discord.js, ou tout programme Node.js sans site web.', icon: 'bot' },
@@ -15,6 +15,13 @@ const SOURCES = [
   { id: 'archive', title: 'Archive ZIP', icon: 'archive' },
   { id: 'empty', title: 'Dossier vide', icon: 'folder' },
 ];
+
+// Explication de chaque source (bulle « i » du titre « Code source »)
+const SOURCE_INFO = {
+  git: html`Le panel clone le dépôt, installe les dépendances puis lance l'application. Dépôt privé : <code>https://&lt;jeton&gt;@github.com/moi/projet.git</code>.`,
+  archive: 'Une archive .zip, .tar.gz ou .tgz de votre projet, sans le dossier node_modules. Un ZIP téléchargé depuis GitHub fonctionne tel quel.',
+  empty: 'Le dossier sera créé vide : ajoutez ensuite vos fichiers dans l’onglet « Fichiers » de l’application.',
+};
 
 const TEMPLATE_INFO = {
   bot: 'Un bot discord.js avec les commandes /ping et /text (envoyer un message via le bot). Il suffit d’ajouter votre DISCORD_TOKEN plus bas.',
@@ -55,15 +62,11 @@ export function renderNewApp(view) {
   let editor = null;
 
   function sourceDetails() {
-    if (f.source === 'template') {
-      return html`<div class="alert info" style="margin:16px 0 0">${icon('info')}<div>${TEMPLATE_INFO[f.type]}</div></div>`;
-    }
     if (f.source === 'git') {
       return html`<div class="form-grid" style="margin-top:16px">
         <div class="field">
-          <label>URL du dépôt</label>
+          <label>URL du dépôt ${tip(html`Dépôt privé : <code>https://&lt;jeton&gt;@github.com/moi/projet.git</code>`)}</label>
           <input type="text" name="gitUrl" class="mono" value="${f.gitUrl}" placeholder="https://github.com/moi/mon-projet.git" spellcheck="false" />
-          <span class="hint">Dépôt privé : <code>https://&lt;jeton&gt;@github.com/moi/projet.git</code></span>
         </div>
         <div class="field">
           <label>Branche</label>
@@ -75,10 +78,9 @@ export function renderNewApp(view) {
       return html`<div class="field" style="margin-top:16px">
         <label>Archive du projet</label>
         ${filePicker({ id: 'archive', accept: '.zip,.tar,.tar.gz,.tgz', label: 'Choisir une archive…', current: file?.name })}
-        <span class="hint">.zip, .tar.gz ou .tgz — sans le dossier node_modules.</span>
       </div>`;
     }
-    return html`<p class="hint" style="margin:16px 0 0">Le dossier sera créé vide : ajoutez vos fichiers dans l’onglet « Fichiers » de l’application.</p>`;
+    return '';
   }
 
   function saveEnv() {
@@ -97,8 +99,7 @@ export function renderNewApp(view) {
       html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
         <div class="page-header">
           <div>
-            <h1>Nouvelle application</h1>
-            <div class="sub">Hébergez un bot Discord ou un site web sur votre Raspberry Pi.</div>
+            <h1>Nouvelle application ${tip('Hébergez un bot Discord ou un site web (Node.js ou statique) sur votre Raspberry Pi.')}</h1>
           </div>
         </div>
         <form id="new-app" class="stack" novalidate>
@@ -118,7 +119,7 @@ export function renderNewApp(view) {
           </div>
 
           <div class="card">
-            <div class="card-header"><h2><span class="step-num">2</span> Code source</h2></div>
+            <div class="card-header"><h2><span class="step-num">2</span> Code source ${tip(f.source === 'template' ? TEMPLATE_INFO[f.type] : SOURCE_INFO[f.source])}</h2></div>
             <div class="card-body">
               <div class="choices">
                 ${SOURCES.map(
@@ -141,14 +142,12 @@ export function renderNewApp(view) {
               ${isStatic
                 ? ''
                 : html`<div class="field full">
-                    <label>Commande de démarrage</label>
+                    <label>Commande de démarrage ${tip(html`Par exemple <code>node index.js</code>, plus léger que <code>npm start</code> sur un Raspberry Pi.`)}</label>
                     <input type="text" name="startCommand" class="mono" value="${f.startCommand}" spellcheck="false" />
-                    <span class="hint">Ex. <code>node index.js</code> (plus léger que <code>npm start</code> sur un Pi).</span>
                   </div>`}
               <div class="field">
-                <label>Installation des dépendances</label>
+                <label>Installation des dépendances ${tip('Lancée s’il y a un package.json. Laissez vide pour la désactiver.')}</label>
                 <input type="text" name="installCommand" class="mono" value="${f.installCommand}" spellcheck="false" />
-                <span class="hint">Lancée s'il y a un package.json. Laissez vide pour désactiver.</span>
               </div>
               <div class="field">
                 <label>Commande de build <span class="faint">(optionnel)</span></label>
@@ -156,42 +155,39 @@ export function renderNewApp(view) {
               </div>
               ${isStatic
                 ? html`<div class="field">
-                      <label>Dossier à servir</label>
+                      <label>Dossier à servir ${tip(html`<code>.</code> pour la racine, <code>dist</code> ou <code>build</code> après un build.`)}</label>
                       <input type="text" name="staticDir" class="mono" value="${f.staticDir}" placeholder="." spellcheck="false" />
-                      <span class="hint"><code>.</code> pour la racine, <code>dist</code> ou <code>build</code> après un build.</span>
                     </div>
                     <div class="field">
                       <label>&nbsp;</label>
-                      <label class="check">${toggle('spa', f.spa)}<span>Application monopage (SPA)<small>Renvoie index.html pour les routes inconnues (React Router, Vue Router…).</small></span></label>
+                      <label class="check">${toggle('spa', f.spa)}<span>Application monopage (SPA) ${tip('Renvoie index.html pour les adresses inconnues (React Router, Vue Router…).')}</span></label>
                     </div>`
                 : ''}
               ${hasPort
                 ? html`<div class="field">
-                      <label>Port</label>
+                      <label>Port ${tip(html`Votre code doit écouter sur <code>process.env.PORT</code>. Laissez vide : le panel en choisit un libre.`)}</label>
                       <input type="number" name="port" value="${f.port}" placeholder="Automatique" min="1024" max="65535" />
-                      <span class="hint">Votre code doit écouter sur <code>process.env.PORT</code>.</span>
                     </div>
                     <div class="field">
-                      <label>Nom(s) de domaine <span class="faint">(optionnel)</span></label>
+                      <label>Nom(s) de domaine <span class="faint">(optionnel)</span> ${tip('Publié en HTTPS par le tunnel Cloudflare (Paramètres → Tunnel Cloudflare). Plusieurs domaines : séparez-les par des virgules.')}</label>
                       <input type="text" name="domains" class="mono" value="${f.domains}" placeholder="monsite.fr, www.monsite.fr" spellcheck="false" />
-                      <span class="hint">Publié en HTTPS par le tunnel Cloudflare (voir Paramètres).</span>
                     </div>`
                 : ''}
             </div>
           </div>
 
           <div class="card">
-            <div class="card-header"><h2><span class="step-num">4</span> Variables d'environnement</h2></div>
+            <div class="card-header"><h2><span class="step-num">4</span> Variables d'environnement ${tip(html`Lues par votre code avec <code>process.env.NOM</code>. Gardez-y vos secrets (token Discord, clés d'API) plutôt que dans le code.`)}</h2></div>
             <div class="card-body" id="env"></div>
           </div>
 
           <div class="card">
             <div class="card-body">
-              <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique<small>Relance l'application si elle plante.</small></span></label>
-              <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec le Raspberry Pi<small>Lance l'application à chaque démarrage du Raspberry Pi.</small></span></label>
+              <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique ${tip('Relance l’application si elle plante.')}</span></label>
+              <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec le Raspberry Pi ${tip('Lance l’application à chaque démarrage du Raspberry Pi.')}</span></label>
               ${f.source === 'empty'
                 ? ''
-                : html`<label class="check">${toggle('start', f.start)}<span>Démarrer après la création<small>Installe les dépendances, lance le build éventuel puis démarre l'application.</small></span></label>`}
+                : html`<label class="check">${toggle('start', f.start)}<span>Démarrer après la création ${tip('Installe les dépendances, lance le build éventuel puis démarre l’application.')}</span></label>`}
               <div class="error-text"></div>
               <div class="progress hidden" id="progress"><i></i></div>
             </div>

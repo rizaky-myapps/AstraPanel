@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { $, html, icon, setHTML } from '../ui.js';
+import { $, html, icon, setHTML, tip } from '../ui.js';
 
 export function renderLogin(root, { setupRequired, onSuccess }) {
   setHTML(
@@ -7,14 +7,11 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
     html`<div class="auth">
       <form class="auth-card" novalidate>
         <div class="brand">${icon('logo')}<span>Astra<b>Panel</b></span></div>
-        <p class="lead">
-          ${setupRequired ? 'Bienvenue ! Créez le compte administrateur du panel.' : 'Connectez-vous pour gérer vos sites et bots.'}
-        </p>
+        ${setupRequired ? html`<p class="lead">Bienvenue ! Créez le compte administrateur du panel.</p>` : ''}
         ${setupRequired
           ? html`<div class="field">
-              <label for="token">Jeton d'installation</label>
+              <label for="token">Jeton d'installation ${tip(html`Affiché à la fin de l'installation. Pour le retrouver, sur le Raspberry Pi : <code>sudo cat /opt/astrapanel/data/setup-token</code>`)}</label>
               <input id="token" name="token" type="text" class="mono" autocomplete="off" spellcheck="false" />
-              <span class="hint">Sur le Raspberry Pi : <code>sudo cat /opt/astrapanel/data/setup-token</code></span>
             </div>`
           : ''}
         <div class="field">
@@ -22,9 +19,8 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
           <input id="username" name="username" type="text" autocomplete="username" spellcheck="false" />
         </div>
         <div class="field">
-          <label for="password">Mot de passe</label>
+          <label for="password">Mot de passe ${setupRequired ? tip('8 caractères minimum.') : ''}</label>
           <input id="password" name="password" type="password" autocomplete="${setupRequired ? 'new-password' : 'current-password'}" />
-          ${setupRequired ? html`<span class="hint">8 caractères minimum.</span>` : ''}
         </div>
         ${setupRequired
           ? html`<div class="field">

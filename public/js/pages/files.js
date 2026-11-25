@@ -9,6 +9,7 @@ import {
   modal,
   promptDialog,
   setHTML,
+  tip,
   toast,
   toggle,
   withBusy,
@@ -376,9 +377,8 @@ export function filesTab(el, page, app) {
       title,
       confirmLabel,
       body: html`<div class="field">
-        <label>Dossier de destination</label>
+        <label>Dossier de destination ${tip(html`Chemin depuis la racine de l'application, par exemple <code>public/images</code>. Laissez vide pour la racine. Le dossier est créé s'il n'existe pas.`)}</label>
         <input type="text" name="dest" class="mono" value="${st.cwd}" placeholder="(racine de l'application)" autocomplete="off" />
-        <span class="hint">Chemin depuis la racine de l'application, par exemple <code>public/images</code>. Laissez vide pour la racine. Le dossier est créé s'il n'existe pas.</span>
       </div>`,
     });
     return result ? result.dest.trim().replace(/^\/+|\/+$/g, '') : null;

@@ -116,6 +116,109 @@ export function icon(name) {
 }
 
 // Interrupteur ON / OFF : une vraie case à cocher (formulaires, accessibilité) habillée en curseur.
+// Bouton « i » : le texte d'aide s'affiche dans une bulle au survol (après un court délai), au focus clavier ou au
+// toucher. contenu : texte simple ou fragment html`` (déjà échappé).
+export function tip(content, label = 'Plus d’informations') {
+  const markup = content instanceof Safe ? String(content) : esc(content);
+  const plain = markup.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z]+;|&#\d+;/g, (e) => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" })[e] || ' ');
+  return html`<button type="button" class="info-tip" data-tip="${markup}" aria-label="${label} : ${plain}">${icon('info')}</button>`;
+}
+
+const TIP_DELAY = 350;
+let tipBox = null;
+let tipFor = null;
+let tipTimer = null;
+let hideTimer = null;
+
+function placeTip(trigger) {
+  const r = trigger.getBoundingClientRect();
+  const w = tipBox.offsetWidth;
+  const h = tipBox.offsetHeight;
+  const above = r.top - h - 10 >= 8;
+  tipBox.dataset.side = above ? 'top' : 'bottom';
+  tipBox.style.top = `${Math.round(above ? r.top - h - 10 : r.bottom + 10)}px`;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+  tipBox.style.left = `${Math.round(left)}px`;
+  tipBox.style.setProperty('--arrow', `${Math.round(r.left + r.width / 2 - left)}px`);
+}
+
+function showTip(trigger) {
+  clearTimeout(hideTimer);
+  if (!tipBox) {
+    tipBox = document.createElement('div');
+    tipBox.className = 'tooltip';
+    tipBox.id = 'astra-tooltip';
+    tipBox.setAttribute('role', 'tooltip');
+    tipBox.addEventListener('pointerenter', () => clearTimeout(hideTimer));
+    tipBox.addEventListener('pointerleave', () => hideTip(120));
+    document.body.append(tipBox);
+  }
+  tipFor?.removeAttribute('aria-describedby');
+  tipFor = trigger;
+  tipBox.innerHTML = trigger.dataset.tip; // fragment déjà échappé par tip()
+  tipBox.classList.add('show');
+  trigger.setAttribute('aria-describedby', 'astra-tooltip');
+  placeTip(trigger);
+}
+
+function hideTip(delay = 0) {
+  clearTimeout(tipTimer);
+  clearTimeout(hideTimer);
+  const hide = () => {
+    tipBox?.classList.remove('show');
+    tipFor?.removeAttribute('aria-describedby');
+    tipFor = null;
+  };
+  if (delay) hideTimer = setTimeout(hide, delay);
+  else hide();
+}
+
+export function initTooltips() {
+  const triggerOf = (e) => e.target.closest?.('.info-tip');
+  document.addEventListener('pointerover', (e) => {
+    const t = triggerOf(e);
+    if (!t || e.pointerType === 'touch') return;
+    clearTimeout(hideTimer);
+    if (tipFor === t) return;
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => showTip(t), TIP_DELAY);
+  });
+  document.addEventListener('pointerout', (e) => {
+    const t = triggerOf(e);
+    if (!t || t.contains(e.relatedTarget)) return;
+    clearTimeout(tipTimer);
+    if (tipFor === t) hideTip(150);
+  });
+  // toucher (téléphone) ou clic : ouvre ou ferme tout de suite, sans activer ce qui entoure le bouton
+  document.addEventListener('click', (e) => {
+    const t = triggerOf(e);
+    if (t) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (tipFor === t) hideTip();
+      else showTip(t);
+      return;
+    }
+    if (tipFor && !tipBox.contains(e.target)) hideTip();
+  }, true);
+  document.addEventListener('focusin', (e) => {
+    const t = triggerOf(e);
+    if (t && t.matches(':focus-visible')) {
+      clearTimeout(tipTimer);
+      tipTimer = setTimeout(() => showTip(t), TIP_DELAY);
+    }
+  });
+  document.addEventListener('focusout', (e) => {
+    if (triggerOf(e) && tipFor === triggerOf(e) && !tipBox.contains(e.relatedTarget)) hideTip(150);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && tipFor) hideTip();
+  });
+  window.addEventListener('scroll', () => tipFor && hideTip(), true);
+  window.addEventListener('resize', () => tipFor && hideTip());
+  window.addEventListener('hashchange', () => hideTip());
+}
+
 // Champ « fichier » en français (le bouton natif du navigateur s'affiche dans la langue du système).
 export function filePicker({ name = '', id = '', accept = '', label = 'Choisir un fichier…', current = '' } = {}) {
   return html`<label class="file-picker">

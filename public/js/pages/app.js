@@ -21,6 +21,7 @@ import {
   routingWarnings,
   setHTML,
   statusBadge,
+  tip,
   toast,
   toggle,
   withBusy,
@@ -244,11 +245,12 @@ function envTab(el, page, app) {
   setHTML(
     el,
     html`<div class="card">
-      <div class="card-header"><h2>${icon('key')} Variables d'environnement</h2></div>
+      <div class="card-header"><h2>${icon('key')} Variables d'environnement ${tip(
+        app.type === 'bot'
+          ? html`Mettez ici le token de votre bot (<code>DISCORD_TOKEN</code>) plutôt que dans le code : il ne sera jamais publié sur Git. Votre code les lit avec <code>process.env.NOM</code>.`
+          : html`<code>PORT</code> est fourni automatiquement (${app.port}) : votre serveur doit écouter dessus. Votre code lit les variables avec <code>process.env.NOM</code>.`,
+      )}</h2></div>
       <div class="card-body">
-        ${app.type === 'bot'
-          ? html`<div class="alert info">${icon('info')}<div>Mettez ici le token de votre bot (<code>DISCORD_TOKEN</code>) plutôt que dans le code : il ne sera jamais publié sur Git.</div></div>`
-          : html`<div class="alert info">${icon('info')}<div><code>PORT</code> est fourni automatiquement (${app.port}) : votre serveur doit écouter dessus.</div></div>`}
         <div id="env-editor"></div>
       </div>
       <div class="card-foot">
@@ -277,13 +279,12 @@ function deployTab(el, page, app) {
     el,
     html`<div class="stack">
       <div class="card">
-        <div class="card-header"><h2>${icon('upload')} Mettre à jour</h2></div>
-        <div class="card-body">
-          <p class="muted">
-            Le déploiement ${app.git ? html`récupère la dernière version du dépôt Git, ` : ''}installe les dépendances
+        <div class="card-header"><h2>${icon('upload')} Mettre à jour ${tip(
+          html`Le déploiement ${app.git ? html`récupère la dernière version du dépôt Git, ` : ''}installe les dépendances
             (<code>${app.installCommand || 'désactivé'}</code>)${app.buildCommand ? html`, lance <code>${app.buildCommand}</code>` : ''}
-            puis redémarre l'application si elle tournait.
-          </p>
+            puis redémarre l'application si elle tournait.`,
+        )}</h2></div>
+        <div class="card-body">
           <div class="row">
             <button class="btn btn-primary" data-task="deploy">${icon('upload')} Déployer maintenant</button>
             <button class="btn" data-task="install">${icon('package')} Installer les dépendances</button>
@@ -293,19 +294,17 @@ function deployTab(el, page, app) {
       </div>
 
       <div class="card">
-        <div class="card-header"><h2>${icon('git')} Dépôt Git</h2></div>
+        <div class="card-header"><h2>${icon('git')} Dépôt Git ${tip('Attention : un déploiement Git écrase les fichiers suivis par Git modifiés sur le Pi (vos fichiers .env, node_modules… sont conservés).')}</h2></div>
         <form class="card-body form-grid" id="git-form">
           <div class="field">
-            <label>URL du dépôt</label>
+            <label>URL du dépôt ${tip(html`Dépôt privé : <code>https://&lt;jeton&gt;@github.com/moi/projet.git</code> ou une clé SSH de déploiement.`)}</label>
             <input type="text" name="url" class="mono" value="${app.git?.url || ''}" placeholder="https://github.com/moi/projet.git" spellcheck="false" />
-            <span class="hint">Privé : <code>https://&lt;jeton&gt;@github.com/moi/projet.git</code> ou une clé SSH de déploiement.</span>
           </div>
           <div class="field">
             <label>Branche</label>
             <input type="text" name="branch" class="mono" value="${app.git?.branch || ''}" placeholder="par défaut" spellcheck="false" />
           </div>
           <div class="full row">
-            <span class="hint">Attention : un déploiement Git écrase les fichiers suivis par Git modifiés sur le Pi (vos fichiers .env, node_modules… sont conservés).</span>
             <span class="spacer"></span>
             <button class="btn" type="submit">${icon('save')} Enregistrer</button>
           </div>
@@ -313,14 +312,13 @@ function deployTab(el, page, app) {
       </div>
 
       <div class="card">
-        <div class="card-header"><h2>${icon('archive')} Importer une archive</h2></div>
+        <div class="card-header"><h2>${icon('archive')} Importer une archive ${tip('Le contenu (.zip, .tar.gz ou .tgz) est copié dans le dossier de l’application. Un ZIP téléchargé depuis GitHub fonctionne tel quel.')}</h2></div>
         <form class="card-body" id="archive-form">
           <div class="field">
             ${filePicker({ name: 'file', accept: '.zip,.tar,.tar.gz,.tgz', label: 'Choisir une archive…' })}
-            <span class="hint">Le contenu est copié dans le dossier de l'application. Un ZIP téléchargé depuis GitHub fonctionne tel quel.</span>
           </div>
-          <label class="check">${toggle('clean')}<span>Vider le dossier avant l'import<small>Supprime tous les fichiers actuels (y compris .env et node_modules).</small></span></label>
-          <label class="check">${toggle('deploy', true)}<span>Déployer ensuite<small>Installe les dépendances, build et redémarre.</small></span></label>
+          <label class="check">${toggle('clean')}<span>Vider le dossier avant l'import ${tip('Supprime tous les fichiers actuels, y compris .env et node_modules.')}</span></label>
+          <label class="check">${toggle('deploy', true)}<span>Déployer ensuite ${tip('Installe les dépendances, lance le build puis redémarre l’application.')}</span></label>
           <div class="progress hidden"><i></i></div>
           <div class="row"><span class="spacer"></span><button class="btn" type="submit">${icon('upload')} Importer</button></div>
         </form>
@@ -328,19 +326,17 @@ function deployTab(el, page, app) {
 
       ${app.git
         ? html`<div class="card">
-            <div class="card-header"><h2>${icon('link')} Déploiement automatique (webhook)</h2></div>
+            <div class="card-header"><h2>${icon('link')} Déploiement automatique (webhook) ${tip(
+              html`À chaque <code>git push</code>, GitHub (ou GitLab, Gitea…) appelle cette adresse et le panel redéploie l'application.<br /><br />
+                GitHub : dépôt → Settings → Webhooks → Add webhook. Payload URL = cette adresse, Content type = <code>application/json</code>,
+                événement « Just the push event ». Le panel doit être joignable depuis Internet (tunnel Cloudflare).`,
+            )}</h2></div>
             <div class="card-body">
-              <p class="muted">À chaque <code>git push</code>, GitHub (ou GitLab, Gitea…) appelle cette adresse et le panel redéploie l'application.</p>
-              <div class="input-group" style="margin-bottom:12px">
+              <div class="input-group">
                 <input type="text" class="mono" readonly value="${hookUrl(app.webhookToken)}" id="hook-url" />
                 <button class="btn" data-copy-hook>${icon('copy')} Copier</button>
                 <button class="btn btn-ghost" data-regen-hook title="Générer une nouvelle adresse">${icon('refresh')}</button>
               </div>
-              <p class="hint">
-                GitHub : dépôt → Settings → Webhooks → Add webhook. Payload URL = l'adresse ci-dessus, Content type =
-                <code>application/json</code>, événement « Just the push event ». Le panel doit être joignable depuis Internet
-                (domaine configuré dans les Paramètres ou tunnel Cloudflare).
-              </p>
             </div>
           </div>`
         : ''}
@@ -409,7 +405,7 @@ function settingsTab(el, page, app) {
     el,
     html`<div class="stack">
       <form class="card" id="settings-form">
-        <div class="card-header"><h2>${icon('sliders')} Configuration</h2></div>
+        <div class="card-header"><h2>${icon('sliders')} Configuration ${tip(html`Les changements de commande ou de port s'appliquent au prochain redémarrage.<br />Dossier sur le Raspberry Pi : <code>${app.dir}</code>`)}</h2></div>
         <div class="card-body form-grid">
           <div class="field full"><label>Nom</label><input type="text" name="name" value="${app.name}" maxlength="60" /></div>
           ${isStatic
@@ -442,20 +438,16 @@ function settingsTab(el, page, app) {
                   <input type="number" name="port" value="${app.port || ''}" min="1024" max="65535" />
                 </div>
                 <div class="field">
-                  <label>Nom(s) de domaine</label>
+                  <label>Nom(s) de domaine ${tip('Publiés en HTTPS par le tunnel Cloudflare (Paramètres → Tunnel Cloudflare). Plusieurs domaines : séparez-les par des virgules.')}</label>
                   <input type="text" name="domains" class="mono" value="${app.domains.join(', ')}" placeholder="monsite.fr, www.monsite.fr" spellcheck="false" />
-                  <span class="hint">Publiés en HTTPS par le tunnel Cloudflare (Paramètres → Tunnel Cloudflare).</span>
                 </div>`
             : ''}
           <div class="full">
-            <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage<small>Relance l'application si elle s'arrête de façon inattendue.</small></span></label>
-            <label class="check">${toggle('startOnBoot', app.startOnBoot !== false)}<span>Démarrer avec le Raspberry Pi<small>Lance l'application à chaque démarrage du Raspberry Pi. Désactivé : elle reste arrêtée jusqu'à ce que vous cliquiez sur « Démarrer ». Un simple redémarrage du panel (mise à jour) remet toujours l'application dans son état précédent.</small></span></label>
+            <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage ${tip('Relance l’application si elle s’arrête de façon inattendue.')}</span></label>
+            <label class="check">${toggle('startOnBoot', app.startOnBoot !== false)}<span>Démarrer avec le Raspberry Pi ${tip('Lance l’application à chaque démarrage du Raspberry Pi. Désactivé : elle reste arrêtée jusqu’à ce que vous cliquiez sur « Démarrer ». Un simple redémarrage du panel (mise à jour) remet toujours l’application dans son état précédent.')}</span></label>
           </div>
-          <div class="full hint">Dossier sur le Raspberry Pi : <code>${app.dir}</code></div>
         </div>
         <div class="card-foot">
-          <span class="hint">Les changements de commande ou de port s'appliquent au prochain redémarrage.</span>
-          <span class="spacer"></span>
           <button class="btn btn-primary" type="submit">${icon('save')} Enregistrer</button>
         </div>
       </form>
@@ -465,14 +457,13 @@ function settingsTab(el, page, app) {
             <div class="card-header danger-head"><h2>${icon('alert')} Zone dangereuse</h2></div>
             <div class="card-body row">
               <div>
-                <div class="label">Supprimer l'application</div>
-                <div class="hint">Arrête l'application et supprime définitivement ses fichiers et ses journaux.</div>
+                <div class="label">Supprimer l'application ${tip('Arrête l’application et supprime définitivement ses fichiers et ses journaux.')}</div>
               </div>
               <span class="spacer"></span>
               <button class="btn btn-danger" data-delete>${icon('trash')} Supprimer</button>
             </div>
           </div>`
-        : html`<p class="hint">Seul un administrateur peut supprimer une application.</p>`}
+        : ''}
     </div>`,
   );
 
@@ -531,12 +522,15 @@ async function usersTab(el, page, app) {
       el,
       html`<div class="card">
         <div class="card-header">
-          <h2>${icon('users')} Utilisateurs de l'application</h2>
+          <h2>${icon('users')} Utilisateurs de l'application ${tip(
+            html`Ces comptes voient l'application et peuvent tout faire dessus : la démarrer, utiliser la console, modifier ses fichiers et ses variables, la déployer.
+              Le créateur ne peut pas être retiré. Les administrateurs ont accès à toutes les applications et n'apparaissent pas dans cette liste.
+              ${canManage ? '' : html`<br /><br />Seuls le créateur de l'application et les administrateurs peuvent modifier cette liste.`}`,
+          )}</h2>
           <span class="spacer"></span>
           <span class="badge plain">${1 + members.length} compte${members.length ? 's' : ''}</span>
         </div>
         <div class="card-body">
-          <p class="muted members-intro">Ces comptes voient l'application et peuvent tout faire dessus : la démarrer, utiliser la console, modifier ses fichiers et ses variables, la déployer. Les administrateurs ont accès à toutes les applications et n'apparaissent pas dans cette liste.</p>
           <ul class="member-list">
             <li class="member owner">
               <div class="avatar">${owner?.deleted ? icon('user') : initial(owner?.username)}</div>
@@ -554,7 +548,6 @@ async function usersTab(el, page, app) {
               </li>`,
             )}
           </ul>
-          ${!members.length ? html`<p class="hint">Personne d'autre n'a encore accès à cette application.</p>` : ''}
         </div>
         ${canManage
           ? candidates.length
@@ -566,8 +559,8 @@ async function usersTab(el, page, app) {
                 </select>
                 <button class="btn btn-primary" type="submit">${icon('plus')} Donner l'accès</button>
               </form>`
-            : html`<div class="card-foot"><span class="hint">Tous les utilisateurs ont déjà accès.${isAdmin() ? html` Pour en créer d'autres : <a href="#/settings/utilisateurs">Paramètres → Utilisateurs</a>.` : ''}</span></div>`
-          : html`<div class="card-foot"><span class="hint">${icon('lock')} Seuls le créateur de l'application et les administrateurs peuvent modifier cette liste.</span></div>`}
+            : html`<div class="card-foot"><span class="muted">Tous les utilisateurs ont déjà accès</span>${isAdmin() ? tip(html`Pour donner accès à quelqu'un d'autre, créez d'abord son compte dans <a href="#/settings/utilisateurs">Paramètres → Utilisateurs</a>.`) : ''}</div>`
+          : ''}
       </div>`,
     );
 

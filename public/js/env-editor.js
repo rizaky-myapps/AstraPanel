@@ -55,14 +55,12 @@ export function envEditor(container, initial = {}) {
     const entries = Object.entries(env);
     setHTML(
       container,
-      html`<div class="row" style="margin-bottom:12px">
-          <span class="hint">Accessibles dans votre code via <code>process.env.NOM</code>.</span>
+      html`<div class="row env-toolbar">
           <span class="spacer"></span>
           <button type="button" class="btn btn-ghost btn-sm" data-mode>${icon(textMode ? 'sliders' : 'file')} ${textMode ? 'Mode tableau' : 'Mode texte (.env)'}</button>
         </div>
         ${textMode
-          ? html`<textarea class="mono" rows="10" spellcheck="false" placeholder="DISCORD_TOKEN=votre_token">${toDotenv(env)}</textarea>
-              <div class="hint" style="margin-top:6px">Une variable par ligne, au format <code>NOM=valeur</code>. Vous pouvez coller un fichier .env.</div>`
+          ? html`<textarea class="mono" rows="10" spellcheck="false" placeholder="Une variable par ligne : NOM=valeur (vous pouvez coller un fichier .env)">${toDotenv(env)}</textarea>`
           : html`<div class="kv-rows">${entries.length ? entries.map(([k, v]) => row(k, v)) : row()}</div>
               <button type="button" class="btn btn-sm" data-add>${icon('plus')} Ajouter une variable</button>`}`,
     );

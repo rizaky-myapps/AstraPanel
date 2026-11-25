@@ -1,5 +1,5 @@
 import { api, setUnauthorizedHandler } from './api.js';
-import { $, ROLE_LABEL, html, icon, setHTML, statusOf } from './ui.js';
+import { $, ROLE_LABEL, html, icon, initTooltips, setHTML, statusOf } from './ui.js';
 import { renderLogin } from './pages/login.js';
 import { startUpdateWatch, stopUpdateWatch } from './update-overlay.js';
 import { renderDashboard } from './pages/dashboard.js';
@@ -74,6 +74,8 @@ async function checkUpdate() {
   }
   renderBanner();
 }
+
+initTooltips();
 
 document.addEventListener('change', (e) => {
   const input = e.target.closest?.('[data-file-picker]');

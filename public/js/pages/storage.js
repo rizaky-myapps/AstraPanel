@@ -1,6 +1,6 @@
 import { api, qs } from '../api.js';
 import { isAdmin } from '../state.js';
-import { $, formatBytes, formatDate, html, icon, setHTML } from '../ui.js';
+import { $, formatBytes, formatDate, html, icon, setHTML, tip } from '../ui.js';
 
 function usageBar(ratio) {
   const pct = Math.max(0, Math.min(100, ratio * 100));
@@ -28,8 +28,7 @@ export async function renderStorage(view, page, encodedPath) {
     html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
       <div class="page-header">
         <div>
-          <h1>Stockage</h1>
-          <div class="sub">Emplacements de stockage du Raspberry Pi et ce qui occupe la place.</div>
+          <h1>Stockage ${tip('Les emplacements de stockage du Raspberry Pi et ce qui y occupe de la place.')}</h1>
         </div>
       </div>
       <div class="grid mounts" id="mounts"><div class="card stat"><div class="spinner sm"></div></div></div>
@@ -57,8 +56,7 @@ export async function renderStorage(view, page, encodedPath) {
       box,
       html`<div class="card empty">
         <div class="app-icon lg">${icon('disk')}</div>
-        <h2>Choisissez un emplacement</h2>
-        <p>Cliquez sur un disque pour voir ses dossiers et fichiers, du plus lourd au plus léger.</p>
+        <h2>Choisissez un emplacement ${tip('Cliquez sur un disque pour voir ses dossiers et fichiers, du plus lourd au plus léger.')}</h2>
         <div class="row" style="justify-content:center">
           <a class="btn" href="${storageHref(info.appsDir)}">${icon('folder')} Dossier des applications</a>
           <a class="btn btn-ghost" href="${storageHref(info.dataDir)}">${icon('server')} Données du panel</a>

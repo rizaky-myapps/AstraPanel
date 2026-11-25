@@ -17,6 +17,7 @@ import {
   modal,
   routingWarnings,
   setHTML,
+  tip,
   toast,
   toggle,
   withBusy,
@@ -42,7 +43,7 @@ export function renderSettings(view, page, tab = 'compte', arg = '') {
   view.replaceChildren(root);
   setHTML(
     root,
-    html`<div class="page-header"><div><h1>Paramètres</h1><div class="sub">Compte, utilisateurs, mises à jour, publication des sites et machine.</div></div></div>
+    html`<div class="page-header"><div><h1>Paramètres ${tip('Votre compte et, pour les administrateurs : les utilisateurs, les mises à jour, le tunnel Cloudflare, les réglages du panel, la machine et le journal d’activité.')}</h1></div></div>
       ${tabs.length > 1 ? html`<nav class="tabs">${tabs.map((t) => html`<a href="#/settings/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}</nav>` : ''}
       <div id="settings-tab"></div>`,
   );
@@ -65,13 +66,12 @@ function accountTab(el) {
           <div class="avatar lg">${u.username.slice(0, 1).toUpperCase()}</div>
           <div>
             <div class="label">${u.username}</div>
-            <span class="badge plain role-${u.role}">${ROLE_LABEL[u.role]}</span>
+            <span class="badge plain role-${u.role}">${ROLE_LABEL[u.role]}</span>${tip(
+              u.role === 'admin'
+                ? 'Accès complet : toutes les applications, utilisateurs, mises à jour, tunnel, stockage, machine et journal.'
+                : 'Vous voyez les applications que vous avez créées et celles auxquelles on vous a donné accès (onglet « Utilisateurs » de chaque application). Les paramètres du panel sont réservés aux administrateurs.',
+            )}
           </div>
-        </div>
-        <div class="card-body hint" style="padding-top:0">
-          ${u.role === 'admin'
-            ? 'Administrateur : accès complet (toutes les applications, utilisateurs, mises à jour, tunnel, stockage).'
-            : 'Utilisateur : vous voyez les applications que vous avez créées et celles auxquelles on vous a donné accès (onglet « Utilisateurs » de chaque application). Les paramètres du panel sont réservés aux administrateurs.'}
         </div>
       </div>
       <form class="card" id="password-form">
@@ -112,7 +112,11 @@ async function usersTab(el, page) {
     el,
     html`<div class="card">
       <div class="card-header">
-        <h2>${icon('users')} Utilisateurs</h2>
+        <h2>${icon('users')} Utilisateurs ${tip(
+          html`<b>Administrateur</b> : accès complet (toutes les applications, paramètres, utilisateurs, mises à jour, tunnel, stockage, machine, journal, suppression d'applications).<br /><br />
+            <b>Utilisateur</b> : voit et gère uniquement les applications qu'il a créées et celles auxquelles on lui a donné accès (onglet « Utilisateurs » de chaque application), ainsi que son mot de passe.<br /><br />
+            Il reste toujours au moins un administrateur.`,
+        )}</h2>
         <span class="spacer"></span>
         <button class="btn btn-sm btn-primary" data-add>${icon('plus')} Ajouter un utilisateur</button>
       </div>
@@ -136,12 +140,6 @@ async function usersTab(el, page) {
             )}
           </tbody>
         </table>
-      </div>
-      <div class="card-body hint">
-        <b>Administrateur</b> : accès complet (toutes les applications, paramètres, utilisateurs, mises à jour, tunnel, stockage, suppression d'applications).
-        <b>Utilisateur</b> : voit et gère uniquement les applications qu'il a créées et celles auxquelles on lui a donné accès
-        (onglet <b>Utilisateurs</b> de chaque application), ainsi que son mot de passe.
-        Il reste toujours au moins un administrateur.
       </div>
     </div>`,
   );
@@ -168,7 +166,7 @@ async function usersTab(el, page) {
         title: 'Nouvel utilisateur',
         confirmLabel: 'Créer',
         body: html`<div class="field"><label>Nom d'utilisateur</label><input type="text" name="username" autocomplete="off" /></div>
-          <div class="field"><label>Mot de passe</label><input type="password" name="password" autocomplete="new-password" /><span class="hint">8 caractères minimum.</span></div>
+          <div class="field"><label>Mot de passe ${tip('8 caractères minimum.')}</label><input type="password" name="password" autocomplete="new-password" /></div>
           <div class="field"><label>Grade</label>${roleSelect('role', 'user')}</div>`,
         onConfirm: (values) => api.post('/users', values),
       });
@@ -184,7 +182,7 @@ async function usersTab(el, page) {
       const done = await modal({
         title: `Nouveau mot de passe pour ${row.dataset.name}`,
         confirmLabel: 'Enregistrer',
-        body: html`<div class="field"><label>Mot de passe</label><input type="password" name="password" autocomplete="new-password" /><span class="hint">L'utilisateur sera déconnecté de ses sessions.</span></div>`,
+        body: html`<div class="field"><label>Mot de passe ${tip('8 caractères minimum. L’utilisateur sera déconnecté de ses sessions en cours.')}</label><input type="password" name="password" autocomplete="new-password" /></div>`,
         onConfirm: (values) => api.patch(`/users/${row.dataset.id}`, { password: values.password }),
       });
       if (done) toast('Mot de passe modifié');
@@ -223,7 +221,7 @@ async function updateTab(el, page) {
       el,
       html`<div class="stack">
         <div class="card">
-          <div class="card-header"><h2>${icon('arrowUpCircle')} Mises à jour d'AstraPanel</h2></div>
+          <div class="card-header"><h2>${icon('arrowUpCircle')} Mises à jour d'AstraPanel ${tip(html`Le panel lit la version publiée sur la branche <code>${info.branch}</code> du dépôt GitHub, automatiquement toutes les 5 minutes.`)}</h2></div>
           <div class="card-body">
             ${!inst ? html`<div class="alert warn">${icon('alert')}<div>Ce panel n'a pas été installé depuis un clone Git : la mise à jour automatique est indisponible. Réinstallez-le avec <code>install.sh</code>.</div></div>` : ''}
             ${inst && !info.updater
@@ -244,8 +242,6 @@ async function updateTab(el, page) {
           </div>
           ${inst
             ? html`<div class="card-foot">
-                <span class="hint">Le panel lit la version publiée sur la branche <code>${info.branch}</code> du dépôt.</span>
-                <span class="spacer"></span>
                 <button class="btn" data-check>${icon('refresh')} Vérifier maintenant</button>
               </div>`
             : ''}
@@ -254,18 +250,17 @@ async function updateTab(el, page) {
         ${info.available
           ? html`<div class="card highlight-ok">
               <div class="card-header">
-                <h2>${icon('sparkles')} Nouvelle version disponible : ${info.latestVersion}</h2>
+                <h2>${icon('sparkles')} Nouvelle version disponible : ${info.latestVersion} ${tip('Pendant la mise à jour (1 à 3 minutes), le panel redémarre et vos applications sont relancées automatiquement.')}</h2>
                 <span class="spacer"></span>
                 <code>${short(info.latestCommit)}</code>
               </div>
-              <div class="card-body">
-                ${info.commits.length
-                  ? html`<ul class="commits">
+              ${info.commits.length
+                ? html`<div class="card-body">
+                    <ul class="commits">
                       ${info.commits.map((c) => html`<li><span>${c.message}</span><span class="muted"> — ${c.author}${c.date ? `, ${formatDate(c.date)}` : ''}</span></li>`)}
-                    </ul>`
-                  : html`<p class="muted">Vous avez la version ${inst.version} ; la version ${info.latestVersion} est disponible sur la branche « ${info.branch} ».</p>`}
-                <p class="hint">Pendant la mise à jour (1 à 3 minutes), le panel redémarre et vos applications sont relancées automatiquement.</p>
-              </div>
+                    </ul>
+                  </div>`
+                : ''}
               <div class="card-foot">
                 <button class="btn btn-primary" data-apply ${info.updater && !info.pending ? '' : 'disabled'}>${icon('arrowUpCircle')} Mettre à jour vers la ${info.latestVersion}</button>
               </div>
@@ -409,8 +404,7 @@ async function tunnelTab(el, page) {
         ${cloudflaredRow()}
         <div class="row">
           <div class="state-text">
-            <div class="label">Tunnel actif</div>
-            <div class="hint">${ready ? 'Démarre automatiquement avec le panel.' : 'Configurez d’abord un tunnel ci-dessous.'}</div>
+            <div class="label">Tunnel actif ${tip(ready ? 'Le tunnel démarre automatiquement avec le panel.' : 'Configurez d’abord un tunnel ci-dessous (« Mode de gestion ») pour pouvoir l’activer.')}</div>
           </div>
           <span class="spacer"></span>
           <button class="btn btn-ghost btn-sm" data-restart ${status.running ? '' : 'disabled'}>${icon('restart')} Redémarrer</button>
@@ -423,17 +417,19 @@ async function tunnelTab(el, page) {
     setHTML(
       el,
       html`<div class="stack">
-        <div class="alert info">${icon('cloud')}<div>
-          Le <b>tunnel Cloudflare</b> met vos sites en ligne sur votre nom de domaine, en HTTPS, <b>sans ouvrir de port sur votre box</b>
-          (il fonctionne même sans IPv4 publique). Le Raspberry Pi garde une connexion sortante vers Cloudflare, qui lui transmet les visites.
-          Il faut un domaine géré par Cloudflare (offre gratuite).
-          <br /><a href="${helpHref('cloudflare')}">${icon('book')} Lire le tutoriel complet (création du compte, ajout du domaine, jeton d'API, dépannage)</a>
-        </div></div>
-
         <div class="card" id="state-card">${stateCard()}</div>
 
         <div class="card">
-          <div class="card-header"><h2>${icon('sliders')} Mode de gestion</h2></div>
+          <div class="card-header">
+            <h2>${icon('sliders')} Mode de gestion ${tip(
+              html`Le <b>tunnel Cloudflare</b> met vos sites en ligne sur votre nom de domaine, en HTTPS, <b>sans ouvrir de port sur votre box</b>
+                (il fonctionne même sans IPv4 publique) : le Raspberry Pi garde une connexion sortante vers Cloudflare, qui lui transmet les visites.<br /><br />
+                Avant de commencer, votre nom de domaine doit être ajouté à votre compte Cloudflare (offre gratuite) et marqué « Active » :
+                <a href="${helpHref('cloudflare', '3-ajouter-votre-nom-de-domaine-à-cloudflare')}">étape 3 du tutoriel</a>.`,
+            )}</h2>
+            <span class="spacer"></span>
+            <a class="btn btn-ghost btn-sm" href="${helpHref('cloudflare')}">${icon('book')} Tutoriel</a>
+          </div>
           <div class="card-body">
             <div class="choices">
               <button type="button" class="choice ${mode === 'api' ? 'selected' : ''}" data-mode="api">
@@ -466,13 +462,6 @@ async function tunnelTab(el, page) {
   // Libellé d'un bouton du site Cloudflare (en anglais à l'écran), avec sa traduction
   const ui = (label, fr = '') => html`<b class="ui-label">${label}</b>${fr ? html` <span class="muted">(${fr})</span>` : ''}`;
 
-  const domainPrereq = () =>
-    html`<div class="alert info">${icon('info')}<div>
-      <b>Avant de commencer</b> : votre nom de domaine doit déjà être ajouté à votre compte Cloudflare et marqué « Active ».
-      Pas encore fait ? Suivez <a href="${helpHref('cloudflare', '3-ajouter-votre-nom-de-domaine-à-cloudflare')}">l'étape 3 du tutoriel</a>
-      (ajout du domaine et changement des serveurs DNS chez votre registrar).
-    </div></div>`;
-
   const siteLinks = () => {
     const sites = state.apps.filter((x) => x.port);
     return sites.length
@@ -499,7 +488,6 @@ async function tunnelTab(el, page) {
         html`${status.mode === 'token' && status.token
             ? html`<div class="alert info">${icon('check')}<div>Tunnel configuré : <code>${status.token.tunnelId}</code></div></div>`
             : ''}
-          ${domainPrereq()}
           <ol class="stepper">
             <li>
               <div class="stepper-title">Créer le tunnel sur le site de Cloudflare</div>
@@ -571,7 +559,7 @@ async function tunnelTab(el, page) {
         <li>${ui('Expiration du jeton')} : choisissez ${ui('Pas d’expiration')} (sinon le panel ne pourra plus publier de domaines à l'échéance). Laissez ${ui('Filtrage des adresses IP client')} vide.</li>
         <li>Cliquez sur ${ui('Continuer vers le résumé')}, validez la création, puis <b>copiez le jeton</b> : il ne sera plus jamais affiché. Collez-le ci-dessous.</li>
       </ol>
-      <p class="hint">Tableau de bord Cloudflare en anglais ? Les mêmes boutons s'appellent <i>Create Token</i>, <i>Custom token</i>, <i>Add more</i>, <i>Continue to summary</i>, et les niveaux <i>Edit</i> / <i>Read</i>.</p>`;
+      <p class="hint">Tableau de bord Cloudflare en anglais ? ${tip(html`Les mêmes boutons s'appellent <i>Create Token</i>, <i>Custom token</i>, <i>Add more</i>, <i>Continue to summary</i>, et les niveaux <i>Edit</i> / <i>Read</i>.`)}</p>`;
     const apiForm = () => html`<form id="api-form" class="input-group">
         <input type="password" name="apiToken" class="mono" placeholder="${a.connected ? 'Collez le nouveau jeton d’API' : 'Collez ici le jeton d’API'}" autocomplete="off" required />
         <button class="btn ${a.connected ? '' : 'btn-primary'}" type="submit">${a.connected ? 'Remplacer' : 'Connecter'}</button>
@@ -625,39 +613,31 @@ async function tunnelTab(el, page) {
               <div class="fold-body">${publishGuide()}</div>
             </details>
             <details class="fold" data-key="token" ${open('token')}>
-              <summary>${icon('key')} Remplacer le jeton d'API</summary>
+              <summary>${icon('key')} Remplacer le jeton d'API ${tip('Utile si le jeton a expiré ou a été supprimé sur Cloudflare. Le tunnel et les domaines restent en place.')}</summary>
               <div class="fold-body">
-                <p class="hint">Utile si le jeton a expiré ou a été supprimé sur Cloudflare. Le tunnel et les domaines restent en place.</p>
                 ${apiForm()}
                 <details class="sub-fold" data-key="token-guide" ${open('token-guide')}><summary>Comment créer un jeton</summary>${tokenGuide()}</details>
               </div>
             </details>
             <details class="fold" data-key="setup" ${open('setup')}>
-              <summary>${icon('sliders')} Changer de compte ou recréer le tunnel</summary>
+              <summary>${icon('sliders')} Changer de compte ou recréer le tunnel ${tip('Recrée le tunnel (ou le retrouve s’il existe déjà sous ce nom) puis republie tous les domaines.')}</summary>
               <div class="fold-body">
-                <p class="hint">Recrée le tunnel (ou le retrouve s'il existe déjà sous ce nom) puis republie tous les domaines.</p>
                 ${setupForm()}
               </div>
             </details>`
-        : html`${domainPrereq()}
-            <ol class="stepper">
+        : html`<ol class="stepper">
               <li class="${a.connected ? 'done' : ''}">
-                <div class="stepper-title">Créer un jeton d'API Cloudflare ${a.connected ? html`<span class="badge st-running">Fait</span>` : ''}</div>
-                <p class="hint">Ce jeton autorise le panel à créer le tunnel et les enregistrements DNS de vos sites, et rien d'autre. Les boutons du site de Cloudflare sont écrits ici comme à l'écran.</p>
+                <div class="stepper-title">Créer un jeton d'API Cloudflare ${tip('Ce jeton autorise le panel à créer le tunnel et les enregistrements DNS de vos sites, et rien d’autre. Les boutons du site de Cloudflare sont écrits ici comme à l’écran.')} ${a.connected ? html`<span class="badge st-running">Fait</span>` : ''}</div>
                 <details class="sub-fold" data-key="token-guide" ${a.connected ? open('token-guide') : 'open'}>
                   <summary>${a.connected ? 'Revoir comment créer un jeton' : 'Comment créer le jeton (2 minutes)'}</summary>
                   ${tokenGuide()}
                 </details>
-                ${a.connected ? html`<p class="hint">Jeton enregistré : <code>${a.apiToken}</code>. Pour le remplacer, collez-en un autre :</p>` : ''}
+                ${a.connected ? html`<p class="hint">Jeton enregistré : <code>${a.apiToken}</code> ${tip('Pour le remplacer, collez-en un autre ci-dessous.')}</p>` : ''}
                 ${apiForm()}
               </li>
               <li class="${a.connected ? '' : 'disabled'}">
-                <div class="stepper-title">Créer le tunnel</div>
-                <p class="hint">
-                  Choisissez votre compte Cloudflare, gardez le nom proposé (ou changez-le), puis cliquez sur <b>Créer le tunnel</b>.
-                  Le panel installe cloudflared si besoin, crée le tunnel sur votre compte et le démarre : l'état en haut de la
-                  page passe à « Connecté ».
-                </p>
+                <div class="stepper-title">Créer le tunnel ${tip(html`Choisissez votre compte Cloudflare, gardez le nom proposé (ou changez-le), puis cliquez sur <b>Créer le tunnel</b>.
+                  Le panel installe cloudflared si besoin, crée le tunnel sur votre compte et le démarre : l'état en haut de la page passe à « Connecté ».`)}</div>
                 ${setupForm()}
               </li>
               <li class="disabled">
@@ -746,7 +726,7 @@ async function tunnelTab(el, page) {
                     </td>
                   </tr>`;
                 })
-              : html`<tr><td colspan="3" class="muted">Aucun domaine : ajoutez-en un dans l'onglet <b>Paramètres</b> d'une application (ou le domaine du panel dans Général).</td></tr>`}
+              : html`<tr><td colspan="3" class="muted">Aucun domaine pour l'instant ${tip(html`Ajoutez-en un dans l'onglet <b>Paramètres</b> d'une application, ou le domaine du panel dans <b>Général</b>.`)}</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -878,18 +858,16 @@ async function generalTab(el, page) {
         <div class="card-header"><h2>${icon('globe')} Domaine du panel</h2></div>
         <div class="card-body">
           <div class="field">
-            <label>Nom de domaine <span class="faint">(optionnel)</span></label>
+            <label>Nom de domaine <span class="faint">(optionnel)</span> ${tip('Pour administrer le panel en HTTPS depuis Internet, via le tunnel Cloudflare (mode « géré depuis le panel »).')}</label>
             <input type="text" name="panelDomain" class="mono" value="${settings.panelDomain}" placeholder="panel.mondomaine.fr" spellcheck="false" />
-            <span class="hint">Pour administrer le panel en HTTPS depuis Internet, via le tunnel Cloudflare (mode « géré depuis le panel »).</span>
           </div>
         </div>
         <div class="card-foot"><button class="btn btn-primary" type="submit">${icon('save')} Enregistrer</button></div>
       </form>
 
       <form class="card" id="ports-form">
-        <div class="card-header"><h2>${icon('server')} Ports des sites</h2></div>
+        <div class="card-header"><h2>${icon('server')} Ports des sites ${tip('Plage dans laquelle le panel choisit automatiquement le port des nouveaux sites.')}</h2></div>
         <div class="card-body">
-          <p class="hint" style="margin-top:0">Plage dans laquelle le panel choisit automatiquement le port des nouveaux sites.</p>
           <div class="form-grid">
             <div class="field"><label>Premier port</label><input type="number" name="start" value="${settings.portRange.start}" min="1024" max="65535" /></div>
             <div class="field"><label>Dernier port</label><input type="number" name="end" value="${settings.portRange.end}" min="1024" max="65535" /></div>
@@ -976,14 +954,13 @@ async function hardwareTab(el, page) {
         </div>
 
         <div class="card danger-card" id="reboot-card">
-          <div class="card-header danger-head"><h2>${icon('restart')} Redémarrer la machine</h2></div>
-          <div class="card-body">
-            <p>Redémarre le Raspberry Pi. Le panel et le tunnel Cloudflare repartent tout seuls, ainsi que les applications dont l'option
-            <b>Démarrer avec le Raspberry Pi</b> est activée. Comptez une à deux minutes pendant lesquelles vos sites et bots sont hors ligne.</p>
-            ${r.available
-              ? ''
-              : html`<div class="alert warn">${icon('alert')}<div>Le service de redémarrage n'est pas encore installé sur la machine : il le sera à la prochaine mise à jour du panel (ou en relançant <code>sudo ./install.sh</code>).</div></div>`}
+          <div class="card-header danger-head">
+            <h2>${icon('restart')} Redémarrer la machine ${tip(html`Redémarre le Raspberry Pi. Le panel et le tunnel Cloudflare repartent tout seuls, ainsi que les applications dont l'option
+              <b>Démarrer avec le Raspberry Pi</b> est activée. Comptez une à deux minutes pendant lesquelles vos sites et bots sont hors ligne.`)}</h2>
           </div>
+          ${r.available
+            ? ''
+            : html`<div class="card-body"><div class="alert warn">${icon('alert')}<div>Le service de redémarrage n'est pas encore installé sur la machine : il le sera à la prochaine mise à jour du panel (ou en relançant <code>sudo ./install.sh</code>).</div></div></div>`}
           <div class="card-foot">
             <button class="btn btn-danger" data-reboot ${r.available && !r.pending ? '' : 'disabled'}>${icon('restart')} Redémarrer la machine…</button>
           </div>
@@ -1112,7 +1089,7 @@ async function journalTab(el, page, userFilter = '') {
     el,
     html`<div class="card">
       <div class="card-header">
-        <h2>${icon('clock')} Journal d'activité</h2>
+        <h2>${icon('clock')} Journal d'activité ${tip('Chaque action faite dans le panel est enregistrée : connexions, applications, fichiers, comptes, tunnel, mises à jour, redémarrages. Les mots de passe, jetons et valeurs des variables ne sont jamais enregistrés. Les 10 000 dernières actions sont conservées.')}</h2>
         <span class="spacer"></span>
         <button class="btn btn-sm btn-ghost" data-reload>${icon('refresh')} Actualiser</button>
       </div>
@@ -1126,7 +1103,6 @@ async function journalTab(el, page, userFilter = '') {
         <input type="search" id="f-q" placeholder="Rechercher (fichier, domaine, IP…)" aria-label="Rechercher" />
       </div>
       <div id="journal-list"><div class="empty-small muted">Chargement…</div></div>
-      <div class="card-foot"><span class="hint">Chaque action faite dans le panel est enregistrée : connexions, applications, fichiers, comptes, tunnel, mises à jour, redémarrages. Les mots de passe, jetons et valeurs des variables ne sont jamais enregistrés. Les 10 000 dernières actions sont conservées.</span></div>
     </div>`,
   );
   const onFilter = (key) => (e) => {

@@ -2,6 +2,10 @@
 
 - Interface, messages et documentation en **français**.
 - Aucune dépendance npm pour le panel (Node.js ≥ 20 uniquement) ; `npm test` doit passer.
+- Interface épurée : pas de texte explicatif visible (sous-titres, aides sous les champs, descriptions sous les
+  interrupteurs…). Les explications vont dans une bulle « i » : `tip(...)` de `public/js/ui.js`, placée après le
+  titre, le libellé ou l'interrupteur concerné. Restent visibles : données, états, erreurs et avertissements,
+  guides pas-à-pas.
 
 ## Versions et branches
 
