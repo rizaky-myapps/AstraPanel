@@ -366,7 +366,7 @@ svg.icon {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .stats {
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   margin-bottom: 26px;
 }
 .stat {
@@ -1902,6 +1902,18 @@ a.usage-row:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+#branch-form {
+  justify-content: flex-start;
+}
+#branch-form select,
+#branch-form input {
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
+}
+pre.code {
+  font-variant-ligatures: none;
 }
 .update-log {
   border: 0;

@@ -5,6 +5,7 @@ import { lstat, open, readFile, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { HttpError } from './http/util.js';
 import { baseEnv } from './apps/process.js';
+import { stripAnsi } from './apps/logs.js';
 
 const execFileAsync = promisify(execFile);
 const BRANCH_RE = /^[A-Za-z0-9._/-]{1,200}$/;
@@ -121,7 +122,8 @@ export class Updater {
       Object.assign(this.state, { latest: head.sha, latestBranch: branch, branches: branches.map((b) => b.name), commits: [], error: null });
       if (head.sha !== installed.commit) this.state.commits = await this.commitsBetween(installed, head.sha);
     } catch (err) {
-      this.state.error = `Vérification impossible : ${(err.stderr || err.message).toString().trim().split('\n').pop()}`;
+      const lines = (err.stderr || err.message).toString().trim().split('\n');
+      this.state.error = `Vérification impossible : ${lines.find((l) => l.startsWith('fatal:')) || lines.pop()}`;
     } finally {
       this.state.checking = false;
       this.state.lastCheck = Date.now();
@@ -188,7 +190,7 @@ export class Updater {
   }
 
   async log() {
-    return tail(LOG_FILE);
+    return stripAnsi(await tail(LOG_FILE));
   }
 
   // Demande la mise à jour au service root « astrapanel-update » (déclenché par la présence du fichier).

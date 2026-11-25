@@ -10,14 +10,16 @@ premier site, puis mettez le tout en ligne avec votre nom de domaine en HTTPS. C
 3. [Se connecter au Pi en SSH](#3-se-connecter-au-pi-en-ssh)
 4. [Donner une adresse IP fixe au Pi](#4-donner-une-adresse-ip-fixe-au-pi)
 5. [Installer AstraPanel](#5-installer-astrapanel)
-6. [Première connexion au panel](#6-première-connexion-au-panel)
+6. [Première connexion et tableau de bord](#6-première-connexion-et-tableau-de-bord)
 7. [Héberger un bot Discord](#7-héberger-un-bot-discord)
 8. [Héberger un site web](#8-héberger-un-site-web)
-9. [Mettre vos sites en ligne sur Internet](#9-mettre-vos-sites-en-ligne-sur-internet)
-10. [Déploiement automatique depuis GitHub](#10-déploiement-automatique-depuis-github)
-11. [Sécuriser le Raspberry Pi](#11-sécuriser-le-raspberry-pi)
-12. [Entretien : mises à jour, sauvegardes, journaux](#12-entretien--mises-à-jour-sauvegardes-journaux)
-13. [Dépannage](#13-dépannage)
+9. [Gérer les fichiers d'une application](#9-gérer-les-fichiers-dune-application)
+10. [Mettre vos sites en ligne sur Internet](#10-mettre-vos-sites-en-ligne-sur-internet)
+11. [Déploiement automatique depuis GitHub](#11-déploiement-automatique-depuis-github)
+12. [Utilisateurs et grades](#12-utilisateurs-et-grades)
+13. [Sécuriser le Raspberry Pi](#13-sécuriser-le-raspberry-pi)
+14. [Entretien : mises à jour, sauvegardes, journaux](#14-entretien--mises-à-jour-sauvegardes-journaux)
+15. [Dépannage](#15-dépannage)
 
 ---
 
@@ -32,7 +34,7 @@ premier site, puis mettez le tout en ligne avec votre nom de domaine en HTTPS. C
 | Réseau | Un câble Ethernet relié à votre box (plus stable que le Wi-Fi). |
 | Un ordinateur | Pour préparer la carte SD et vous connecter au Pi. |
 
-Pour la mise en ligne (étape 9), il vous faudra aussi un **nom de domaine** (quelques euros par an chez OVHcloud,
+Pour la mise en ligne (étape 10), il vous faudra aussi un **nom de domaine** (quelques euros par an chez OVHcloud,
 Gandi, Infomaniak, Cloudflare…) ou un sous-domaine gratuit.
 
 ## 2. Installer Raspberry Pi OS
@@ -82,7 +84,7 @@ Attendez une minute et reconnectez-vous en SSH.
 
 ## 4. Donner une adresse IP fixe au Pi
 
-Votre box doit toujours attribuer la même adresse au Pi, sinon la redirection de ports (étape 9) cessera de
+Votre box doit toujours attribuer la même adresse au Pi, sinon la redirection de ports (étape 10) cessera de
 fonctionner après un redémarrage.
 
 **Méthode conseillée : un bail DHCP statique dans votre box.** Dans l'interface de votre box (Freebox, Livebox,
@@ -125,7 +127,7 @@ cd AstraPanel
 ```
 
 ```bash
-sudo ./install.sh --with-caddy
+sudo ./install.sh
 ```
 
 > **Dépôt privé ?** Si le dépôt GitHub est privé, `git clone` demandera un identifiant : utilisez votre nom
@@ -134,13 +136,17 @@ sudo ./install.sh --with-caddy
 
 Le script, qui prend quelques minutes :
 
-- installe git, unzip et les outils de compilation (nécessaires à certains modules npm de bots, comme ceux pour la voix) ;
+- installe git, zip/unzip et les outils de compilation (nécessaires à certains modules npm de bots, comme ceux pour la voix) ;
 - installe **Node.js 24 LTS** si aucune version récente n'est présente ;
 - crée l'utilisateur système `astrapanel`, qui fera tourner le panel et vos applications sans droits administrateur ;
 - copie le panel dans `/opt/astrapanel` et crée le service `astrapanel` qui démarre avec le Pi ;
-- avec `--with-caddy` : installe **Caddy**, le serveur qui gérera vos noms de domaine et le HTTPS (étape 9).
-  Vous pouvez l'omettre si vous voulez seulement utiliser vos sites sur votre réseau local, ou si vous choisissez le
-  tunnel Cloudflare de l'étape 9.
+- installe le petit service `astrapanel-update`, qui permettra de **mettre le panel à jour depuis son interface**
+  (plus besoin de SSH, voir l'étape 14).
+
+> **Faut-il ajouter `--with-caddy` ?** Seulement si vous comptez publier vos sites en ouvrant les ports 80/443 de
+> votre box (option B de l'étape 10). Avec le **tunnel Cloudflare intégré** (option A, recommandée) ou pour un usage
+> sur votre réseau local uniquement, Caddy ne sert à rien. Vous pourrez toujours l'ajouter plus tard en relançant
+> `sudo ./install.sh --with-caddy`.
 
 À la fin, le script affiche l'adresse du panel et un **jeton d'installation** :
 
@@ -153,10 +159,10 @@ Le script, qui prend quelques minutes :
   Jeton d'installation (à saisir à la première connexion) : Xy3k9QpL2mWa
 ```
 
-> Options du script : `--port=9000` change le port du panel (8080 par défaut). Vous pouvez relancer le script à
-> tout moment, par exemple pour ajouter Caddy plus tard : vos applications sont conservées.
+> Options du script : `--port=9000` change le port du panel (8080 par défaut), `--with-caddy` ajoute Caddy.
+> Vous pouvez relancer le script à tout moment : vos applications sont conservées.
 
-## 6. Première connexion au panel
+## 6. Première connexion et tableau de bord
 
 1. Sur votre ordinateur (ou votre téléphone, connecté au même réseau), ouvrez **http://astrapanel.local:8080**.
 2. Saisissez le **jeton d'installation**. Si vous l'avez perdu, affichez-le sur le Pi :
@@ -165,10 +171,21 @@ Le script, qui prend quelques minutes :
    sudo cat /opt/astrapanel/data/setup-token
    ```
 
-3. Choisissez votre nom d'utilisateur et un mot de passe solide (8 caractères minimum).
+3. Choisissez votre nom d'utilisateur et un mot de passe solide (8 caractères minimum). Ce premier compte est
+   **administrateur** (voir l'étape 12 pour ajouter d'autres personnes).
 
-Vous arrivez sur le **tableau de bord** : charge du processeur, température, mémoire, espace disque et la liste de
-vos applications. Si le panel affiche « Sous-tension détectée », changez d'alimentation (voir étape 1).
+Vous arrivez sur le **tableau de bord** :
+
+- en haut, l'état actuel du Pi : processeur, température (et vitesse du ventilateur), mémoire, stockage, durée de
+  fonctionnement. Si le panel affiche « Sous-tension détectée », changez d'alimentation (voir l'étape 1) ;
+- en dessous, les **graphiques** du processeur, de la température et de la mémoire, avec le choix de la période :
+  **1 h, 24 h, 15 j ou 30 j**. Survolez une courbe pour lire la valeur à un instant donné ; « Voir les données »
+  affiche les mesures sous forme de tableau. L'historique se remplit au fil du temps (il est conservé 30 jours) ;
+- un clic sur la carte **Stockage** ouvre l'explorateur de stockage : la liste des disques du Pi (carte SD, SSD,
+  clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus léger**. Cliquez sur un dossier
+  pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les journaux, une vieille archive…).
+
+Vos applications sont listées dans la barre latérale, avec le bouton **Nouvelle application**.
 
 ![Tableau de bord](images/tableau-de-bord.png)
 
@@ -212,7 +229,7 @@ actuel, et l'option `salon` permet d'en choisir un autre. Écrivez `\n` pour all
 - le bot doit avoir le droit d'écrire dans le salon choisi, sinon il vous le signale.
 
 Pour modifier le bot, ouvrez l'onglet **Fichiers**, cliquez sur `index.js`, éditez puis **Enregistrer** (ou Ctrl+S),
-et cliquez sur **Redémarrer**.
+et cliquez sur **Redémarrer** (voir l'étape 9 pour tout ce que permet le gestionnaire de fichiers).
 
 ### 7.3 Héberger votre propre bot
 
@@ -276,18 +293,82 @@ Choisissez le type **Site statique** :
 Une page `404.html` à la racine du dossier servi est utilisée pour les pages introuvables. Les fichiers et dossiers
 cachés (`.git`, `.env`…) ne sont jamais servis.
 
-## 9. Mettre vos sites en ligne sur Internet
+## 9. Gérer les fichiers d'une application
+
+L'onglet **Fichiers** de chaque application est un gestionnaire de fichiers complet :
+
+- **Naviguer** : cliquez sur un dossier (ou sur le fil d'Ariane en haut) ; le champ « Filtrer » cherche dans le
+  dossier affiché ; cliquez sur un titre de colonne pour trier par nom, taille ou date.
+- **Sélectionner** : un clic sur une ligne la sélectionne, le rond à gauche ajoute ou retire un élément, Maj+clic
+  sélectionne une plage, Ctrl+A tout le dossier.
+- **Créer** : « Nouveau fichier », « Nouveau dossier ».
+- **Téléverser** : bouton « Téléverser » (plusieurs fichiers), « Envoyer un dossier », ou glisser-déposer des
+  fichiers et des dossiers directement dans la liste.
+- **Avec une sélection** : renommer (F2), **déplacer**, **copier**, **compresser en ZIP**, **extraire** une archive
+  (.zip, .tar.gz…), **télécharger** (un dossier ou plusieurs éléments sont téléchargés dans un ZIP) et supprimer
+  (touche Suppr).
+- **Ouvrir un fichier** : les fichiers texte et le code s'ouvrent dans l'**éditeur** (numéros de ligne, Ctrl+S pour
+  enregistrer, retour à la ligne activable) ; les **images, vidéos et sons** s'ouvrent dans une visionneuse plein
+  écran (flèches ← → pour passer au suivant, Échap pour fermer) ; les PDF s'ouvrent dans un nouvel onglet.
+
+## 10. Mettre vos sites en ligne sur Internet
 
 Deux solutions au choix :
 
-- **Option A : Caddy + redirection de ports.** Tout reste chez vous, HTTPS automatique avec Let's Encrypt.
+- **Option A : tunnel Cloudflare intégré au panel (recommandé).** Aucun port à ouvrir sur votre box, fonctionne même
+  sans IPv4 publique, HTTPS automatique. Il faut que votre domaine soit géré par Cloudflare (offre gratuite).
+- **Option B : Caddy + redirection de ports.** Tout passe directement par votre connexion, HTTPS par Let's Encrypt.
   Il faut pouvoir ouvrir les ports 80 et 443 de votre box.
-- **Option B : tunnel Cloudflare.** Aucun port à ouvrir et fonctionne même si votre connexion n'a pas d'IPv4
-  publique, mais le trafic passe par Cloudflare et votre domaine doit y être géré.
 
-### Option A : nom de domaine + Caddy
+### À quoi sert Caddy ?
 
-Prérequis : avoir lancé l'installateur avec `--with-caddy` (sinon relancez `sudo ./install.sh --with-caddy`).
+Caddy est un serveur web « frontal » (*reverse proxy*). Il écoute sur les ports 80 et 443 du Pi, regarde quel nom de
+domaine le visiteur demande (`monsite.fr`, `api.monsite.fr`…) et transmet la visite à la bonne application
+(port 4000, 4001…). Il obtient et renouvelle tout seul les certificats HTTPS. **Il n'est utile qu'avec l'option B.**
+Avec le tunnel Cloudflare, c'est Cloudflare qui fait ce travail ; et sur votre réseau local, vous accédez directement
+aux sites par `http://astrapanel.local:4000`. Si vous l'avez installé sans en avoir besoin : réglez l'intégration
+sur « Désactivée » dans **Paramètres → Caddy**, puis `sudo apt remove caddy`.
+
+### Option A : tunnel Cloudflare (dans le panel)
+
+1. Ajoutez votre domaine à un compte [Cloudflare](https://dash.cloudflare.com) (offre gratuite) et changez les
+   serveurs DNS chez votre registrar comme Cloudflare l'indique. Attendez que le domaine soit « Actif ».
+2. Dans AstraPanel, ouvrez **Paramètres → Tunnel Cloudflare** et cliquez sur **Installer cloudflared** (le panel
+   télécharge le programme officiel de Cloudflare ; rien à faire en SSH).
+3. Choisissez le mode de gestion :
+
+**Mode « Géré depuis le panel » (le plus simple)** — le panel crée le tunnel et les enregistrements DNS pour vous.
+
+1. Créez un jeton d'API sur [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) :
+   **Create Token** → **Custom token**, avec les permissions **Account · Cloudflare Tunnel · Edit**,
+   **Zone · DNS · Edit** et **Zone · Zone · Read** (zones : toutes, ou celles de vos domaines).
+2. Collez-le dans l'étape « 1. Jeton d'API Cloudflare » puis **Connecter**.
+3. Choisissez votre compte, gardez ou changez le nom du tunnel, puis **Créer le tunnel**. Le tunnel démarre et
+   l'état passe à « Connecté ».
+4. Ajoutez un domaine à un site : application → onglet **Paramètres** → **Nom(s) de domaine** (`monsite.fr,
+   www.monsite.fr`) → **Enregistrer**. Le panel crée l'enregistrement DNS et la route du tunnel : le site est en
+   ligne en HTTPS en moins d'une minute. Retirer un domaine supprime son enregistrement DNS.
+5. Le tableau « Domaines publiés » montre l'état de chaque domaine. **Conflit DNS** signifie qu'un enregistrement
+   existe déjà pour ce nom (par exemple un ancien enregistrement A) : cliquez sur **Remplacer** pour le remplacer par
+   celui du tunnel. « Domaine inconnu » signifie que le domaine n'est pas dans ce compte Cloudflare.
+
+**Mode « Géré depuis le site Cloudflare »** — vous gardez la main sur le tableau de bord de Cloudflare.
+
+1. Sur [one.dash.cloudflare.com](https://one.dash.cloudflare.com/), ouvrez **Networks → Tunnels** et créez un tunnel
+   de type **Cloudflared**.
+2. À l'étape d'installation, copiez la commande affichée (elle contient le jeton qui commence par `eyJ`) et collez-la
+   dans AstraPanel, puis **Enregistrer et démarrer**. Ne lancez pas la commande sur le Pi : c'est le panel qui fait
+   tourner le tunnel.
+3. Dans l'onglet **Public Hostname** du tunnel (sur Cloudflare), ajoutez un nom de domaine par site, de type
+   **HTTP**, vers l'adresse indiquée par le panel (par exemple `localhost:4000`).
+
+Dans les deux modes, l'interrupteur **Tunnel actif** démarre ou arrête le tunnel, qui redémarre automatiquement avec
+le Pi. Le journal du tunnel s'affiche en bas de la page. Pour administrer le panel depuis l'extérieur, indiquez un
+domaine dans **Paramètres → Général → Domaine du panel** (par exemple `panel.monsite.fr`).
+
+### Option B : nom de domaine + Caddy
+
+Prérequis : avoir lancé l'installateur avec `--with-caddy`.
 
 1. **Trouvez votre IP publique** depuis le Pi :
 
@@ -301,42 +382,28 @@ Prérequis : avoir lancé l'installateur avec `--with-caddy` (sinon relancez `su
 
 2. **Configurez le DNS** chez votre registrar : créez un enregistrement **A** pour `monsite.fr` (et un pour
    `www.monsite.fr`) qui pointe vers votre IP publique. Ajoutez aussi `panel.monsite.fr` si vous voulez accéder au
-   panel depuis l'extérieur. La propagation prend de quelques minutes à quelques heures.
+   panel depuis l'extérieur.
 
 3. **Ouvrez les ports dans votre box** : dans la rubrique **NAT / PAT** ou **redirection de ports**, redirigez les
    ports TCP **80** et **443** vers l'adresse IP du Pi (étape 4). **N'ouvrez pas le port 8080.**
 
-4. **Associez le domaine au site** : dans AstraPanel, ouvrez l'application → onglet **Paramètres** → champ
-   **Nom(s) de domaine** : `monsite.fr, www.monsite.fr` → **Enregistrer**. Le panel met à jour Caddy, qui obtient le
-   certificat HTTPS en moins d'une minute.
+4. **Associez le domaine au site** : application → onglet **Paramètres** → **Nom(s) de domaine** → **Enregistrer**.
+   Caddy obtient le certificat HTTPS en moins d'une minute.
 
-5. **Accès au panel en HTTPS** (facultatif) : menu **Paramètres** → **Domaine du panel** : `panel.monsite.fr` →
-   **Enregistrer**. Vous pourrez alors administrer vos applications depuis n'importe où via `https://panel.monsite.fr`.
+5. **Domaine du panel** (facultatif) : **Paramètres → Général → Domaine du panel**.
 
 Testez depuis votre téléphone en 4G/5G (Wi-Fi coupé) : `https://monsite.fr` doit s'afficher avec le cadenas.
+L'onglet **Paramètres → Caddy** indique si Caddy est installé, affiche la configuration générée et la dernière erreur.
 
-> Le menu **Paramètres** du panel indique si Caddy est installé et affiche la configuration générée. En cas
-> d'erreur, le message de Caddy s'y affiche aussi.
+> Si le tunnel Cloudflare est actif en mode « géré depuis le panel », c'est lui qui publie les domaines : Caddy ne les
+> sert plus.
 
-### Option B : tunnel Cloudflare
-
-1. Ajoutez votre domaine à un compte [Cloudflare](https://dash.cloudflare.com) (offre gratuite) et changez les
-   serveurs DNS chez votre registrar comme Cloudflare l'indique.
-2. Dans le tableau de bord Cloudflare, ouvrez **Zero Trust**, puis la section **Networks → Tunnels**, et créez un
-   tunnel de type *Cloudflared*. Choisissez l'environnement **Debian**, architecture **arm64**, et exécutez sur le Pi
-   les commandes affichées (installation de `cloudflared`, puis `sudo cloudflared service install <jeton>`).
-3. Dans l'onglet **Public Hostnames** du tunnel, ajoutez une entrée par site :
-   - `monsite.fr` → service `HTTP` → `localhost:4000` (le port de l'application dans AstraPanel)
-   - `panel.monsite.fr` → service `HTTP` → `localhost:8080` (facultatif ; protégez-le avec Cloudflare Access)
-
-Avec cette option, laissez le champ « Nom(s) de domaine » vide dans AstraPanel : le HTTPS est géré par Cloudflare.
-
-## 10. Déploiement automatique depuis GitHub
+## 11. Déploiement automatique depuis GitHub
 
 Pour qu'un `git push` mette automatiquement le site ou le bot à jour :
 
 1. L'application doit avoir un **dépôt Git** configuré (onglet **Déploiement**).
-2. Le panel doit être joignable depuis Internet (domaine du panel de l'option A, ou tunnel de l'option B).
+2. Le panel doit être joignable depuis Internet (domaine du panel via le tunnel ou Caddy, voir l'étape 10).
 3. Dans l'onglet **Déploiement**, copiez l'**adresse du webhook**.
 4. Sur GitHub : dépôt → **Settings** → **Webhooks** → **Add webhook**
    - *Payload URL* : l'adresse copiée
@@ -368,13 +435,34 @@ redémarre l'application. Vous suivez le tout dans la console. Le bouton **Dépl
   Ajoutez la clé affichée dans GitHub (dépôt → Settings → **Deploy keys**) et utilisez l'URL SSH du dépôt :
   `git@github.com:moi/mon-bot.git`.
 
-## 11. Sécuriser le Raspberry Pi
+## 12. Utilisateurs et grades
 
-- **Panel** : mot de passe solide, et **jamais de redirection du port 8080** sur la box. Pour administrer à
-  distance : domaine du panel en HTTPS, tunnel Cloudflare, ou un VPN comme Tailscale ou WireGuard.
+AstraPanel a deux grades :
+
+| | Administrateur | Utilisateur |
+| --- | :---: | :---: |
+| Voir le tableau de bord et les graphiques | ✔ | ✔ |
+| Créer une application, la démarrer / l'arrêter, console, fichiers, variables, déploiement | ✔ | ✔ |
+| Supprimer une application | ✔ | |
+| Explorateur de stockage | ✔ | |
+| Paramètres : utilisateurs, mises à jour, tunnel Cloudflare, Caddy, ports | ✔ | |
+| Changer son propre mot de passe | ✔ | ✔ |
+
+Les administrateurs gèrent les comptes dans **Paramètres → Utilisateurs** : **Ajouter un utilisateur** (avec son
+grade), changer le grade d'un compte avec la liste déroulante, définir un nouveau mot de passe (icône clé) ou
+supprimer un compte. Il reste toujours au moins un administrateur.
+
+> Les utilisateurs peuvent modifier le code des applications : ils peuvent donc exécuter du code sur le Pi. Ne donnez
+> un compte qu'à des personnes de confiance.
+
+## 13. Sécuriser le Raspberry Pi
+
+- **Panel** : mots de passe solides, et **jamais de redirection du port 8080** sur la box. Pour administrer à
+  distance : domaine du panel en HTTPS (tunnel ou Caddy), ou un VPN comme Tailscale ou WireGuard.
 - **Code hébergé** : toutes les applications tournent sous le même utilisateur `astrapanel`. Une application peut donc
   lire les fichiers des autres, y compris leurs tokens. N'hébergez que du code en lequel vous avez confiance.
-- **Pare-feu** : `ufw` n'autorise que le nécessaire. Adaptez `192.168.1.0/24` à votre réseau local :
+- **Pare-feu** : `ufw` n'autorise que le nécessaire. Adaptez `192.168.1.0/24` à votre réseau local (et sautez la
+  ligne 80,443 si vous utilisez le tunnel Cloudflare, qui n'a besoin d'aucun port ouvert) :
 
   ```bash
   sudo apt install -y ufw
@@ -409,12 +497,24 @@ redémarre l'application. Vous suivez le tout dans la console. Le bouton **Dépl
 - **SSH** : préférez une connexion par clé (`ssh-copy-id pi@astrapanel.local` depuis un ordinateur Linux ou macOS), puis
   désactivez l'authentification par mot de passe dans `/etc/ssh/sshd_config` (`PasswordAuthentication no`).
 
-## 12. Entretien : mises à jour, sauvegardes, journaux
+## 14. Entretien : mises à jour, sauvegardes, journaux
 
-**Mettre à jour AstraPanel** (vos applications sont conservées et redémarrées automatiquement) :
+**Mettre à jour AstraPanel depuis le panel.** Le panel vérifie toutes les 6 heures s'il existe une nouvelle version
+sur GitHub. Quand c'est le cas, les administrateurs voient une **bannière** en haut de chaque page. Dans
+**Paramètres → Mises à jour** :
+
+- **Branche suivie** : la branche GitHub dont le panel suit les nouveautés (par exemple `main`) ;
+- **Vérifier les mises à jour** : vérifie tout de suite ;
+- **Mettre à jour maintenant** : télécharge la nouvelle version et l'installe. Le journal s'affiche en direct ; le
+  panel redémarre (vos applications aussi) et la page se recharge toute seule au bout d'une à trois minutes.
+
+> Si votre panel a été installé avant l'arrivée de cette fonction, faites une dernière mise à jour en SSH
+> (`cd ~/AstraPanel && git pull && sudo ./install.sh`) : les suivantes se feront depuis le panel.
+
+En SSH, la même mise à jour se lance avec :
 
 ```bash
-cd ~/AstraPanel && git pull && sudo ./install.sh
+sudo astrapanel-update
 ```
 
 **Journaux du panel** :
@@ -424,9 +524,9 @@ sudo journalctl -u astrapanel -f
 ```
 
 Les journaux de chaque application sont dans la console du panel (bouton **Télécharger** pour le fichier complet) et
-dans `/opt/astrapanel/data/logs/`.
+dans `/opt/astrapanel/data/logs/`. Le journal de la dernière mise à jour est dans `/var/log/astrapanel-update.log`.
 
-**Sauvegarder** applications, configuration et comptes :
+**Sauvegarder** applications, configuration, comptes et historique :
 
 ```bash
 sudo tar czf ~/astrapanel-$(date +%F).tar.gz -C /opt/astrapanel data
@@ -459,7 +559,7 @@ sudo astrapanel-cli reset-password admin
 sudo ./uninstall.sh
 ```
 
-## 13. Dépannage
+## 15. Dépannage
 
 **Le panel ne s'affiche pas.** Vérifiez qu'il tourne et lisez ses derniers messages :
 
@@ -495,7 +595,22 @@ membres, présences) : activez-le dans l'onglet **Bot** du portail développeur.
 **« Trop de plantages d'affilée ».** Après 10 plantages rapprochés, le panel arrête de relancer l'application pour ne
 pas surcharger le Pi. Corrigez l'erreur visible dans la console puis cliquez sur **Démarrer**.
 
-**Le certificat HTTPS n'est pas obtenu.** Vérifiez que le domaine pointe bien vers votre IP publique et que les
+**Tunnel Cloudflare : « Cloudflare : … » lors de la connexion.** Le jeton d'API n'a pas les bonnes permissions
+(revoyez l'étape 10) ou a expiré. Si le tunnel reste sur « Connexion… », lisez son journal en bas de la page
+**Paramètres → Tunnel Cloudflare**.
+
+**Tunnel Cloudflare : « Conflit DNS ».** Un enregistrement existe déjà pour ce domaine chez Cloudflare. Cliquez sur
+**Remplacer** (ou supprimez-le vous-même dans le tableau de bord Cloudflare puis **Synchroniser**).
+
+**La mise à jour depuis le panel échoue.** Le journal de la mise à jour s'affiche dans **Paramètres → Mises à jour**.
+Si le dépôt GitHub est privé, il doit avoir été cloné avec un jeton dans l'URL pour que le Pi puisse le télécharger.
+Les messages du service sont aussi visibles avec :
+
+```bash
+sudo journalctl -u astrapanel-update -n 50
+```
+
+**Le certificat HTTPS n'est pas obtenu (Caddy).** Vérifiez que le domaine pointe bien vers votre IP publique et que les
 ports 80 et 443 sont redirigés vers le Pi. Les messages de Caddy sont visibles avec :
 
 ```bash
@@ -509,9 +624,13 @@ USB-C de qualité.
 
 | Chemin | Contenu |
 | --- | --- |
-| `/opt/astrapanel` | Code du panel (mis à jour par `install.sh`) |
+| `/opt/astrapanel` | Code du panel (mis à jour par `install.sh` ou depuis le panel) |
 | `/opt/astrapanel/data/apps/<id>/` | Fichiers de chaque application |
-| `/opt/astrapanel/data/logs/` | Journaux des applications |
+| `/opt/astrapanel/data/logs/` | Journaux des applications et du tunnel |
 | `/opt/astrapanel/data/db.json` | Configuration des applications, comptes, paramètres |
+| `/opt/astrapanel/data/metrics.json` | Historique des graphiques (15 et 30 jours) |
+| `/opt/astrapanel/data/bin/cloudflared` | Programme du tunnel Cloudflare, téléchargé par le panel |
+| `/var/lib/astrapanel/source` | Copie du dépôt GitHub utilisée par les mises à jour |
 | `/etc/caddy/astrapanel/sites.caddy` | Configuration Caddy générée par le panel |
 | `/etc/systemd/system/astrapanel.service` | Service systemd du panel |
+| `/etc/systemd/system/astrapanel-update.*` | Service de mise à jour (lancé quand le panel le demande) |
