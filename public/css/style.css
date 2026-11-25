@@ -2469,3 +2469,72 @@ pre.code {
     font-size: 11px;
   }
 }
+
+/* ---- Tunnel Cloudflare ---- */
+.tunnel-status .state-text {
+  min-width: 0;
+}
+.warn-text {
+  color: var(--warn);
+}
+.replace-dns {
+  margin-top: 6px;
+}
+.tunnel-summary {
+  margin-bottom: 14px;
+}
+.tunnel-summary .kv-table td:first-child {
+  width: 170px;
+}
+.tunnel-summary + .card.inner {
+  margin-bottom: 4px;
+}
+/* volets repliables (réglages avancés) */
+.fold {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+.fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--text);
+  font-weight: 600;
+  list-style: none;
+}
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+.fold > summary svg {
+  color: var(--muted);
+}
+.fold > summary::after {
+  content: '';
+  margin-left: auto;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.fold[open] > summary::after {
+  transform: rotate(45deg);
+}
+.fold[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+.fold-body {
+  padding: 14px;
+}
+.fold-body > .hint:first-child {
+  margin-top: 0;
+}
+.sub-fold > summary {
+  color: var(--accent-2);
+  font-weight: 550;
+}

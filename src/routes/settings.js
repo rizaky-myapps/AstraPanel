@@ -35,6 +35,7 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
   router.get('/api/tunnel', () => tunnel.status(), { admin: true });
   router.get('/api/tunnel/logs/stream', (ctx) => streamLog(ctx.req, ctx.res, tunnel.log), { admin: true });
   router.post('/api/tunnel/install', async () => ({ version: await tunnel.install() }), { admin: true });
+  router.post('/api/tunnel/check-update', async () => (await tunnel.checkLatest(), tunnel.status()), { admin: true });
   router.post(
     '/api/tunnel/token',
     async (ctx) => {

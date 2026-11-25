@@ -11,10 +11,14 @@ import { promisify } from 'node:util';
 import { HttpError } from './http/util.js';
 import { LogBuffer } from './apps/logs.js';
 import { baseEnv, killGroup, pipeOutput } from './apps/process.js';
+import { compareVersions } from './version.js';
 
 const execFileAsync = promisify(execFile);
 const apiBase = () => process.env.ASTRA_CLOUDFLARE_API || 'https://api.cloudflare.com/client/v4';
 const DOWNLOAD = process.env.ASTRA_CLOUDFLARED_URL || 'https://github.com/cloudflare/cloudflared/releases/latest/download';
+// « …/releases/latest » redirige vers « …/releases/tag/<version> » : pas besoin de l'API GitHub (limitée).
+const RELEASES = process.env.ASTRA_CLOUDFLARED_RELEASES || 'https://github.com/cloudflare/cloudflared/releases';
+const LATEST_CHECK_EVERY = 12 * 3600_000;
 const BINARIES = { arm64: 'cloudflared-linux-arm64', x64: 'cloudflared-linux-amd64', arm: 'cloudflared-linux-arm' };
 const DNS_COMMENT = 'Géré par AstraPanel';
 
@@ -63,6 +67,7 @@ export class Tunnel {
     this.metricsPort = null;
     this.startedAt = null;
     this.installing = false;
+    this.latest = null; // dernière version publiée de cloudflared : { version, checkedAt, error }
     this.lastSync = null;
     this.queue = Promise.resolve();
   }
@@ -100,6 +105,25 @@ export class Tunnel {
     } catch {
       return null;
     }
+  }
+
+  // Dernière version de cloudflared publiée sur GitHub.
+  async checkLatest() {
+    try {
+      const res = await fetch(`${RELEASES}/latest`, {
+        method: 'HEAD',
+        redirect: 'manual',
+        headers: { 'User-Agent': 'AstraPanel' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const version = /\/tag\/v?(\d+\.\d+\.\d+)\/?$/.exec(res.headers.get('location') || '')?.[1];
+      if (!version) throw new Error(`réponse inattendue de GitHub (HTTP ${res.status})`);
+      this.latest = { version, checkedAt: Date.now(), error: null };
+    } catch (err) {
+      const reason = err.name === 'TimeoutError' ? 'GitHub ne répond pas' : err.message;
+      this.latest = { version: this.latest?.version ?? null, checkedAt: Date.now(), error: `Vérification impossible : ${reason}` };
+    }
+    return this.latest;
   }
 
   // Télécharge le binaire officiel depuis GitHub dans le dossier du panel (pas besoin de root).
@@ -463,9 +487,12 @@ export class Tunnel {
         return null;
       }
     })() : null;
+    const version = await this.version(bin);
     return {
       binary: bin,
-      version: await this.version(bin),
+      version,
+      latest: this.latest,
+      updateAvailable: Boolean(version && this.latest?.version && compareVersions(this.latest.version, version) > 0),
       installing: this.installing,
       running: Boolean(this.child),
       ready: await this.ready(),
@@ -488,6 +515,14 @@ export class Tunnel {
   // Démarrage avec le panel : le tunnel est lancé en premier, avant les applications.
   async bootstrap() {
     this.startWatchdog();
+    // vérifie la dernière version de cloudflared peu après le démarrage, puis toutes les 12 heures
+    const check = () => this.checkLatest().catch(() => {});
+    this.latestTimer = setTimeout(() => {
+      check();
+      this.latestInterval = setInterval(check, LATEST_CHECK_EVERY);
+      this.latestInterval.unref();
+    }, 30_000);
+    this.latestTimer.unref();
     if (!this.settings.enabled || !this.token()) return;
     try {
       await this.start();
@@ -538,6 +573,8 @@ export class Tunnel {
 
   async shutdown() {
     clearTimeout(this.restartTimer);
+    clearTimeout(this.latestTimer);
+    clearInterval(this.latestInterval);
     clearInterval(this.watchdog);
     await this.stop({ persist: false });
     this.log.close();

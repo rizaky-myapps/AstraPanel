@@ -346,9 +346,10 @@ async function updateTab(el, page) {
 async function tunnelTab(el, page) {
   let status = await api.get('/tunnel');
   if (!page.active) return;
-  // Tant qu'aucun tunnel n'est configuré, on propose le mode recommandé (géré depuis le panel).
-  const isConfigured = (st) => (st.mode === 'api' ? Boolean(st.api.tunnelId) : Boolean(st.token)) || st.api.connected;
-  let mode = isConfigured(status) ? status.mode : 'api';
+  // Mode affiché : « géré depuis le site » seulement si un jeton de tunnel y est enregistré ; sinon le mode
+  // recommandé (géré depuis le panel), y compris pendant sa configuration.
+  const initialMode = (st) => (st.mode === 'token' && st.token ? 'token' : 'api');
+  let mode = initialMode(status);
   let accounts = null;
   let pollTimer = null;
   let source = null;
@@ -362,7 +363,54 @@ async function tunnelTab(el, page) {
     if (status.ready?.readyConnections > 0) return html`<span class="badge st-running">Connecté · ${status.ready.readyConnections} liaison(s)</span>`;
     return html`<span class="badge st-restarting">Connexion…</span>`;
   };
-  const configured = status.mode === 'api' ? Boolean(status.api.tunnelId) : Boolean(status.token);
+  const isReady = () => (status.mode === 'api' ? Boolean(status.api.tunnelId) : Boolean(status.token));
+
+  // cloudflared : « Mettre à jour » seulement si une version plus récente existe, sinon « Vérifier les mises à jour »
+  function cloudflaredRow() {
+    const latest = status.latest;
+    let info;
+    let button;
+    if (!status.binary) {
+      info = 'Non installé : il sera téléchargé automatiquement à la création du tunnel.';
+      button = html`<button class="btn btn-sm btn-primary" data-install>${icon('download')} Installer cloudflared</button>`;
+    } else {
+      info = `Version ${status.version || 'inconnue'}${status.binary === 'cloudflared' ? ' (installée sur le système)' : ''}`;
+      if (status.updateAvailable) {
+        info += ` · la version ${latest.version} est disponible`;
+        button = html`<button class="btn btn-sm btn-primary" data-install>${icon('download')} Mettre à jour vers la ${latest.version}</button>`;
+      } else {
+        if (latest?.version && !latest.error) info += ' · à jour';
+        button = html`<button class="btn btn-sm" data-check-update>${icon('refresh')} Vérifier les mises à jour</button>`;
+      }
+    }
+    const checked = latest?.checkedAt ? `Dernière vérification à ${formatTime(latest.checkedAt)}` : '';
+    return html`<div class="row">
+      <div class="state-text">
+        <div class="label">cloudflared</div>
+        <div class="hint">${info}</div>
+        ${latest?.error ? html`<div class="hint warn-text">${latest.error}</div>` : checked ? html`<div class="hint faint">${checked}</div>` : ''}
+      </div>
+      <span class="spacer"></span>
+      ${button}
+    </div>`;
+  }
+
+  function stateCard() {
+    const ready = isReady();
+    return html`<div class="card-header"><h2>${icon('server')} État</h2><span class="spacer"></span><span id="conn-badge">${connection()}</span></div>
+      <div class="card-body tunnel-status">
+        ${cloudflaredRow()}
+        <div class="row">
+          <div class="state-text">
+            <div class="label">Tunnel actif</div>
+            <div class="hint">${ready ? 'Démarre automatiquement avec le panel.' : 'Configurez d’abord un tunnel ci-dessous.'}</div>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost btn-sm" data-restart ${status.running ? '' : 'disabled'}>${icon('restart')} Redémarrer</button>
+          <label class="check inline">${toggle('enabled', status.enabled, { id: 'tunnel-enabled', disabled: !ready || !status.binary, label: 'Tunnel actif' })}</label>
+        </div>
+      </div>`;
+  }
 
   function draw() {
     setHTML(
@@ -375,28 +423,7 @@ async function tunnelTab(el, page) {
           <br /><a href="${helpHref('cloudflare')}">${icon('book')} Lire le tutoriel complet (création du compte, ajout du domaine, jeton d'API, dépannage)</a>
         </div></div>
 
-        <div class="card">
-          <div class="card-header"><h2>${icon('server')} État</h2><span class="spacer"></span><span id="conn-badge">${connection()}</span></div>
-          <div class="card-body tunnel-status">
-            <div class="row">
-              <div>
-                <div class="label">cloudflared</div>
-                <div class="hint">${status.binary ? `Version ${status.version || 'inconnue'}${status.binary === 'cloudflared' ? ' (installée sur le système)' : ''}` : 'Non installé'}</div>
-              </div>
-              <span class="spacer"></span>
-              <button class="btn btn-sm" data-install>${icon('download')} ${status.binary ? 'Mettre à jour' : 'Installer cloudflared'}</button>
-            </div>
-            <div class="row">
-              <div>
-                <div class="label">Tunnel actif</div>
-                <div class="hint">${configured ? 'Démarre automatiquement avec le panel.' : 'Configurez d’abord un tunnel ci-dessous.'}</div>
-              </div>
-              <span class="spacer"></span>
-              <button class="btn btn-ghost btn-sm" data-restart ${status.running ? '' : 'disabled'}>${icon('restart')} Redémarrer</button>
-              <label class="check inline">${toggle('enabled', status.enabled, { id: 'tunnel-enabled', disabled: !configured || !status.binary, label: 'Tunnel actif' })}</label>
-            </div>
-          </div>
-        </div>
+        <div class="card" id="state-card">${stateCard()}</div>
 
         <div class="card">
           <div class="card-header"><h2>${icon('sliders')} Mode de gestion</h2></div>
@@ -420,7 +447,7 @@ async function tunnelTab(el, page) {
           <div class="console small"><div class="console-output" id="tunnel-log"></div></div>
         </div>
 
-        ${configured || status.api.connected
+        ${isReady() || status.api.connected
           ? html`<div class="row"><span class="spacer"></span><button class="btn btn-danger btn-sm" data-reset>${icon('trash')} Supprimer la configuration du tunnel</button></div>`
           : ''}
       </div>`,
@@ -518,84 +545,122 @@ async function tunnelTab(el, page) {
 
     // Mode API
     const a = status.api;
+    const tokenGuide = () => html`<ol class="guide">
+        <li>Ouvrez <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com/profile/api-tokens</a> (menu ${ui('Paramètres utilisateur')} → ${ui('Identifiants API')} → ${ui('Jetons API')}), puis cliquez sur ${ui('Créer un jeton')}.</li>
+        <li>Dans ${ui('Nom du jeton')}, écrivez <code>AstraPanel</code>.</li>
+        <li>Dans ${ui('Politiques')}, cliquez sur ${ui('Commencer de zéro')} (la ligne marquée <i>Custom</i>). Une politique <b>Zone</b> s'ouvre :
+          <ul>
+            <li>laissez ${ui('Inclure')} et ${ui('Toutes les zones')} ;</li>
+            <li>dépliez la catégorie ${ui('DNS & Zones')} et cochez <b>DNS</b> avec le niveau <b>Modifier</b>, et <b>Zone</b> avec le niveau <b>Lire</b>.</li>
+          </ul>
+        </li>
+        <li>Cliquez sur ${ui('Ajouter une nouvelle politique')} et choisissez le type <b>Compte</b> :
+          <ul>
+            <li>laissez ${ui('Inclure')} et choisissez votre compte ;</li>
+            <li>dans ${ui('Rechercher des groupes d’autorisations…')}, tapez <code>Tunnel</code> et cochez <b>Cloudflare Tunnel</b> avec le niveau <b>Modifier</b>.</li>
+          </ul>
+        </li>
+        <li>Vérifiez les deux politiques : <b>Politique Zone</b> « DNS Write, Zone Read » et <b>Politique Compte</b> « Cloudflare Tunnel Write ».</li>
+        <li>${ui('Expiration du jeton')} : choisissez ${ui('Pas d’expiration')} (sinon le panel ne pourra plus publier de domaines à l'échéance). Laissez ${ui('Filtrage des adresses IP client')} vide.</li>
+        <li>Cliquez sur ${ui('Continuer vers le résumé')}, validez la création, puis <b>copiez le jeton</b> : il ne sera plus jamais affiché. Collez-le ci-dessous.</li>
+      </ol>
+      <p class="hint">Tableau de bord Cloudflare en anglais ? Les mêmes boutons s'appellent <i>Create Token</i>, <i>Custom token</i>, <i>Add more</i>, <i>Continue to summary</i>, et les niveaux <i>Edit</i> / <i>Read</i>.</p>`;
+    const apiForm = () => html`<form id="api-form" class="input-group">
+        <input type="password" name="apiToken" class="mono" placeholder="${a.connected ? 'Collez le nouveau jeton d’API' : 'Collez ici le jeton d’API'}" autocomplete="off" required />
+        <button class="btn ${a.connected ? '' : 'btn-primary'}" type="submit">${a.connected ? 'Remplacer' : 'Connecter'}</button>
+      </form>`;
+    const setupForm = () => html`<form id="setup-form" class="stack-sm">
+        <div class="field">
+          <label for="tunnel-account">Compte Cloudflare</label>
+          <select id="tunnel-account" name="accountId" ${a.connected ? '' : 'disabled'}>
+            ${accounts
+              ? accounts.map((x) => html`<option value="${x.id}" ${x.id === a.accountId ? 'selected' : ''}>${x.name}</option>`)
+              : a.accountId
+                ? html`<option value="${a.accountId}">${a.accountName}</option>`
+                : html`<option value="">${a.connected ? 'Chargement des comptes…' : 'Connectez d’abord le jeton (étape 1)'}</option>`}
+          </select>
+        </div>
+        <div class="field">
+          <label for="tunnel-name">Nom du tunnel</label>
+          <div class="input-group">
+            <input type="text" id="tunnel-name" name="name" class="mono" value="${a.tunnelName || `astrapanel-${location.hostname.split('.')[0] || 'pi'}`}" ${a.connected ? '' : 'disabled'} />
+            <button class="btn btn-primary" type="submit" ${a.connected ? '' : 'disabled'}>${a.tunnelId ? 'Relier à nouveau' : 'Créer le tunnel'}</button>
+          </div>
+        </div>
+      </form>`;
+    const publishGuide = () => html`<ol class="guide">
+        <li>Ouvrez l'application (le site) dans le panel, onglet <b>Paramètres</b>.</li>
+        <li>Dans <b>Nom(s) de domaine</b>, écrivez l'adresse voulue : <code>monsite.fr</code>, <code>blog.monsite.fr</code>… (plusieurs, séparées par des virgules).</li>
+        <li>Cliquez sur <b>Enregistrer</b>. Le panel crée tout seul la route du tunnel et l'enregistrement DNS : le site est en ligne en HTTPS en moins d'une minute, et apparaît dans « Domaines publiés » comme « En ligne ».</li>
+      </ol>
+      ${siteLinks()}`;
+
+    // les volets ouverts restent ouverts quand la page se redessine
+    const opened = new Set([...box.querySelectorAll('details[open][data-key]')].map((d) => d.dataset.key));
+    const open = (key, byDefault = false) => (opened.has(key) || (byDefault && !box.childElementCount) ? 'open' : '');
+
     setHTML(
       box,
-      html`${domainPrereq()}
-      <ol class="stepper">
-        <li class="${a.connected ? 'done' : ''}">
-          <div class="stepper-title">Créer un jeton d'API Cloudflare ${a.connected ? html`<span class="badge st-running">Fait</span>` : ''}</div>
-          <p class="hint">
-            Ce jeton autorise le panel à créer le tunnel et les enregistrements DNS de vos sites, et rien d'autre.
-            Les boutons du site de Cloudflare sont écrits ici comme à l'écran.
-          </p>
-          <details ${a.connected ? '' : 'open'}>
-            <summary>${a.connected ? 'Revoir comment créer un jeton' : 'Comment créer le jeton (2 minutes)'}</summary>
-            <ol class="guide">
-              <li>Ouvrez <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com/profile/api-tokens</a> (menu ${ui('Paramètres utilisateur')} → ${ui('Identifiants API')} → ${ui('Jetons API')}), puis cliquez sur ${ui('Créer un jeton')}.</li>
-              <li>Dans ${ui('Nom du jeton')}, écrivez <code>AstraPanel</code>.</li>
-              <li>Dans ${ui('Politiques')}, cliquez sur ${ui('Commencer de zéro')} (la ligne marquée <i>Custom</i>). Une politique <b>Zone</b> s'ouvre :
-                <ul>
-                  <li>laissez ${ui('Inclure')} et ${ui('Toutes les zones')} ;</li>
-                  <li>dépliez la catégorie ${ui('DNS & Zones')} et cochez <b>DNS</b> avec le niveau <b>Modifier</b>, et <b>Zone</b> avec le niveau <b>Lire</b>.</li>
-                </ul>
-              </li>
-              <li>Cliquez sur ${ui('Ajouter une nouvelle politique')} et choisissez le type <b>Compte</b> :
-                <ul>
-                  <li>laissez ${ui('Inclure')} et choisissez votre compte ;</li>
-                  <li>dans ${ui('Rechercher des groupes d’autorisations…')}, tapez <code>Tunnel</code> et cochez <b>Cloudflare Tunnel</b> avec le niveau <b>Modifier</b>.</li>
-                </ul>
-              </li>
-              <li>Vérifiez les deux politiques : <b>Politique Zone</b> « DNS Write, Zone Read » et <b>Politique Compte</b> « Cloudflare Tunnel Write ».</li>
-              <li>${ui('Expiration du jeton')} : choisissez ${ui('Pas d’expiration')} (sinon le panel ne pourra plus publier de domaines à l'échéance). Laissez ${ui('Filtrage des adresses IP client')} vide.</li>
-              <li>Cliquez sur ${ui('Continuer vers le résumé')}, validez la création, puis <b>copiez le jeton</b> : il ne sera plus jamais affiché. Collez-le ci-dessous.</li>
-            </ol>
-            <p class="hint">Tableau de bord Cloudflare en anglais ? Les mêmes boutons s'appellent <i>Create Token</i>, <i>Custom token</i>, <i>Add more</i>, <i>Continue to summary</i>, et les niveaux <i>Edit</i> / <i>Read</i>.</p>
-            </ol>
-          </details>
-          <form id="api-form" class="input-group">
-            <input type="password" name="apiToken" class="mono" placeholder="${a.connected ? `Jeton enregistré (${a.apiToken}) : collez-en un autre pour le remplacer` : 'Collez ici le jeton d’API'}" autocomplete="off" />
-            <button class="btn ${a.connected ? '' : 'btn-primary'}" type="submit">${a.connected ? 'Remplacer' : 'Connecter'}</button>
-          </form>
-        </li>
-
-        <li class="${a.tunnelId ? 'done' : ''} ${a.connected ? '' : 'disabled'}">
-          <div class="stepper-title">Créer le tunnel ${a.tunnelId ? html`<span class="badge st-running">Fait</span>` : ''}</div>
-          ${a.tunnelId
-            ? html`<p class="hint">Tunnel <b>${a.tunnelName}</b> sur le compte « ${a.accountName} » (<code>${a.tunnelId.slice(0, 8)}…</code>). Il démarre automatiquement avec le Raspberry Pi.</p>`
-            : html`<p class="hint">
-                Choisissez votre compte Cloudflare, gardez le nom proposé (ou changez-le), puis cliquez sur <b>Créer le tunnel</b>.
-                Le panel installe cloudflared si besoin, crée le tunnel sur votre compte et le démarre : l'état en haut de la
-                page passe à « Connecté ».
-              </p>`}
-          <form id="setup-form" class="stack-sm">
-            <select name="accountId" ${a.connected ? '' : 'disabled'}>
-              ${accounts
-                ? accounts.map((x) => html`<option value="${x.id}" ${x.id === a.accountId ? 'selected' : ''}>${x.name}</option>`)
-                : a.accountId
-                  ? html`<option value="${a.accountId}">${a.accountName}</option>`
-                  : html`<option value="">${a.connected ? 'Chargement des comptes…' : 'Connectez d’abord le jeton (étape 1)'}</option>`}
-            </select>
-            <div class="input-group">
-              <input type="text" name="name" class="mono" value="${a.tunnelName || `astrapanel-${location.hostname.split('.')[0] || 'pi'}`}" ${a.connected ? '' : 'disabled'} aria-label="Nom du tunnel" />
-              <button class="btn btn-primary" type="submit" ${a.connected ? '' : 'disabled'}>${a.tunnelId ? 'Relier à nouveau' : 'Créer le tunnel'}</button>
+      a.tunnelId
+        ? html`<div class="card inner tunnel-summary">
+              <div class="card-header"><h3>${icon('check')} Tunnel prêt</h3><span class="spacer"></span>${connection()}</div>
+              <table class="table kv-table">
+                <tbody>
+                  <tr><td class="muted">Compte Cloudflare</td><td>${a.accountName || a.accountId}</td></tr>
+                  <tr><td class="muted">Tunnel</td><td><b>${a.tunnelName}</b> <code>${a.tunnelId.slice(0, 8)}…</code></td></tr>
+                  <tr><td class="muted">Jeton d'API</td><td><code>${a.apiToken}</code></td></tr>
+                </tbody>
+              </table>
             </div>
-          </form>
-        </li>
-
-        <li class="${a.tunnelId ? '' : 'disabled'}">
-          <div class="stepper-title">Mettre un site en ligne</div>
-          <ol class="guide">
-            <li>Ouvrez l'application (le site) dans le panel, onglet <b>Paramètres</b>.</li>
-            <li>Dans <b>Nom(s) de domaine</b>, écrivez l'adresse voulue : <code>monsite.fr</code>, <code>blog.monsite.fr</code>… (plusieurs, séparées par des virgules).</li>
-            <li>Cliquez sur <b>Enregistrer</b>. Le panel crée tout seul la route du tunnel et l'enregistrement DNS : le site est en ligne en HTTPS en moins d'une minute, et apparaît ci-dessous comme « En ligne ».</li>
-          </ol>
-          ${siteLinks()}
-        </li>
-      </ol>
-      ${a.tunnelId ? routesCard() : ''}`,
+            ${routesCard()}
+            <details class="fold" data-key="publish" ${open('publish')}>
+              <summary>${icon('globe')} Mettre un site en ligne</summary>
+              <div class="fold-body">${publishGuide()}</div>
+            </details>
+            <details class="fold" data-key="token" ${open('token')}>
+              <summary>${icon('key')} Remplacer le jeton d'API</summary>
+              <div class="fold-body">
+                <p class="hint">Utile si le jeton a expiré ou a été supprimé sur Cloudflare. Le tunnel et les domaines restent en place.</p>
+                ${apiForm()}
+                <details class="sub-fold" data-key="token-guide" ${open('token-guide')}><summary>Comment créer un jeton</summary>${tokenGuide()}</details>
+              </div>
+            </details>
+            <details class="fold" data-key="setup" ${open('setup')}>
+              <summary>${icon('sliders')} Changer de compte ou recréer le tunnel</summary>
+              <div class="fold-body">
+                <p class="hint">Recrée le tunnel (ou le retrouve s'il existe déjà sous ce nom) puis republie tous les domaines.</p>
+                ${setupForm()}
+              </div>
+            </details>`
+        : html`${domainPrereq()}
+            <ol class="stepper">
+              <li class="${a.connected ? 'done' : ''}">
+                <div class="stepper-title">Créer un jeton d'API Cloudflare ${a.connected ? html`<span class="badge st-running">Fait</span>` : ''}</div>
+                <p class="hint">Ce jeton autorise le panel à créer le tunnel et les enregistrements DNS de vos sites, et rien d'autre. Les boutons du site de Cloudflare sont écrits ici comme à l'écran.</p>
+                <details class="sub-fold" data-key="token-guide" ${a.connected ? open('token-guide') : 'open'}>
+                  <summary>${a.connected ? 'Revoir comment créer un jeton' : 'Comment créer le jeton (2 minutes)'}</summary>
+                  ${tokenGuide()}
+                </details>
+                ${a.connected ? html`<p class="hint">Jeton enregistré : <code>${a.apiToken}</code>. Pour le remplacer, collez-en un autre :</p>` : ''}
+                ${apiForm()}
+              </li>
+              <li class="${a.connected ? '' : 'disabled'}">
+                <div class="stepper-title">Créer le tunnel</div>
+                <p class="hint">
+                  Choisissez votre compte Cloudflare, gardez le nom proposé (ou changez-le), puis cliquez sur <b>Créer le tunnel</b>.
+                  Le panel installe cloudflared si besoin, crée le tunnel sur votre compte et le démarre : l'état en haut de la
+                  page passe à « Connecté ».
+                </p>
+                ${setupForm()}
+              </li>
+              <li class="disabled">
+                <div class="stepper-title">Mettre un site en ligne</div>
+                ${publishGuide()}
+              </li>
+            </ol>`,
     );
 
-    $('#api-form', box).addEventListener('submit', (e) => {
+    $('#api-form', box)?.addEventListener('submit', (e) => {
       e.preventDefault();
       const apiToken = e.target.apiToken.value;
       withBusy($('[type=submit]', e.target), async () => {
@@ -614,7 +679,7 @@ async function tunnelTab(el, page) {
         (err) => toast(err.message, 'err'),
       );
     }
-    $('#setup-form', box).addEventListener('submit', (e) => {
+    $('#setup-form', box)?.addEventListener('submit', (e) => {
       e.preventDefault();
       const { accountId, name } = Object.fromEntries(new FormData(e.target));
       withBusy($('[type=submit]', e.target), async () => {
@@ -659,7 +724,7 @@ async function tunnelTab(el, page) {
       ${status.lastSync?.error && !synced.size ? html`<div class="alert err" style="margin:12px">${icon('alert')}<div>${status.lastSync.error}</div></div>` : ''}
       <div class="fm-scroll">
         <table class="table compact">
-          <thead><tr><th>Domaine</th><th class="hide-sm">Vers</th><th>État</th><th></th></tr></thead>
+          <thead><tr><th>Domaine</th><th class="hide-sm">Vers</th><th>État</th></tr></thead>
           <tbody>
             ${status.routes.length
               ? status.routes.map((r) => {
@@ -668,11 +733,13 @@ async function tunnelTab(el, page) {
                   return html`<tr>
                     <td><a href="https://${r.hostname}" target="_blank" rel="noopener">${r.hostname}</a><div class="hint">${r.label}</div></td>
                     <td class="hide-sm"><code>${r.service}</code></td>
-                    <td><span class="badge ${cls}">${label}</span>${s && s.status !== 'ok' ? html`<div class="hint">${s.message}</div>` : ''}</td>
-                    <td>${s?.status === 'conflict' ? html`<button class="btn btn-sm btn-ghost" data-replace="${r.hostname}">Remplacer</button>` : ''}</td>
+                    <td>
+                      <span class="badge ${cls}">${label}</span>${s && s.status !== 'ok' ? html`<div class="hint">${s.message}</div>` : ''}
+                      ${s?.status === 'conflict' ? html`<button class="btn btn-sm replace-dns" data-replace="${r.hostname}" title="Remplacer l'enregistrement DNS existant par celui du tunnel">${icon('refresh')} Remplacer</button>` : ''}
+                    </td>
                   </tr>`;
                 })
-              : html`<tr><td colspan="4" class="muted">Aucun domaine : ajoutez-en un dans l'onglet <b>Paramètres</b> d'une application (ou le domaine du panel dans Général).</td></tr>`}
+              : html`<tr><td colspan="3" class="muted">Aucun domaine : ajoutez-en un dans l'onglet <b>Paramètres</b> d'une application (ou le domaine du panel dans Général).</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -720,7 +787,7 @@ async function tunnelTab(el, page) {
     }
     if (!page.active) return;
     if (full) {
-      mode = isConfigured(status) ? status.mode : 'api';
+      mode = initialMode(status);
       rerender();
       return;
     }
@@ -743,6 +810,18 @@ async function tunnelTab(el, page) {
         const { version } = await api.post('/tunnel/install');
         toast(`cloudflared ${version} installé`);
         refresh(true);
+      });
+      return;
+    }
+    const check = e.target.closest('[data-check-update]');
+    if (check) {
+      await withBusy(check, async () => {
+        status = await api.post('/tunnel/check-update');
+        if (!page.active) return;
+        setHTML($('#state-card', el), stateCard());
+        if (status.latest?.error) toast(status.latest.error, 'err');
+        else if (status.updateAvailable) toast(`La version ${status.latest.version} de cloudflared est disponible`, 'info');
+        else toast(`cloudflared est à jour (version ${status.version})`);
       });
       return;
     }
