@@ -65,8 +65,8 @@ function accountTab(el) {
         </div>
         <div class="card-body hint" style="padding-top:0">
           ${u.role === 'admin'
-            ? 'Administrateur : accès complet (applications, utilisateurs, mises à jour, tunnel, stockage).'
-            : 'Utilisateur : gestion des applications (console, fichiers, variables, déploiement). Les paramètres du panel sont réservés aux administrateurs.'}
+            ? 'Administrateur : accès complet (toutes les applications, utilisateurs, mises à jour, tunnel, stockage).'
+            : 'Utilisateur : vous voyez les applications que vous avez créées et celles auxquelles on vous a donné accès (onglet « Utilisateurs » de chaque application). Les paramètres du panel sont réservés aux administrateurs.'}
         </div>
       </div>
       <form class="card" id="password-form">
@@ -112,12 +112,12 @@ async function usersTab(el, page) {
         <button class="btn btn-sm btn-primary" data-add>${icon('plus')} Ajouter un utilisateur</button>
       </div>
       <div class="fm-scroll">
-        <table class="table">
+        <table class="table users-table">
           <thead><tr><th>Nom</th><th>Grade</th><th class="hide-sm">Créé le</th><th></th></tr></thead>
           <tbody>
             ${users.map(
               (u) => html`<tr data-id="${u.id}" data-name="${u.username}">
-                <td><div class="row"><div class="avatar">${u.username.slice(0, 1).toUpperCase()}</div>${u.username}${u.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}</div></td>
+                <td><div class="user-cell"><div class="avatar">${u.username.slice(0, 1).toUpperCase()}</div><span class="truncate">${u.username}${u.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}</span></div></td>
                 <td class="role-cell">${roleSelect('role', u.role)}</td>
                 <td class="muted hide-sm">${formatDate(u.createdAt)}</td>
                 <td>
@@ -132,8 +132,9 @@ async function usersTab(el, page) {
         </table>
       </div>
       <div class="card-body hint">
-        <b>Administrateur</b> : accès complet (paramètres, utilisateurs, mises à jour, tunnel, stockage, suppression d'applications).
-        <b>Utilisateur</b> : gère les applications (démarrer, console, fichiers, variables, déploiement) et son mot de passe.
+        <b>Administrateur</b> : accès complet (toutes les applications, paramètres, utilisateurs, mises à jour, tunnel, stockage, suppression d'applications).
+        <b>Utilisateur</b> : voit et gère uniquement les applications qu'il a créées et celles auxquelles on lui a donné accès
+        (onglet <b>Utilisateurs</b> de chaque application), ainsi que son mot de passe.
         Il reste toujours au moins un administrateur.
       </div>
     </div>`,
@@ -813,7 +814,7 @@ async function generalTab(el, page) {
 
       <div class="card">
         <div class="card-header"><h2>${icon('info')} À propos</h2></div>
-        <table class="table">
+        <table class="table kv-table">
           <tbody>
             <tr><td class="muted">Version</td><td>AstraPanel ${panel.version}</td></tr>
             <tr><td class="muted">Node.js</td><td>${panel.node}</td></tr>

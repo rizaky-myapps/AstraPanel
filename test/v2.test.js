@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { startTestPanel } from './helpers.js';
 import { Metrics } from '../src/metrics.js';
+import { Store } from '../src/store.js';
 import { parseTunnelToken, hostnameOf } from '../src/tunnel.js';
 import { Updater, parseGithub } from '../src/update.js';
 import { LATEST_BRANCH, compareVersions, nextVersion, parseVersionBranch, versionBranch } from '../src/version.js';
@@ -188,14 +189,13 @@ test('analyse des URL GitHub', () => {
   assert.equal(parseGithub('https://gitlab.com/moi/bot.git'), null);
 });
 
-test('grades : un UTILISATEUR gère les applis mais pas le panel', async (t) => {
+test('grades : un UTILISATEUR gère ses applis mais pas le panel', async (t) => {
   const ctx = await startTestPanel();
   t.after(() => ctx.close());
   await ctx.setupAdmin();
   const adminCookie = ctx.getCookie();
   let res = await ctx.request('POST', '/api/users', { body: { username: 'alice', password: 'motdepasse123', role: 'user' } });
   assert.equal(res.data.role, 'user');
-  const { data: app } = await ctx.request('POST', '/api/apps', { body: { name: 'Site', type: 'static', source: 'empty' } });
 
   ctx.setCookie('');
   res = await ctx.request('POST', '/api/auth/login', { body: { username: 'alice', password: 'motdepasse123' } });
@@ -203,10 +203,10 @@ test('grades : un UTILISATEUR gère les applis mais pas le panel', async (t) => 
   for (const url of ['/api/settings', '/api/users', '/api/storage', '/api/update', '/api/tunnel']) {
     assert.equal((await ctx.request('GET', url)).status, 403, url);
   }
-  assert.equal((await ctx.request('GET', '/api/apps')).status, 200);
   assert.equal((await ctx.request('GET', '/api/system/metrics?range=24h')).status, 200);
-  assert.equal((await ctx.request('DELETE', `/api/apps/${app.app.id}`)).status, 403);
-  assert.equal((await ctx.request('PUT', `/api/apps/${app.app.id}/files/content`, { body: { path: 'a.txt', content: 'x' } })).status, 200);
+  const { data: mine } = await ctx.request('POST', '/api/apps', { body: { name: 'Site', type: 'static', source: 'empty' } });
+  assert.equal((await ctx.request('PUT', `/api/apps/${mine.app.id}/files/content`, { body: { path: 'a.txt', content: 'x' } })).status, 200);
+  assert.equal((await ctx.request('DELETE', `/api/apps/${mine.app.id}`)).status, 403); // suppression réservée aux admins
 
   ctx.setCookie(adminCookie);
   const users = (await ctx.request('GET', '/api/users')).data;
@@ -218,6 +218,90 @@ test('grades : un UTILISATEUR gère les applis mais pas le panel', async (t) => 
   assert.equal(res.data.role, 'admin');
   res = await ctx.request('PATCH', `/api/users/${admin.id}`, { body: { role: 'user' } });
   assert.equal(res.data.role, 'user'); // possible maintenant qu'alice est admin
+});
+
+test('accès par application : créateur figé, membres, administrateurs', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const cookies = { admin: ctx.getCookie() };
+  const ids = {};
+  for (const [username, role] of [['alice', 'user'], ['bob', 'user'], ['carol', 'admin']]) {
+    ids[username] = (await ctx.request('POST', '/api/users', { body: { username, password: 'motdepasse123', role } })).data.id;
+  }
+  const as = async (who) => {
+    if (!cookies[who]) {
+      ctx.setCookie('');
+      await ctx.request('POST', '/api/auth/login', { body: { username: who, password: 'motdepasse123' } });
+      cookies[who] = ctx.getCookie();
+    }
+    ctx.setCookie(cookies[who]);
+  };
+  const names = async () => (await ctx.request('GET', '/api/apps')).data.map((a) => a.name).sort();
+
+  await as('admin');
+  const appA = (await ctx.request('POST', '/api/apps', { body: { name: 'A', type: 'static', source: 'empty' } })).data.app.id;
+
+  // alice ne voit pas l'appli de l'admin : elle n'existe pas pour elle (404, jamais 403)
+  await as('alice');
+  assert.deepEqual(await names(), []);
+  for (const [method, url] of [['GET', `/api/apps/${appA}`], ['GET', `/api/apps/${appA}/files?path=`], ['GET', `/api/apps/${appA}/members`], ['POST', `/api/apps/${appA}/start`], ['GET', `/api/apps/${appA}/logs/download`]]) {
+    assert.equal((await ctx.request(method, url)).status, 404, `${method} ${url}`);
+  }
+
+  // alice crée B : elle en est la créatrice, et peut donner l'accès à bob (pas à un admin)
+  const appB = (await ctx.request('POST', '/api/apps', { body: { name: 'B', type: 'static', source: 'empty' } })).data.app.id;
+  assert.deepEqual(await names(), ['B']);
+  let m = (await ctx.request('GET', `/api/apps/${appB}/members`)).data;
+  assert.equal(m.owner.username, 'alice');
+  assert.equal(m.canManage, true);
+  assert.deepEqual(m.members, []);
+  assert.deepEqual(m.candidates.map((c) => c.username), ['bob']); // ni elle-même, ni les administrateurs
+  m = (await ctx.request('POST', `/api/apps/${appB}/members`, { body: { userId: ids.bob } })).data;
+  assert.deepEqual(m.members.map((u) => u.username), ['bob']);
+  assert.equal((await ctx.request('POST', `/api/apps/${appB}/members`, { body: { userId: ids.carol } })).status, 400);
+  assert.equal((await ctx.request('DELETE', `/api/apps/${appB}/members/${ids.alice}`)).status, 400); // créateur figé
+
+  // bob, membre : il voit et modifie B, mais ne gère pas la liste
+  await as('bob');
+  assert.deepEqual(await names(), ['B']);
+  assert.equal((await ctx.request('PUT', `/api/apps/${appB}/files/content`, { body: { path: 'index.html', content: 'ok' } })).status, 200);
+  m = (await ctx.request('GET', `/api/apps/${appB}/members`)).data;
+  assert.equal(m.canManage, false);
+  assert.deepEqual(m.candidates, []);
+  assert.equal((await ctx.request('DELETE', `/api/apps/${appB}/members/${ids.bob}`)).status, 403);
+
+  // les administrateurs voient tout, sans apparaître dans les listes ; ils gèrent les accès
+  for (const who of ['admin', 'carol']) {
+    await as(who);
+    assert.deepEqual(await names(), ['A', 'B']);
+  }
+  for (const url of [`/api/apps/${appA}`, `/api/apps/${appA}/files?path=`, `/api/apps/${appA}/logs/download`]) {
+    assert.equal((await ctx.request('GET', url)).status, 200, url); // les routes testées plus haut existent bien
+  }
+  m = (await ctx.request('GET', `/api/apps/${appA}/members`)).data;
+  assert.equal(m.owner.username, 'admin'); // l'admin créateur reste affiché
+  assert.deepEqual(m.candidates.map((c) => c.username), ['alice', 'bob']);
+  await ctx.request('POST', `/api/apps/${appA}/members`, { body: { userId: ids.alice } });
+  await as('alice');
+  assert.deepEqual(await names(), ['A', 'B']);
+  assert.equal((await ctx.request('GET', `/api/apps/${appA}/members`)).data.canManage, false); // membre, pas créatrice
+
+  // un compte supprimé disparaît des listes ; le créateur supprimé reste affiché comme tel
+  await as('admin');
+  await ctx.request('DELETE', `/api/users/${ids.bob}`);
+  await ctx.request('DELETE', `/api/users/${ids.alice}`);
+  m = (await ctx.request('GET', `/api/apps/${appB}/members`)).data;
+  assert.deepEqual(m.members, []);
+  assert.equal(m.owner.deleted, true);
+});
+
+test('accès par application : les applis existantes sont attribuées au premier administrateur', () => {
+  const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'astra-store-')), 'db.json');
+  writeFileSync(file, JSON.stringify({ users: [{ id: 'u1', username: 'lea', role: 'user' }, { id: 'a1', username: 'admin', role: 'admin' }], apps: [{ id: 'vieux', name: 'Vieux site' }] }));
+  const store = new Store(file);
+  assert.equal(store.data.apps[0].ownerId, 'a1');
+  assert.deepEqual(store.data.apps[0].members, []);
 });
 
 test('gestionnaire de fichiers : copier, déplacer, compresser, extraire, aperçu', async (t) => {

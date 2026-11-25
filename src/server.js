@@ -86,6 +86,7 @@ export function createPanel(cfg = config) {
         ctx.user = auth.userFromRequest(req);
         if (!ctx.user) throw new HttpError(401, 'Non connecté');
         if (route.admin && ctx.user.role !== 'admin') throw new HttpError(403, 'Action réservée aux administrateurs');
+        if (route.app) apps.getFor(ctx.user, params.id); // 404 si l'appli n'est pas accessible à ce compte
       }
       const result = await route.handler(ctx);
       if (!res.headersSent) sendJson(res, 200, result ?? { ok: true });

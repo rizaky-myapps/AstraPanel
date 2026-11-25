@@ -18,8 +18,9 @@ export function appRoutes(router, { apps, config }) {
   const q = (ctx, key) => ctx.query.get(key) ?? '';
 
   // --- Applications -------------------------------------------------------
-  router.get('/api/apps', () => apps.list());
-  router.post('/api/apps', async (ctx) => apps.create(await ctx.json()));
+  // L'accès aux routes /api/apps/:id… est vérifié une fois pour toutes dans server.js (apps.getFor).
+  router.get('/api/apps', (ctx) => apps.list(ctx.user));
+  router.post('/api/apps', async (ctx) => apps.create(await ctx.json(), ctx.user));
   router.get('/api/apps/:id', (ctx) => apps.serialize(apps.get(ctx.params.id)));
   router.patch('/api/apps/:id', async (ctx) => apps.update(ctx.params.id, await ctx.json()));
   router.delete('/api/apps/:id', (ctx) => apps.remove(ctx.params.id), { admin: true });
@@ -40,6 +41,14 @@ export function appRoutes(router, { apps, config }) {
     if (typeof text !== 'string' || text.length > 10000) throw new HttpError(400, 'Commande invalide');
     apps.sendInput(ctx.params.id, text);
   });
+
+  // --- Utilisateurs de l'application -----------------------------------------
+  router.get('/api/apps/:id/members', (ctx) => apps.members(ctx.user, ctx.params.id));
+  router.post('/api/apps/:id/members', async (ctx) => {
+    const { userId } = await ctx.json();
+    return apps.addMember(ctx.user, ctx.params.id, String(userId || ''));
+  });
+  router.delete('/api/apps/:id/members/:userId', (ctx) => apps.removeMember(ctx.user, ctx.params.id, ctx.params.userId));
 
   router.post('/api/apps/:id/webhook', (ctx) => ({ webhookToken: apps.regenerateWebhook(ctx.params.id) }));
 

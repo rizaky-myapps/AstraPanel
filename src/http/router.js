@@ -19,6 +19,8 @@ export class Router {
       handler,
       auth: options.auth !== false,
       admin: options.admin === true,
+      // routes d'une application précise : réservées à ceux qui y ont accès
+      app: pattern.startsWith('/api/apps/:id'),
     });
     return this;
   }

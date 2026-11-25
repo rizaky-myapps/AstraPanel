@@ -31,11 +31,18 @@ export class Store {
     if (existsSync(file)) {
       data = JSON.parse(readFileSync(file, 'utf8'));
     }
+    // les comptes créés avant l'arrivée des rôles étaient tous administrateurs
+    const users = (data.users || []).map((u) => ({ role: 'admin', ...u }));
+    // applis créées avant la gestion des accès : attribuées au premier administrateur
+    const firstAdmin = users.find((u) => u.role === 'admin')?.id ?? null;
     this.data = {
       version: 1,
-      // les comptes créés avant l'arrivée des rôles étaient tous administrateurs
-      users: (data.users || []).map((u) => ({ role: 'admin', ...u })),
-      apps: data.apps || [],
+      users,
+      apps: (data.apps || []).map((a) => ({
+        ...a,
+        ownerId: a.ownerId === undefined ? firstAdmin : a.ownerId,
+        members: Array.isArray(a.members) ? a.members : [],
+      })),
       settings: mergeDefaults(DEFAULT_SETTINGS, data.settings),
       // identifiant du dernier démarrage du système vu par le panel
       state: { bootId: null, ...data.state },

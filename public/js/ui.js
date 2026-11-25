@@ -100,6 +100,8 @@ const ICONS = {
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   arrowUpCircle: '<circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/>',
   user: '<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+  userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   book: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>',
   wrap: '<path d="M3 6h18M3 12h15a3 3 0 1 1 0 6h-4"/><path d="m16 16-2 2 2 2"/><path d="M3 18h7"/>',
   fan: '<path d="M10.83 2.38C17.73.47 20.56 7.03 18.65 10H12z"/><path d="M21.62 10.83c1.91 6.9-4.65 9.73-7.62 7.82V12z"/><path d="M13.17 21.62C6.27 23.53 3.44 16.97 5.35 14H12z"/><path d="M2.38 13.17C.47 6.27 7.03 3.44 10 5.35V12z"/>',
@@ -113,6 +115,15 @@ export function icon(name) {
 }
 
 // Interrupteur ON / OFF : une vraie case à cocher (formulaires, accessibilité) habillée en curseur.
+// Champ « fichier » en français (le bouton natif du navigateur s'affiche dans la langue du système).
+export function filePicker({ name = '', id = '', accept = '', label = 'Choisir un fichier…', current = '' } = {}) {
+  return html`<label class="file-picker">
+    <input type="file" ${name ? html`name="${name}"` : ''} ${id ? html`id="${id}"` : ''} accept="${accept}" data-file-picker />
+    <span class="btn btn-sm">${icon('upload')} ${label}</span>
+    <span class="file-name ${current ? '' : 'muted'}">${current || 'Aucun fichier choisi'}</span>
+  </label>`;
+}
+
 export function toggle(name, checked = false, { id = '', disabled = false, sm = false, label = '' } = {}) {
   return html`<span class="switch ${sm ? 'sm' : ''}"
     ><input type="checkbox" name="${name}" ${id ? html`id="${id}"` : ''} ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}

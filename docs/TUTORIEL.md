@@ -384,7 +384,9 @@ AstraPanel a deux grades :
 | | Administrateur | Utilisateur |
 | --- | :---: | :---: |
 | Voir le tableau de bord et les graphiques | ✔ | ✔ |
-| Créer une application, la démarrer / l'arrêter, console, fichiers, variables, déploiement | ✔ | ✔ |
+| Créer une application | ✔ | ✔ |
+| Voir une application, la démarrer / l'arrêter, console, fichiers, variables, déploiement | toutes | les siennes (voir ci-dessous) |
+| Donner ou retirer l'accès à une application (onglet **Utilisateurs**) | toutes | celles qu'il a créées |
 | Supprimer une application | ✔ | |
 | Explorateur de stockage | ✔ | |
 | Paramètres : utilisateurs, mises à jour, tunnel Cloudflare, ports | ✔ | |
@@ -394,8 +396,21 @@ Les administrateurs gèrent les comptes dans **Paramètres → Utilisateurs** : 
 grade), changer le grade d'un compte avec la liste déroulante, définir un nouveau mot de passe (icône clé) ou
 supprimer un compte. Il reste toujours au moins un administrateur.
 
+**Qui voit quelle application ?** Chaque application a un onglet **Utilisateurs** : la liste des comptes qui peuvent la
+voir et tout faire dessus (console, fichiers, variables, déploiement…).
+
+- Celui qui **crée** l'application est inscrit en tête de liste, avec un cadenas : il ne peut pas en être retiré.
+- Le créateur et les administrateurs ajoutent d'autres comptes avec **Donner l'accès**, et les retirent avec
+  **Retirer**. Les autres membres voient la liste sans pouvoir la modifier.
+- Les **administrateurs** voient toutes les applications : ils n'apparaissent donc pas dans les listes (sauf pour les
+  applications qu'ils ont créées).
+- Un utilisateur ne voit ni les applications des autres, ni leur nom, tant qu'on ne lui a pas donné accès.
+- Les applications créées avant la version 1.2.4 ont pour créateur le premier administrateur.
+
 > Les utilisateurs peuvent modifier le code des applications : ils peuvent donc exécuter du code sur le Pi. Ne donnez
-> un compte qu'à des personnes de confiance.
+> un compte qu'à des personnes de confiance. La liste d'une application limite ce que chacun voit et fait **dans le
+> panel**, mais toutes les applications tournent sous le même compte système : le code d'une application peut lire
+> les fichiers des autres.
 
 ## 13. Sécuriser le Raspberry Pi
 

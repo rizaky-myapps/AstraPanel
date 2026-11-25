@@ -1,5 +1,5 @@
 import { api, qs, upload } from '../api.js';
-import { findApp, isAdmin, onAppsChange, refreshApps } from '../state.js';
+import { findApp, isAdmin, onAppsChange, refreshApps, state } from '../state.js';
 import { envEditor } from '../env-editor.js';
 import { filesTab } from './files.js';
 import {
@@ -8,6 +8,7 @@ import {
   confirmDialog,
   copyText,
   domainUrl,
+  filePicker,
   formatBytes,
   formatDate,
   formatDuration,
@@ -31,6 +32,7 @@ const TABS = [
   { id: 'env', label: 'Variables', icon: 'key' },
   { id: 'deploy', label: 'Déploiement', icon: 'upload' },
   { id: 'settings', label: 'Paramètres', icon: 'sliders' },
+  { id: 'users', label: 'Utilisateurs', icon: 'users' },
 ];
 
 export function renderApp(view, page, id, tab = 'console') {
@@ -86,7 +88,7 @@ export function renderApp(view, page, id, tab = 'console') {
     if (button) withBusy(button, () => api.post(`/apps/${id}/tasks/cancel`));
   });
 
-  const renderers = { console: consoleTab, files: filesTab, env: envTab, deploy: deployTab, settings: settingsTab };
+  const renderers = { console: consoleTab, files: filesTab, env: envTab, deploy: deployTab, settings: settingsTab, users: usersTab };
   renderers[tab]($('#tab', root), page, app);
 }
 
@@ -108,23 +110,27 @@ function renderHeader(el, app) {
 
   setHTML(
     el,
-    html`<div class="page-header">
+    html`<div class="page-header app-header">
       <div class="title">
         <div class="app-icon lg ${app.type}">${icon(type.icon)}</div>
-        <div class="truncate">
+        <div class="app-title">
           <div class="row"><h1 class="truncate">${app.name}</h1>${statusBadge(app)}</div>
           <div class="sub">${details.join(' · ')}</div>
         </div>
       </div>
       <span class="spacer"></span>
-      <div class="row">
-        ${app.domains.map((d) => html`<a class="btn btn-ghost btn-sm" href="${domainUrl(d)}" target="_blank" rel="noopener">${icon('globe')} ${d}</a>`)}
-        ${url ? html`<a class="btn btn-ghost btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external')} Ouvrir</a>` : ''}
+      ${app.domains.length || url
+        ? html`<div class="row app-links">
+            ${app.domains.map((d) => html`<a class="btn btn-ghost btn-sm" href="${domainUrl(d)}" target="_blank" rel="noopener">${icon('globe')} ${d}</a>`)}
+            ${url ? html`<a class="btn btn-ghost btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external')} Ouvrir</a>` : ''}
+          </div>`
+        : ''}
+      <div class="row app-controls">
         ${active
           ? html`<button class="btn" data-action="stop" ${busy ? 'disabled' : ''}>${icon('stop')} Arrêter</button>`
           : html`<button class="btn btn-success" data-action="start" ${busy ? 'disabled' : ''}>${icon('play')} Démarrer</button>`}
         <button class="btn" data-action="restart" ${busy ? 'disabled' : ''}>${icon('restart')} Redémarrer</button>
-        ${active ? html`<button class="btn btn-ghost btn-icon" data-action="kill" title="Forcer l'arrêt">${icon('zap')}</button>` : ''}
+        ${active ? html`<button class="btn btn-ghost btn-icon" data-action="kill" title="Forcer l'arrêt" aria-label="Forcer l'arrêt">${icon('zap')}</button>` : ''}
       </div>
     </div>`,
   );
@@ -238,7 +244,7 @@ function envTab(el, page, app) {
   setHTML(
     el,
     html`<div class="card">
-      <div class="card-header"><h2>Variables d'environnement</h2></div>
+      <div class="card-header"><h2>${icon('key')} Variables d'environnement</h2></div>
       <div class="card-body">
         ${app.type === 'bot'
           ? html`<div class="alert info">${icon('info')}<div>Mettez ici le token de votre bot (<code>DISCORD_TOKEN</code>) plutôt que dans le code : il ne sera jamais publié sur Git.</div></div>`
@@ -271,7 +277,7 @@ function deployTab(el, page, app) {
     el,
     html`<div class="stack">
       <div class="card">
-        <div class="card-header"><h2>Mettre à jour</h2></div>
+        <div class="card-header"><h2>${icon('upload')} Mettre à jour</h2></div>
         <div class="card-body">
           <p class="muted">
             Le déploiement ${app.git ? html`récupère la dernière version du dépôt Git, ` : ''}installe les dépendances
@@ -310,7 +316,7 @@ function deployTab(el, page, app) {
         <div class="card-header"><h2>${icon('archive')} Importer une archive</h2></div>
         <form class="card-body" id="archive-form">
           <div class="field">
-            <input type="file" name="file" accept=".zip,.tar,.tar.gz,.tgz" />
+            ${filePicker({ name: 'file', accept: '.zip,.tar,.tar.gz,.tgz', label: 'Choisir une archive…' })}
             <span class="hint">Le contenu est copié dans le dossier de l'application. Un ZIP téléchargé depuis GitHub fonctionne tel quel.</span>
           </div>
           <label class="check">${toggle('clean')}<span>Vider le dossier avant l'import<small>Supprime tous les fichiers actuels (y compris .env et node_modules).</small></span></label>
@@ -403,7 +409,7 @@ function settingsTab(el, page, app) {
     el,
     html`<div class="stack">
       <form class="card" id="settings-form">
-        <div class="card-header"><h2>Configuration</h2></div>
+        <div class="card-header"><h2>${icon('sliders')} Configuration</h2></div>
         <div class="card-body form-grid">
           <div class="field full"><label>Nom</label><input type="text" name="name" value="${app.name}" maxlength="60" /></div>
           ${isStatic
@@ -456,7 +462,7 @@ function settingsTab(el, page, app) {
 
       ${isAdmin()
         ? html`<div class="card">
-            <div class="card-header"><h2>Zone dangereuse</h2></div>
+            <div class="card-header danger-head"><h2>${icon('alert')} Zone dangereuse</h2></div>
             <div class="card-body row">
               <div>
                 <div class="label">Supprimer l'application</div>
@@ -509,4 +515,85 @@ function settingsTab(el, page, app) {
     await refreshApps();
     location.hash = '#/';
   });
+}
+
+// ---- Utilisateurs de l'application ---------------------------------------------------
+// Le créateur est toujours en tête de liste et ne peut pas être retiré. Les administrateurs voient toutes les
+// applications : ils n'apparaissent pas dans la liste (sauf s'ils ont créé l'application).
+async function usersTab(el, page, app) {
+  let info = await api.get(`/apps/${app.id}/members`);
+  if (!page.active) return;
+  const initial = (name) => (name || '?').slice(0, 1).toUpperCase();
+
+  const draw = () => {
+    const { owner, members, candidates, canManage } = info;
+    setHTML(
+      el,
+      html`<div class="card">
+        <div class="card-header">
+          <h2>${icon('users')} Utilisateurs de l'application</h2>
+          <span class="spacer"></span>
+          <span class="badge plain">${1 + members.length} compte${members.length ? 's' : ''}</span>
+        </div>
+        <div class="card-body">
+          <p class="muted members-intro">Ces comptes voient l'application et peuvent tout faire dessus : la démarrer, utiliser la console, modifier ses fichiers et ses variables, la déployer. Les administrateurs ont accès à toutes les applications et n'apparaissent pas dans cette liste.</p>
+          <ul class="member-list">
+            <li class="member owner">
+              <div class="avatar">${owner?.deleted ? icon('user') : initial(owner?.username)}</div>
+              <div class="member-name">
+                ${owner?.deleted ? html`<span class="muted">Compte supprimé</span>` : owner ? html`<b>${owner.username}</b>` : html`<span class="muted">Créateur inconnu</span>`}
+                ${owner?.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}
+              </div>
+              <span class="badge accent">${icon('lock')} Créateur</span>
+            </li>
+            ${members.map(
+              (m) => html`<li class="member">
+                <div class="avatar">${initial(m.username)}</div>
+                <div class="member-name"><b>${m.username}</b>${m.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}</div>
+                ${canManage ? html`<button class="btn btn-ghost btn-sm" data-remove="${m.id}" data-name="${m.username}">${icon('x')} Retirer</button>` : ''}
+              </li>`,
+            )}
+          </ul>
+          ${!members.length ? html`<p class="hint">Personne d'autre n'a encore accès à cette application.</p>` : ''}
+        </div>
+        ${canManage
+          ? candidates.length
+            ? html`<form class="card-foot member-add" id="member-form">
+                <label class="muted nowrap" for="member-user">${icon('userPlus')} Ajouter</label>
+                <select id="member-user" name="userId" required>
+                  <option value="">Choisir un utilisateur…</option>
+                  ${candidates.map((c) => html`<option value="${c.id}">${c.username}</option>`)}
+                </select>
+                <button class="btn btn-primary" type="submit">${icon('plus')} Donner l'accès</button>
+              </form>`
+            : html`<div class="card-foot"><span class="hint">Tous les utilisateurs ont déjà accès.${isAdmin() ? html` Pour en créer d'autres : <a href="#/settings/utilisateurs">Paramètres → Utilisateurs</a>.` : ''}</span></div>`
+          : html`<div class="card-foot"><span class="hint">${icon('lock')} Seuls le créateur de l'application et les administrateurs peuvent modifier cette liste.</span></div>`}
+      </div>`,
+    );
+
+    $('#member-form', el)?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const userId = e.target.userId.value;
+      if (!userId) return;
+      withBusy($('[type=submit]', e.target), async () => {
+        info = await api.post(`/apps/${app.id}/members`, { userId });
+        if (!page.active) return;
+        draw();
+        toast('Accès donné');
+      });
+    });
+    el.querySelectorAll('[data-remove]').forEach((button) =>
+      button.addEventListener('click', async () => {
+        const { remove, name } = button.dataset;
+        if (!(await confirmDialog(`Retirer « ${name} » ?`, `${name} ne verra plus cette application et ne pourra plus y accéder.`, { danger: true, confirmLabel: 'Retirer' }))) return;
+        await withBusy(button, async () => {
+          info = await api.del(`/apps/${app.id}/members/${encodeURIComponent(remove)}`);
+          if (!page.active) return;
+          draw();
+          toast('Accès retiré');
+        });
+      }),
+    );
+  };
+  draw();
 }

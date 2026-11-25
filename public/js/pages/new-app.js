@@ -1,7 +1,7 @@
 import { api, qs, upload } from '../api.js';
 import { refreshApps } from '../state.js';
 import { envEditor } from '../env-editor.js';
-import { $, html, icon, routingWarnings, setHTML, toast, toggle } from '../ui.js';
+import { $, filePicker, html, icon, routingWarnings, setHTML, toast, toggle } from '../ui.js';
 
 const TYPES = [
   { id: 'bot', title: 'Bot Discord', desc: 'Un bot discord.js, ou tout programme Node.js sans site web.', icon: 'bot' },
@@ -74,8 +74,8 @@ export function renderNewApp(view) {
     if (f.source === 'archive') {
       return html`<div class="field" style="margin-top:16px">
         <label>Archive du projet</label>
-        <input type="file" id="archive" accept=".zip,.tar,.tar.gz,.tgz" />
-        <span class="hint">${file ? `Fichier choisi : ${file.name}` : '.zip, .tar.gz ou .tgz — sans le dossier node_modules.'}</span>
+        ${filePicker({ id: 'archive', accept: '.zip,.tar,.tar.gz,.tgz', label: 'Choisir une archive…', current: file?.name })}
+        <span class="hint">.zip, .tar.gz ou .tgz — sans le dossier node_modules.</span>
       </div>`;
     }
     return html`<p class="hint" style="margin:16px 0 0">Le dossier sera créé vide : ajoutez vos fichiers dans l’onglet « Fichiers » de l’application.</p>`;
@@ -103,7 +103,7 @@ export function renderNewApp(view) {
         </div>
         <form id="new-app" class="stack" novalidate>
           <div class="card">
-            <div class="card-header"><h2>1. Type d'application</h2></div>
+            <div class="card-header"><h2><span class="step-num">1</span> Type d'application</h2></div>
             <div class="card-body">
               <div class="choices">
                 ${TYPES.map(
@@ -118,7 +118,7 @@ export function renderNewApp(view) {
           </div>
 
           <div class="card">
-            <div class="card-header"><h2>2. Code source</h2></div>
+            <div class="card-header"><h2><span class="step-num">2</span> Code source</h2></div>
             <div class="card-body">
               <div class="choices">
                 ${SOURCES.map(
@@ -132,7 +132,7 @@ export function renderNewApp(view) {
           </div>
 
           <div class="card">
-            <div class="card-header"><h2>3. Configuration</h2></div>
+            <div class="card-header"><h2><span class="step-num">3</span> Configuration</h2></div>
             <div class="card-body form-grid">
               <div class="field full">
                 <label>Nom</label>
@@ -181,7 +181,7 @@ export function renderNewApp(view) {
           </div>
 
           <div class="card">
-            <div class="card-header"><h2>4. Variables d'environnement</h2></div>
+            <div class="card-header"><h2><span class="step-num">4</span> Variables d'environnement</h2></div>
             <div class="card-body" id="env"></div>
           </div>
 

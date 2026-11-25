@@ -1,7 +1,7 @@
 import { HttpError } from '../http/util.js';
 import { publicUser } from '../auth.js';
 
-export function authRoutes(router, { auth, store }) {
+export function authRoutes(router, { auth, store, apps }) {
   router.get(
     '/api/auth/status',
     (ctx) => ({ setupRequired: auth.setupRequired, user: publicUser(auth.userFromRequest(ctx.req)) }),
@@ -92,6 +92,7 @@ export function authRoutes(router, { auth, store }) {
       if (user.role === 'admin' && auth.adminCount() <= 1) throw new HttpError(400, 'Il doit rester au moins un administrateur');
       store.data.users.splice(store.data.users.indexOf(user), 1);
       store.save();
+      apps.forgetUser(user.id);
       return { ok: true };
     },
     { admin: true },

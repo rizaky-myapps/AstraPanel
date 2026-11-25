@@ -74,6 +74,15 @@ async function checkUpdate() {
   renderBanner();
 }
 
+document.addEventListener('change', (e) => {
+  const input = e.target.closest?.('[data-file-picker]');
+  const name = input?.closest('.file-picker')?.querySelector('.file-name');
+  if (!name) return;
+  const file = input.files[0];
+  name.textContent = file ? file.name : 'Aucun fichier choisi';
+  name.classList.toggle('muted', !file);
+});
+
 function route() {
   if (!state.user) return;
   if (currentPage) {
@@ -178,7 +187,7 @@ function renderSidebarApps() {
             ><span class="dot ${s.cls}"></span><span class="truncate">${app.name}</span></a
           >`;
         })
-      : html`<div class="side-app faint">Aucune application</div>`,
+      : html`<div class="side-empty faint">${isAdmin() ? 'Aucune application' : 'Aucune application pour l’instant : créez-en une, ou demandez à un administrateur de vous donner accès.'}</div>`,
   );
 }
 

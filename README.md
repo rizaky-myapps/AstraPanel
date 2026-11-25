@@ -33,7 +33,9 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Explorateur de stockage** : les disques du Pi et leur contenu trié par taille, pour trouver ce qui prend de la place
 - **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
   aux administrateurs par un bandeau vert ; un clic suffit pour mettre à jour, sans SSH
-- **Grades ADMIN et UTILISATEUR** : les utilisateurs gèrent les applications, les administrateurs gèrent aussi le panel
+- **Grades ADMIN et UTILISATEUR** : chaque application a sa liste d'utilisateurs (onglet **Utilisateurs** : le
+  créateur, figé, puis les comptes à qui il a donné accès) ; les administrateurs voient toutes les applications et
+  gèrent aussi le panel
 - **Modèles de départ** : bot discord.js (commandes `/ping` et `/text`), site Node.js, site statique
 - Applications relancées automatiquement au démarrage du Pi, interface utilisable sur mobile
 - **Zéro dépendance npm** : le panel n'utilise que Node.js, rien à compiler sur le Pi
@@ -150,8 +152,9 @@ install.sh           installation / mise à jour sur le Pi
 - Mots de passe hachés avec scrypt, cookies `HttpOnly` + `SameSite=Strict`, protection CSRF, limitation des
   tentatives de connexion, jeton à usage unique pour créer le premier compte.
 - Grades : seules les routes d'administration (paramètres, utilisateurs, stockage, mises à jour, tunnel, suppression
-  d'applications) sont réservées aux administrateurs. Un utilisateur peut tout de même exécuter du code via ses
-  applications : ne donnez de compte qu'à des personnes de confiance.
+  d'applications) sont réservées aux administrateurs. L'accès à chaque application est vérifié côté serveur pour
+  toutes ses routes : un utilisateur absent de sa liste reçoit « application introuvable ». Un utilisateur peut tout
+  de même exécuter du code via ses applications : ne donnez de compte qu'à des personnes de confiance.
 - Le gestionnaire de fichiers ne sort jamais du dossier de l'application et ne suit pas les liens symboliques qui
   pointent ailleurs ; les fichiers affichés en aperçu sont servis avec une politique CSP « sandbox ».
 - Le service de mise à jour ne télécharge que le dépôt enregistré à l'installation (fichier appartenant à root) ;

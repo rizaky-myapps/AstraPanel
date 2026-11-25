@@ -172,8 +172,87 @@ export class AppManager {
     };
   }
 
-  list() {
-    return this.apps.map((app) => this.serialize(app));
+  // --- Accès ----------------------------------------------------------------
+  // Un administrateur voit toutes les applis ; un utilisateur, celles qu'il a créées ou dont il est membre.
+  canAccess(user, app) {
+    return Boolean(user && app && (user.role === 'admin' || app.ownerId === user.id || app.members.includes(user.id)));
+  }
+
+  // Seuls le créateur et les administrateurs gèrent la liste des utilisateurs d'une appli.
+  canManageMembers(user, app) {
+    return Boolean(user && app && (user.role === 'admin' || app.ownerId === user.id));
+  }
+
+  // Appli accessible par cet utilisateur ; sinon 404 (on ne révèle pas son existence).
+  getFor(user, id) {
+    const app = this.find(id);
+    if (!app || !this.canAccess(user, app)) throw new HttpError(404, 'Application introuvable');
+    return app;
+  }
+
+  list(user) {
+    return this.apps.filter((app) => !user || this.canAccess(user, app)).map((app) => this.serialize(app));
+  }
+
+  // Liste affichée dans l'onglet Utilisateurs : le créateur (figé) puis les membres ; les administrateurs n'y
+  // figurent pas (ils voient toutes les applis), sauf s'ils ont créé l'appli.
+  members(user, id) {
+    const app = this.getFor(user, id);
+    const users = this.store.data.users;
+    const byId = (uid) => users.find((u) => u.id === uid);
+    const owner = byId(app.ownerId);
+    const view = (u) => ({ id: u.id, username: u.username, role: u.role });
+    const members = app.members.map(byId).filter((u) => u && u.role !== 'admin' && u.id !== app.ownerId);
+    const canManage = this.canManageMembers(user, app);
+    return {
+      owner: owner ? view(owner) : app.ownerId ? { id: app.ownerId, username: null, deleted: true } : null,
+      members: members.map(view),
+      canManage,
+      // comptes qu'on peut ajouter : utilisateurs (non administrateurs) absents de la liste
+      candidates: canManage
+        ? users.filter((u) => u.role !== 'admin' && u.id !== app.ownerId && !app.members.includes(u.id)).map(view)
+        : [],
+    };
+  }
+
+  addMember(user, id, userId) {
+    const app = this.getFor(user, id);
+    if (!this.canManageMembers(user, app)) throw new HttpError(403, 'Seuls le créateur de l’application et les administrateurs gèrent ses utilisateurs');
+    const target = this.store.data.users.find((u) => u.id === userId);
+    if (!target) throw new HttpError(404, 'Utilisateur introuvable');
+    if (target.role === 'admin') throw new HttpError(400, 'Les administrateurs ont déjà accès à toutes les applications');
+    if (target.id === app.ownerId) throw new HttpError(400, 'Le créateur fait déjà partie de la liste');
+    if (!app.members.includes(target.id)) {
+      app.members.push(target.id);
+      this.store.save();
+      this.logsFor(app.id).system(`Accès donné à « ${target.username} » par « ${user.username} »`);
+    }
+    return this.members(user, id);
+  }
+
+  removeMember(user, id, userId) {
+    const app = this.getFor(user, id);
+    if (!this.canManageMembers(user, app)) throw new HttpError(403, 'Seuls le créateur de l’application et les administrateurs gèrent ses utilisateurs');
+    if (userId === app.ownerId) throw new HttpError(400, 'Le créateur de l’application ne peut pas être retiré de la liste');
+    if (app.members.includes(userId)) {
+      app.members = app.members.filter((m) => m !== userId);
+      this.store.save();
+      const target = this.store.data.users.find((u) => u.id === userId);
+      this.logsFor(app.id).system(`Accès retiré à « ${target?.username || userId} » par « ${user.username} »`);
+    }
+    return this.members(user, id);
+  }
+
+  // Compte supprimé : il disparaît des listes (ses applis gardent leur créateur, affiché « compte supprimé »).
+  forgetUser(userId) {
+    let changed = false;
+    for (const app of this.apps) {
+      if (app.members.includes(userId)) {
+        app.members = app.members.filter((m) => m !== userId);
+        changed = true;
+      }
+    }
+    if (changed) this.store.save();
   }
 
   makeId(name) {
@@ -232,7 +311,7 @@ export class AppManager {
     }
   }
 
-  async create(input) {
+  async create(input, user = null) {
     const { type } = input;
     if (!TYPES.includes(type)) throw new HttpError(400, 'Type d’application invalide');
     const source = input.source || 'empty';
@@ -256,6 +335,8 @@ export class AppManager {
       startOnBoot: true,
       git: null,
       desired: 'stopped',
+      ownerId: user?.id ?? null, // créateur : toujours dans la liste des utilisateurs de l'appli
+      members: [],
       webhookToken: crypto.randomBytes(24).toString('base64url'),
       createdAt: Date.now(),
       updatedAt: Date.now(),
