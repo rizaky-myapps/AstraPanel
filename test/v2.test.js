@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { startTestPanel } from './helpers.js';
 import { Metrics } from '../src/metrics.js';
 import { Store } from '../src/store.js';
@@ -253,6 +253,52 @@ test('Hardware : redémarrage demandé au service root, avec validation', async 
   await ctx.request('POST', '/api/auth/login', { body: { username: 'bob', password: 'motdepasse123' } });
   assert.equal((await ctx.request('GET', '/api/hardware')).status, 403);
   assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: { confirm: true } })).status, 403);
+});
+
+test('mise à jour en cours : progression lisible par tous les comptes', async (t) => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'astra-progress-'));
+  process.env.ASTRA_UPDATE_STATUS = path.join(dir, 'update-status.json');
+  process.env.ASTRA_UPDATE_LOG = path.join(dir, 'update.log');
+  t.after(() => {
+    delete process.env.ASTRA_UPDATE_STATUS;
+    delete process.env.ASTRA_UPDATE_LOG;
+  });
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  await ctx.request('POST', '/api/users', { body: { username: 'bob', password: 'motdepasse123', role: 'user' } });
+  ctx.setCookie('');
+  await ctx.request('POST', '/api/auth/login', { body: { username: 'bob', password: 'motdepasse123' } });
+  const progress = async () => (await ctx.request('GET', '/api/update/progress')).data;
+
+  assert.equal((await progress()).active, false); // aucune mise à jour
+
+  // demande déposée, service pas encore lancé
+  const request = path.join(ctx.cfg.dataDir, 'update-request');
+  writeFileSync(request, '{}');
+  assert.deepEqual([(await progress()).active, (await progress()).pending], [true, true]);
+  const old = new Date(Date.now() - 10 * 60_000);
+  utimesSync(request, old, old); // demande jamais prise en charge : plus affichée
+  assert.equal((await progress()).active, false);
+  rmSync(request);
+
+  // installation en cours : étape lue dans le journal (couleurs retirées), version visée
+  writeFileSync(process.env.ASTRA_UPDATE_STATUS, JSON.stringify({ state: 'running', message: 'Installation de la nouvelle version…', version: '9.9.9', at: Date.now() }));
+  writeFileSync(process.env.ASTRA_UPDATE_LOG, '==> Mise à jour depuis la branche « AstraPanel-Latest »\nnpm notice\n\u001b[1;35m==>\u001b[0m Copie du panel dans /opt/astrapanel…\nautre ligne\n');
+  let p = await progress();
+  assert.equal(p.active, true);
+  assert.equal(p.step, 'Copie du panel dans /opt/astrapanel…');
+  assert.equal(p.target, '9.9.9');
+  assert.equal(p.log, undefined); // pas le journal complet pour un simple utilisateur
+
+  // terminée : plus « en cours », mais l'état reste lisible quelques minutes
+  writeFileSync(process.env.ASTRA_UPDATE_STATUS, JSON.stringify({ state: 'done', message: 'Mise à jour terminée', version: '9.9.9', at: Date.now() }));
+  p = await progress();
+  assert.deepEqual([p.active, p.state], [false, 'done']);
+  // une mise à jour vieille d'une heure est ignorée
+  writeFileSync(process.env.ASTRA_UPDATE_STATUS, JSON.stringify({ state: 'running', message: 'x', at: Date.now() - 3600_000 }));
+  p = await progress();
+  assert.deepEqual([p.active, p.state, p.step], [false, null, null]);
 });
 
 test('analyse des URL GitHub', () => {

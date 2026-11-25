@@ -19,10 +19,12 @@ chmod 644 "$LOG"
 exec > >(tee -a "$LOG") 2>&1
 
 NODE_BIN="$(command -v node)"
+# État lu par le panel (écran de mise à jour) : étape, commit et version installée
+version=""
 status() {
-  "$NODE_BIN" -e 'const [f, state, message, commit] = process.argv.slice(1);
-    require("fs").writeFileSync(f, JSON.stringify({ state, message, commit: commit || null, at: Date.now() }));' \
-    "$STATUS" "$1" "$2" "${3:-}"
+  "$NODE_BIN" -e 'const [f, state, message, commit, version] = process.argv.slice(1);
+    require("fs").writeFileSync(f, JSON.stringify({ state, message, commit: commit || null, version: version || null, at: Date.now() }));' \
+    "$STATUS" "$1" "$2" "${3:-}" "$version"
   chmod 644 "$STATUS"
 }
 trap 'status failed "La mise à jour a échoué : consultez le journal."' ERR

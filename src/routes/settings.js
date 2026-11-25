@@ -27,6 +27,7 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
 
   // --- Mises à jour du panel --------------------------------------------------
   router.get('/api/update', () => updater.status(), { admin: true });
+  router.get('/api/update/progress', () => updater.progress()); // tous les comptes : écran « mise à jour en cours »
   router.post('/api/update/check', () => updater.check(), { admin: true });
   router.post('/api/update/apply', (ctx) => updater.request(ctx.user), { admin: true });
   router.get('/api/update/log', async () => ({ log: await updater.log(), run: await updater.runStatus() }), { admin: true });

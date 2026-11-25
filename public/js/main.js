@@ -1,6 +1,7 @@
 import { api, setUnauthorizedHandler } from './api.js';
 import { $, ROLE_LABEL, html, icon, setHTML, statusOf } from './ui.js';
 import { renderLogin } from './pages/login.js';
+import { startUpdateWatch, stopUpdateWatch } from './update-overlay.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderNewApp } from './pages/new-app.js';
 import { renderApp } from './pages/app.js';
@@ -202,6 +203,8 @@ async function startSession(user) {
   checkUpdate();
   // le panel vérifie GitHub toutes les 5 minutes ; on relit son résultat chaque minute
   updatePoller = setInterval(checkUpdate, 60_000);
+  // écran flouté pendant une mise à jour en cours (pour tous les comptes)
+  startUpdateWatch();
 }
 
 function endSession(setupRequired = false) {
@@ -209,6 +212,7 @@ function endSession(setupRequired = false) {
   state.apps = [];
   clearInterval(poller);
   clearInterval(updatePoller);
+  stopUpdateWatch();
   update = null;
   if (currentPage) {
     currentPage.active = false;

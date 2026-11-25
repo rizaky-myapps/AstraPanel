@@ -14,8 +14,10 @@ export const CHECK_EVERY = 5 * 60_000;
 
 // Fichiers du service de mise à jour (installés par install.sh, écrits par root)
 const UPDATER_UNIT = '/etc/systemd/system/astrapanel-update.path';
-const STATUS_FILE = process.env.ASTRA_UPDATE_STATUS || '/var/lib/astrapanel/update-status.json';
-const LOG_FILE = process.env.ASTRA_UPDATE_LOG || '/var/log/astrapanel-update.log';
+const statusFile = () => process.env.ASTRA_UPDATE_STATUS || '/var/lib/astrapanel/update-status.json';
+const logFile = () => process.env.ASTRA_UPDATE_LOG || '/var/log/astrapanel-update.log';
+const RUN_FRESH = 30 * 60_000; // une mise à jour plus ancienne n'est plus « en cours »
+const REQUEST_FRESH = 5 * 60_000; // demande jamais prise en charge (service arrêté) : ignorée ensuite
 
 // « https://jeton@github.com/moi/projet.git » ou « git@github.com:moi/projet.git » -> { owner, repo, token }
 export function parseGithub(url) {
@@ -185,7 +187,7 @@ export class Updater {
 
   async runStatus() {
     try {
-      return JSON.parse(await readFile(STATUS_FILE, 'utf8'));
+      return JSON.parse(await readFile(statusFile(), 'utf8'));
     } catch {
       return null;
     }
@@ -222,7 +224,32 @@ export class Updater {
   }
 
   async log() {
-    return stripAnsi(await tail(LOG_FILE));
+    return stripAnsi(await tail(logFile()));
+  }
+
+  // Progression d'une mise à jour, pour l'écran d'attente affiché à tous les comptes connectés :
+  // étape annoncée par update.sh et dernière ligne « ==> » de son journal (rien d'autre du journal).
+  async progress() {
+    const run = await this.runStatus();
+    const requested = await lstat(this.requestFile).catch(() => null);
+    const pending = Boolean(requested && Date.now() - requested.mtimeMs < REQUEST_FRESH);
+    const fresh = Boolean(run && Date.now() - run.at < RUN_FRESH);
+    const active = pending || (fresh && run.state === 'running');
+    let step = null;
+    if (fresh) {
+      const lines = stripAnsi(await tail(logFile(), 16 * 1024)).split('\n');
+      step = lines.reverse().find((l) => l.startsWith('==> '))?.slice(4).trim() || null;
+    }
+    return {
+      active,
+      pending,
+      state: fresh ? run.state : null,
+      message: fresh ? run.message : null,
+      at: fresh ? run.at : null,
+      step,
+      target: (fresh && run.version) || this.state.latestVersion || null,
+      current: this.config.version,
+    };
   }
 
   // Demande la mise à jour au service root « astrapanel-update » (déclenché par la présence du fichier).
@@ -231,7 +258,7 @@ export class Updater {
       throw new HttpError(400, 'Le service de mise à jour n’est pas installé : relancez « sudo ./install.sh » une fois sur le Pi.');
     }
     const run = await this.runStatus();
-    if (run?.state === 'running' && Date.now() - run.at < 30 * 60_000) throw new HttpError(409, 'Une mise à jour est déjà en cours');
+    if (run?.state === 'running' && Date.now() - run.at < RUN_FRESH) throw new HttpError(409, 'Une mise à jour est déjà en cours');
     const existing = await lstat(this.requestFile).catch(() => null);
     if (existing) throw new HttpError(409, 'Une mise à jour est déjà demandée');
     // le service root installe toujours AstraPanel-Latest : ce fichier sert seulement de déclencheur

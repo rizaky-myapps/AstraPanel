@@ -1,6 +1,7 @@
 import { api, qs } from '../api.js';
 import { isAdmin, state } from '../state.js';
 import { helpHref } from './help.js';
+import { openUpdateOverlay } from '../update-overlay.js';
 import {
   $,
   ROLE_LABEL,
@@ -292,6 +293,7 @@ async function updateTab(el, page) {
       if (!(await confirmDialog(`Mettre à jour vers la version ${info.latestVersion} ?`, 'Le panel va télécharger la nouvelle version puis redémarrer. Cela prend 1 à 3 minutes.', { confirmLabel: 'Mettre à jour' }))) return;
       await withBusy(e.target.closest('button'), async () => {
         await api.post('/update/apply');
+        openUpdateOverlay({ target: info.latestVersion, current: info.installed?.version });
         startedAt = Date.now();
         $('#run-card', el).classList.remove('hidden');
         followLog();

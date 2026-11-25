@@ -469,8 +469,11 @@ Dans **Paramètres → Mises à jour** :
 
 - vous voyez la **version installée**, la **dernière version publiée** et l'heure de la prochaine vérification ;
 - **Vérifier maintenant** : vérifie tout de suite, sans attendre les 5 minutes ;
-- **Mettre à jour vers la X.Y.Z** : télécharge la nouvelle version et l'installe. Le journal s'affiche en direct ; le
-  panel redémarre (vos applications aussi) et la page se recharge toute seule au bout d'une à trois minutes.
+- **Mettre à jour vers la X.Y.Z** : télécharge la nouvelle version et l'installe. Pendant la mise à jour, tout le
+  panel est flouté et un écran de chargement indique où elle en est : demande envoyée, téléchargement, installation
+  (avec le détail : paquets système, copie du panel…), redémarrage du panel, terminé. La page se recharge toute seule
+  à la fin (une à trois minutes). Cet écran s'affiche pour tous les comptes connectés, même quand la mise à jour a été
+  lancée par un autre administrateur ou en SSH ; le journal complet reste dans **Paramètres → Mises à jour**.
 
 > Si votre panel a été installé avant l'arrivée de cette fonction, faites une dernière mise à jour en SSH en
 > réinstallant depuis la dernière version (étape 5, dans un nouveau dossier) : les suivantes se feront depuis le panel.

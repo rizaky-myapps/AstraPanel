@@ -32,7 +32,8 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
   alerte de sous-tension du Pi
 - **Explorateur de stockage** : les disques du Pi et leur contenu trié par taille, pour trouver ce qui prend de la place
 - **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
-  aux administrateurs par un bandeau vert ; un clic suffit pour mettre à jour, sans SSH
+  aux administrateurs par un bandeau vert ; un clic suffit pour mettre à jour, sans SSH. Pendant la mise à jour, le
+  panel est flouté avec un écran de chargement qui suit chaque étape
 - **Journal d'activité** : chaque action (connexions, applications, fichiers, comptes, tunnel, mises à jour,
   redémarrages) avec le compte, la date et l'adresse IP, filtrable par compte et par application — sans aucun secret
 - **Onglet Hardware** : informations sur la machine et redémarrage du Raspberry Pi depuis le panel, avec validation
