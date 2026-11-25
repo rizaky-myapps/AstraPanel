@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, qs } from '../api.js';
 import { isAdmin, state } from '../state.js';
 import { helpHref } from './help.js';
 import {
@@ -6,7 +6,9 @@ import {
   ROLE_LABEL,
   confirmDialog,
   copyText,
+  formatBytes,
   formatDate,
+  formatDuration,
   formatLogTime,
   formatTime,
   html,
@@ -25,25 +27,27 @@ const TABS = [
   { id: 'mises-a-jour', label: 'Mises à jour', icon: 'arrowUpCircle', admin: true },
   { id: 'tunnel', label: 'Tunnel Cloudflare', icon: 'cloud', admin: true },
   { id: 'general', label: 'Général', icon: 'sliders', admin: true },
+  { id: 'hardware', label: 'Hardware', icon: 'cpu', admin: true },
+  { id: 'journal', label: 'Journal', icon: 'clock', admin: true },
 ];
 
 const short = (sha) => (sha ? sha.slice(0, 7) : '—');
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
-export function renderSettings(view, page, tab = 'compte') {
+export function renderSettings(view, page, tab = 'compte', arg = '') {
   const tabs = TABS.filter((t) => !t.admin || isAdmin());
   if (!tabs.some((t) => t.id === tab)) tab = 'compte';
   const root = document.createElement('div');
   view.replaceChildren(root);
   setHTML(
     root,
-    html`<div class="page-header"><div><h1>Paramètres</h1><div class="sub">Compte, utilisateurs, mises à jour et publication des sites.</div></div></div>
+    html`<div class="page-header"><div><h1>Paramètres</h1><div class="sub">Compte, utilisateurs, mises à jour, publication des sites et machine.</div></div></div>
       ${tabs.length > 1 ? html`<nav class="tabs">${tabs.map((t) => html`<a href="#/settings/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}</nav>` : ''}
       <div id="settings-tab"></div>`,
   );
   const el = $('#settings-tab', root);
-  const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, general: generalTab };
-  return Promise.resolve(renderers[tab](el, page)).catch((err) => {
+  const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, general: generalTab, hardware: hardwareTab, journal: journalTab };
+  return Promise.resolve(renderers[tab](el, page, arg)).catch((err) => {
     if (page.active) setHTML(el, html`<div class="alert err">${icon('alert')}<div>${err.message}</div></div>`);
   });
 }
@@ -122,6 +126,7 @@ async function usersTab(el, page) {
                 <td class="muted hide-sm">${formatDate(u.createdAt)}</td>
                 <td>
                   <div class="file-actions">
+                    <a class="btn btn-ghost btn-sm btn-icon" title="Voir son activité" aria-label="Voir l'activité de ${u.username}" href="#/settings/journal/${u.id}">${icon('clock')}</a>
                     <button class="btn btn-ghost btn-sm btn-icon" title="Définir un nouveau mot de passe" data-password>${icon('key')}</button>
                     ${u.id === state.user.id ? '' : html`<button class="btn btn-ghost btn-sm btn-icon" title="Supprimer" data-del>${icon('trash')}</button>`}
                   </div>
@@ -920,4 +925,220 @@ async function generalTab(el, page) {
     });
   });
   el.querySelector('[data-copy]')?.addEventListener('click', (e) => copyText(e.currentTarget.dataset.copy));
+}
+
+// ---- Hardware ---------------------------------------------------------------------------
+async function hardwareTab(el, page) {
+  let info = await api.get('/hardware');
+  if (!page.active) return;
+  let rebooting = false;
+  const refresh = setInterval(async () => {
+    if (rebooting) return;
+    const next = await api.get('/hardware').catch(() => null);
+    if (next && page.active && !rebooting) {
+      info = next;
+      draw();
+    }
+  }, 15_000);
+  page.onCleanup(() => clearInterval(refresh));
+
+  const power = () => {
+    const t = info.throttling;
+    if (!t) return html`<span class="muted">Non disponible (vcgencmd absent)</span>`;
+    if (t.underVoltage) return html`<span class="badge st-crashed">Sous-tension en ce moment</span>`;
+    if (t.throttled) return html`<span class="badge st-restarting">Processeur ralenti</span>`;
+    if (t.underVoltageOccurred) return html`<span class="badge st-restarting">Sous-tension depuis le démarrage</span>`;
+    return html`<span class="badge st-running">Correcte</span>`;
+  };
+
+  function draw() {
+    const r = info.reboot;
+    setHTML(
+      el,
+      html`<div class="stack">
+        <div class="card">
+          <div class="card-header"><h2>${icon('cpu')} Machine</h2><span class="spacer"></span><span class="badge plain">${info.hostname}</span></div>
+          <table class="table kv-table">
+            <tbody>
+              <tr><td class="muted">Modèle</td><td><b>${info.model}</b></td></tr>
+              <tr><td class="muted">Processeur</td><td>${[info.cpuModel, `${info.cpus} cœurs`, info.cpuMaxMHz ? `${(info.cpuMaxMHz / 1000).toLocaleString('fr-FR')} GHz max.` : ''].filter(Boolean).join(' · ')}</td></tr>
+              <tr><td class="muted">Mémoire vive</td><td>${formatBytes(info.memory?.total)} <span class="muted">· ${formatBytes(info.memory?.available)} disponibles</span></td></tr>
+              <tr><td class="muted">Stockage du panel</td><td>${info.disk ? html`${formatBytes(info.disk.total)} <span class="muted">· ${formatBytes(info.disk.free)} libres</span>` : '—'}</td></tr>
+              <tr><td class="muted">Température</td><td>${info.temperature != null ? `${info.temperature.toFixed(1).replace('.', ',')} °C` : html`<span class="muted">Capteur indisponible</span>`}</td></tr>
+              <tr><td class="muted">Alimentation</td><td>${power()}</td></tr>
+              <tr><td class="muted">Système</td><td>${info.os} <span class="muted">· noyau ${info.kernel} · ${info.arch}</span></td></tr>
+              <tr><td class="muted">Adresse IP</td><td>${info.addresses?.length ? info.addresses.map((a) => a.address).join(', ') : '—'}</td></tr>
+              <tr><td class="muted">Allumée depuis</td><td>${formatDuration(info.uptime * 1000)} <span class="muted">· démarrée le ${formatDate(info.bootedAt)}</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card danger-card" id="reboot-card">
+          <div class="card-header danger-head"><h2>${icon('restart')} Redémarrer la machine</h2></div>
+          <div class="card-body">
+            <p>Redémarre le Raspberry Pi. Le panel et le tunnel Cloudflare repartent tout seuls, ainsi que les applications dont l'option
+            <b>Démarrer avec le Raspberry Pi</b> est activée. Comptez une à deux minutes pendant lesquelles vos sites et bots sont hors ligne.</p>
+            ${r.available
+              ? ''
+              : html`<div class="alert warn">${icon('alert')}<div>Le service de redémarrage n'est pas encore installé sur la machine : il le sera à la prochaine mise à jour du panel (ou en relançant <code>sudo ./install.sh</code>).</div></div>`}
+          </div>
+          <div class="card-foot">
+            <button class="btn btn-danger" data-reboot ${r.available && !r.pending ? '' : 'disabled'}>${icon('restart')} Redémarrer la machine…</button>
+          </div>
+        </div>
+      </div>`,
+    );
+    $('[data-reboot]', el)?.addEventListener('click', confirmReboot);
+  }
+
+  async function confirmReboot(e) {
+    const ok = await confirmDialog(
+      'Redémarrer la machine ?',
+      `${info.model} (${info.hostname}) va redémarrer maintenant. Le panel, vos sites et vos bots seront indisponibles pendant une à deux minutes.`,
+      { danger: true, confirmLabel: 'Valider le redémarrage' },
+    );
+    if (!ok) return;
+    await withBusy(e.target.closest('button'), async () => {
+      await api.post('/hardware/reboot', { confirm: true });
+      rebooting = true;
+      waitForReboot();
+    });
+  }
+
+  // Attend que le panel disparaisse puis revienne, et recharge la page.
+  function waitForReboot() {
+    const card = $('#reboot-card', el);
+    const show = (text, kind = 'busy') =>
+      setHTML(card, html`<div class="card-header danger-head"><h2>${icon('restart')} Redémarrer la machine</h2></div>
+        <div class="card-body"><div class="alert ${kind}">${kind === 'busy' ? html`<span class="spinner"></span>` : icon('alert')}<div>${text}</div></div></div>`);
+    show('Redémarrage demandé : la machine va s’éteindre puis se rallumer. Cette page se rechargera toute seule dès que le panel sera de nouveau en ligne.');
+    const started = Date.now();
+    let wentDown = false;
+    const poll = async () => {
+      if (!page.active) return;
+      let up = false;
+      try {
+        const res = await fetch('/api/auth/status', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+        up = res.ok;
+      } catch {
+        up = false;
+      }
+      if (!up && !wentDown) {
+        wentDown = true;
+        show('La machine redémarre… Cette page se rechargera toute seule dès que le panel sera de nouveau en ligne.');
+      }
+      if (up && wentDown) {
+        toast('La machine a redémarré');
+        setTimeout(() => location.reload(), 1500);
+        return;
+      }
+      const elapsed = Date.now() - started;
+      if (!wentDown && elapsed > 90_000) {
+        show(html`Le redémarrage n’a pas commencé. Vérifiez sur le Raspberry Pi que le service est actif : <code>systemctl status astrapanel-reboot.path</code>.`, 'warn');
+        return;
+      }
+      if (elapsed > 10 * 60_000) {
+        show('Le panel ne répond toujours pas après 10 minutes : vérifiez que le Raspberry Pi est bien allumé.', 'warn');
+        return;
+      }
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 3000);
+  }
+
+  draw();
+}
+
+// ---- Journal d'activité ---------------------------------------------------------------
+const CATEGORIES = { application: 'Applications', fichiers: 'Fichiers', compte: 'Comptes et connexions', tunnel: 'Tunnel Cloudflare', panel: 'Panel', machine: 'Machine' };
+const CATEGORY_ICONS = { application: 'box', fichiers: 'folder', compte: 'user', tunnel: 'cloud', panel: 'sliders', machine: 'cpu' };
+
+async function journalTab(el, page, userFilter = '') {
+  const filters = { user: userFilter, app: '', category: '', q: '' };
+  let data = null;
+  let entries = [];
+  let searchTimer = null;
+  page.onCleanup(() => clearTimeout(searchTimer));
+
+  async function load({ append = false } = {}) {
+    const params = { ...filters, limit: 100 };
+    if (append && entries.length) params.before = entries[entries.length - 1].at;
+    const next = await api.get(`/audit?${qs(params)}`);
+    if (!page.active) return;
+    data = next;
+    entries = append ? [...entries, ...next.entries] : next.entries;
+    drawList();
+  }
+
+  const who = (e) =>
+    e.user
+      ? html`<div class="user-cell"><div class="avatar sm">${e.user.username.slice(0, 1).toUpperCase()}</div><span class="truncate">${e.user.username}</span></div>`
+      : html`<span class="muted">Anonyme</span>`;
+
+  function drawList() {
+    const box = $('#journal-list', el);
+    const userOptions = data.users.map((u) => html`<option value="${u.id}" ${u.id === filters.user ? 'selected' : ''}>${u.username}</option>`);
+    const appOptions = data.apps.map((a) => html`<option value="${a.id}" ${a.id === filters.app ? 'selected' : ''}>${a.name}</option>`);
+    setHTML($('#f-user', el), html`<option value="">Tous les comptes</option><option value="-" ${filters.user === '-' ? 'selected' : ''}>Anonyme (échecs de connexion)</option>${userOptions}`);
+    setHTML($('#f-app', el), html`<option value="">Toutes les applications</option>${appOptions}`);
+    setHTML(
+      box,
+      entries.length
+        ? html`<table class="table journal-table">
+            <thead><tr><th>Date</th><th>Compte</th><th>Action</th><th class="hide-sm">Adresse IP</th></tr></thead>
+            <tbody>
+              ${entries.map(
+                (e) => html`<tr>
+                  <td class="nowrap muted">${formatDate(e.at)}</td>
+                  <td>${who(e)}</td>
+                  <td>
+                    <div class="journal-action">${icon(CATEGORY_ICONS[e.category] || 'info')}<b>${e.label}</b>${e.app ? html`<a class="journal-app" href="#/apps/${e.app.id}">${e.app.name}</a>` : ''}</div>
+                    ${e.detail ? html`<div class="hint journal-detail">${e.detail}</div>` : ''}
+                  </td>
+                  <td class="hide-sm mono muted">${e.ip || '—'}</td>
+                </tr>`,
+              )}
+            </tbody>
+          </table>
+          ${data.more ? html`<div class="card-foot"><button class="btn btn-sm" data-more>${icon('chevronDown')} Afficher plus</button></div>` : ''}`
+        : html`<div class="empty-small muted">${filters.user || filters.app || filters.category || filters.q ? 'Aucune action ne correspond à ces filtres.' : 'Aucune action enregistrée pour l’instant.'}</div>`,
+    );
+    $('[data-more]', box)?.addEventListener('click', (e) => withBusy(e.target.closest('button'), () => load({ append: true })));
+  }
+
+  setHTML(
+    el,
+    html`<div class="card">
+      <div class="card-header">
+        <h2>${icon('clock')} Journal d'activité</h2>
+        <span class="spacer"></span>
+        <button class="btn btn-sm btn-ghost" data-reload>${icon('refresh')} Actualiser</button>
+      </div>
+      <div class="card-body journal-filters">
+        <select id="f-user" aria-label="Compte"></select>
+        <select id="f-app" aria-label="Application"></select>
+        <select id="f-category" aria-label="Type d'action">
+          <option value="">Toutes les actions</option>
+          ${Object.entries(CATEGORIES).map(([id, label]) => html`<option value="${id}">${label}</option>`)}
+        </select>
+        <input type="search" id="f-q" placeholder="Rechercher (fichier, domaine, IP…)" aria-label="Rechercher" />
+      </div>
+      <div id="journal-list"><div class="empty-small muted">Chargement…</div></div>
+      <div class="card-foot"><span class="hint">Chaque action faite dans le panel est enregistrée : connexions, applications, fichiers, comptes, tunnel, mises à jour, redémarrages. Les mots de passe, jetons et valeurs des variables ne sont jamais enregistrés. Les 10 000 dernières actions sont conservées.</span></div>
+    </div>`,
+  );
+  const onFilter = (key) => (e) => {
+    filters[key] = e.target.value;
+    if (key === 'user') history.replaceState(null, '', `#/settings/journal${filters.user ? `/${filters.user}` : ''}`);
+    load();
+  };
+  $('#f-user', el).addEventListener('change', onFilter('user'));
+  $('#f-app', el).addEventListener('change', onFilter('app'));
+  $('#f-category', el).addEventListener('change', onFilter('category'));
+  $('#f-q', el).addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => onFilter('q')(e), 300);
+  });
+  $('[data-reload]', el).addEventListener('click', (e) => withBusy(e.target.closest('button'), () => load()));
+  await load();
 }

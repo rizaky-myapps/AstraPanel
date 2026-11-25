@@ -1,7 +1,7 @@
 import { HttpError } from '../http/util.js';
 import { publicUser } from '../auth.js';
 
-export function authRoutes(router, { auth, store, apps }) {
+export function authRoutes(router, { auth, store, apps, audit }) {
   router.get(
     '/api/auth/status',
     (ctx) => ({ setupRequired: auth.setupRequired, user: publicUser(auth.userFromRequest(ctx.req)) }),
@@ -18,6 +18,7 @@ export function authRoutes(router, { auth, store, apps }) {
       const user = await auth.createUser(String(username || '').trim(), password, 'admin');
       auth.resetRateLimit(ctx.ip);
       auth.setSessionCookie(ctx.req, ctx.res, user);
+      audit.record({ user, ip: ctx.ip, category: 'compte', label: 'Création du premier compte administrateur' });
       return { user: publicUser(user) };
     },
     { auth: false },
@@ -28,10 +29,15 @@ export function authRoutes(router, { auth, store, apps }) {
     async (ctx) => {
       auth.checkRateLimit(ctx.ip);
       const { username, password } = await ctx.json();
-      const user = await auth.login(String(username || '').trim(), password);
-      if (!user) throw new HttpError(401, 'Identifiants incorrects');
+      const name = String(username || '').trim();
+      const user = await auth.login(name, password);
+      if (!user) {
+        audit.record({ ip: ctx.ip, category: 'compte', label: 'Échec de connexion', detail: `nom saisi : ${name.slice(0, 60) || '(vide)'}` });
+        throw new HttpError(401, 'Identifiants incorrects');
+      }
       auth.resetRateLimit(ctx.ip);
       auth.setSessionCookie(ctx.req, ctx.res, user);
+      audit.record({ user, ip: ctx.ip, category: 'compte', label: 'Connexion' });
       return { user: publicUser(user) };
     },
     { auth: false },
@@ -40,6 +46,8 @@ export function authRoutes(router, { auth, store, apps }) {
   router.post(
     '/api/auth/logout',
     (ctx) => {
+      const user = auth.userFromRequest(ctx.req);
+      if (user) audit.record({ user, ip: ctx.ip, category: 'compte', label: 'Déconnexion' });
       auth.clearSessionCookie(ctx.res);
       return { ok: true };
     },

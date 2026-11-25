@@ -412,6 +412,16 @@ voir et tout faire dessus (console, fichiers, variables, déploiement…).
 > panel**, mais toutes les applications tournent sous le même compte système : le code d'une application peut lire
 > les fichiers des autres.
 
+**Journal d'activité.** **Paramètres → Journal** (administrateurs) liste chaque action faite dans le panel, la plus
+récente en haut : connexions (et échecs de connexion), création et réglages des applications, démarrages et arrêts,
+déploiements, fichiers modifiés, accès donnés ou retirés, comptes, tunnel, mises à jour, redémarrages. Chaque ligne
+indique la date, le compte, l'application concernée, le détail et l'adresse IP. Filtrez par compte, par application,
+par type d'action, ou cherchez un nom de fichier, un domaine, une IP. L'icône horloge à côté d'un compte, dans
+**Paramètres → Utilisateurs**, ouvre directement son activité.
+
+Les mots de passe, les jetons et les valeurs des variables d'environnement ne sont jamais enregistrés (seulement les
+noms des variables modifiées). Les 10 000 dernières actions sont conservées dans `/opt/astrapanel/data/audit.log`.
+
 ## 13. Sécuriser le Raspberry Pi
 
 - **Panel** : mots de passe solides, et **jamais de redirection du port 8080** sur la box. Pour administrer à
@@ -488,6 +498,16 @@ sudo journalctl -u astrapanel -f
 
 Les journaux de chaque application sont dans la console du panel (bouton **Télécharger** pour le fichier complet) et
 dans `/opt/astrapanel/data/logs/`. Le journal de la dernière mise à jour est dans `/var/log/astrapanel-update.log`.
+
+**Redémarrer le Raspberry Pi sans SSH.** **Paramètres → Hardware** (administrateurs) affiche la machine : modèle,
+processeur, mémoire, stockage, température, alimentation, système, adresse IP et durée depuis le dernier démarrage.
+Le bouton **Redémarrer la machine…** demande une validation, puis redémarre le Pi : la page attend et se recharge
+toute seule quand le panel est de nouveau en ligne (une à deux minutes). Le panel, le tunnel Cloudflare et les
+applications réglées sur **Démarrer avec le Raspberry Pi** repartent automatiquement.
+
+> Comme pour les mises à jour, le panel n'a pas lui-même le droit de redémarrer la machine : il dépose une demande que
+> le petit service `astrapanel-reboot` (installé par `install.sh`) exécute en root. Une demande ne vaut que pour le
+> démarrage en cours : un redémarrage en boucle est impossible.
 
 **Sauvegarder** applications, configuration, comptes et historique :
 

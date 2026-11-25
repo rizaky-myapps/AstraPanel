@@ -691,6 +691,7 @@ input[type='text'],
 input[type='password'],
 input[type='number'],
 input[type='url'],
+input[type='search'],
 select,
 textarea {
   width: 100%;
@@ -2441,6 +2442,11 @@ pre.code {
     width: auto;
     font-size: 12px;
   }
+  /* tableau posé directement dans une carte (sans marge intérieure) */
+  .card > .kv-table tr {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
   .file-picker {
     flex-wrap: wrap;
   }
@@ -2537,4 +2543,80 @@ pre.code {
 .sub-fold > summary {
   color: var(--accent-2);
   font-weight: 550;
+}
+
+/* ---- Hardware ---- */
+.danger-card {
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+/* ---- Journal d'activité ---- */
+.journal-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.4fr);
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.journal-table td {
+  vertical-align: top;
+}
+.journal-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.journal-action svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  flex: none;
+}
+.journal-app {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--panel-3);
+  color: var(--text);
+}
+.journal-detail {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.avatar.sm {
+  width: 22px;
+  height: 22px;
+  font-size: 10.5px;
+}
+.empty-small {
+  padding: 28px 18px;
+  text-align: center;
+}
+@media (max-width: 900px) {
+  .journal-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .journal-filters {
+    grid-template-columns: 1fr;
+  }
+  /* journal : chaque action sur deux lignes (date et compte, puis l'action) */
+  .journal-table thead {
+    display: none;
+  }
+  .journal-table tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .journal-table td {
+    padding: 0;
+    border: 0;
+  }
+  .journal-table td:nth-child(3) {
+    grid-column: 1 / -1;
+  }
 }

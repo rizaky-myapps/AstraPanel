@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { startTestPanel } from './helpers.js';
 import { Metrics } from '../src/metrics.js';
 import { Store } from '../src/store.js';
@@ -180,6 +180,79 @@ test('publication : AstraPanel-Latest sans package.json (ancien main) et version
   assert.match(out, /1\.2\.2 → nouvelle version : 1\.2\.3/);
   assert.equal(JSON.parse(gitIn(remote, 'show', 'AstraPanel-Latest:package.json')).version, '1.2.3');
   assert.equal(gitIn(remote, 'rev-parse', 'AstraPanel-Latest'), gitIn(remote, 'rev-parse', 'AstraPanel-V.1.2.3'));
+});
+
+test('journal d’activité : qui a fait quoi, sans aucun secret', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const adminCookie = ctx.getCookie();
+  await ctx.request('POST', '/api/users', { body: { username: 'alice', password: 'motdepasse-alice', role: 'user' } });
+
+  ctx.setCookie('');
+  assert.equal((await ctx.request('POST', '/api/auth/login', { body: { username: 'alice', password: 'faux' } })).status, 401);
+  await ctx.request('POST', '/api/auth/login', { body: { username: 'alice', password: 'motdepasse-alice' } });
+  assert.equal((await ctx.request('GET', '/api/audit')).status, 403); // réservé aux administrateurs
+  const { app } = (await ctx.request('POST', '/api/apps', { body: { name: 'Blog', type: 'static', source: 'empty' } })).data;
+  await ctx.request('PUT', `/api/apps/${app.id}/files/content`, { body: { path: 'index.html', content: 'contenu-prive' } });
+  await ctx.request('PATCH', `/api/apps/${app.id}`, { body: { env: { DISCORD_TOKEN: 'valeur-secrete' }, domains: ['blog.exemple.fr'] } });
+  assert.equal((await ctx.request('POST', `/api/apps/${app.id}/files/mkdir`, { body: { path: '../hors' } })).status, 400); // échec : non journalisé
+
+  ctx.setCookie(adminCookie);
+  await ctx.request('DELETE', `/api/apps/${app.id}`);
+  const { data } = await ctx.request('GET', '/api/audit');
+  const lines = data.entries.map((e) => `${e.user?.username || '—'} | ${e.label} | ${e.app?.name || ''} | ${e.detail || ''}`);
+  assert.deepEqual(lines.slice(0, 6), [
+    'admin | Suppression de l’application | Blog | ', // le nom reste lisible après la suppression
+    'alice | Modification des paramètres | Blog | domaines : blog.exemple.fr · variables : DISCORD_TOKEN',
+    'alice | Fichier enregistré | Blog | index.html',
+    'alice | Création de l’application | Blog | site statique',
+    'alice | Connexion |  | ',
+    '— | Échec de connexion |  | nom saisi : alice',
+  ]);
+  const raw = readFileSync(path.join(ctx.cfg.dataDir, 'audit.log'), 'utf8');
+  for (const secret of ['valeur-secrete', 'motdepasse', 'contenu-prive', '"faux"']) assert.ok(!raw.includes(secret), secret);
+
+  // filtres : par compte, par appli, par recherche
+  const alice = data.users.find((u) => u.username === 'alice');
+  const byAlice = (await ctx.request('GET', `/api/audit?user=${alice.id}`)).data.entries;
+  assert.ok(byAlice.length >= 4 && byAlice.every((e) => e.user.id === alice.id));
+  assert.equal((await ctx.request('GET', `/api/audit?app=${app.id}`)).data.entries.length, 4);
+  assert.equal((await ctx.request('GET', '/api/audit?q=index.html')).data.entries.length, 1);
+  assert.equal((await ctx.request('GET', '/api/audit?user=-')).data.entries[0].label, 'Échec de connexion');
+  assert.equal((await ctx.request('GET', '/api/audit?limit=2')).data.more, true);
+});
+
+test('Hardware : redémarrage demandé au service root, avec validation', async (t) => {
+  const unit = path.join(mkdtempSync(path.join(os.tmpdir(), 'astra-unit-')), 'astrapanel-reboot.path');
+  process.env.ASTRA_REBOOT_UNIT = unit;
+  t.after(() => delete process.env.ASTRA_REBOOT_UNIT);
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const request = path.join(ctx.cfg.dataDir, 'reboot-request');
+
+  let res = await ctx.request('GET', '/api/hardware');
+  assert.equal(res.status, 200);
+  assert.ok(res.data.model && res.data.cpus > 0 && res.data.memory.total > 0);
+  assert.equal(res.data.reboot.available, false);
+  assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: { confirm: true } })).status, 400); // service absent
+
+  writeFileSync(unit, '');
+  assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: {} })).status, 400); // pas validé
+  assert.equal(existsSync(request), false);
+  assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: { confirm: true } })).status, 200);
+  const sent = JSON.parse(readFileSync(request, 'utf8'));
+  assert.equal(sent.by, 'admin');
+  assert.equal(sent.bootId, readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()); // lu par deploy/reboot.sh
+  assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: { confirm: true } })).status, 409);
+  assert.equal((await ctx.request('GET', '/api/audit')).data.entries[0].label, 'Redémarrage de la machine');
+
+  await ctx.request('POST', '/api/users', { body: { username: 'bob', password: 'motdepasse123', role: 'user' } });
+  ctx.setCookie('');
+  await ctx.request('POST', '/api/auth/login', { body: { username: 'bob', password: 'motdepasse123' } });
+  assert.equal((await ctx.request('GET', '/api/hardware')).status, 403);
+  assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: { confirm: true } })).status, 403);
 });
 
 test('analyse des URL GitHub', () => {

@@ -136,16 +136,19 @@ else
   warn "Le dossier source n'est pas un clone Git : la mise à jour depuis le panel sera indisponible."
 fi
 
-# Service de mise à jour : le panel crée data/update-request, systemd lance la mise à jour en root
+# Services root déclenchés par le panel (qui tourne sans privilèges) : il crée data/update-request pour une mise à
+# jour, data/reboot-request pour redémarrer la machine (Paramètres → Hardware)
 mkdir -p /var/lib/astrapanel
-chmod 755 "$INSTALL_DIR/deploy/update.sh"
-for unit in astrapanel-update.service astrapanel-update.path; do
+chmod 755 "$INSTALL_DIR/deploy/update.sh" "$INSTALL_DIR/deploy/reboot.sh"
+for unit in astrapanel-update.service astrapanel-update.path astrapanel-reboot.service astrapanel-reboot.path; do
   sed -e "s|@DIR@|$INSTALL_DIR|g" -e "s|@DATA@|$DATA_DIR|g" "$INSTALL_DIR/deploy/$unit" >"/etc/systemd/system/$unit"
 done
 ln -sf "$INSTALL_DIR/deploy/update.sh" /usr/local/bin/astrapanel-update
 systemctl daemon-reload
-systemctl enable astrapanel-update.path >/dev/null 2>&1
-systemctl start astrapanel-update.path
+for unit in astrapanel-update.path astrapanel-reboot.path; do
+  systemctl enable "$unit" >/dev/null 2>&1
+  systemctl start "$unit"
+done
 systemctl enable astrapanel >/dev/null 2>&1
 systemctl restart astrapanel
 

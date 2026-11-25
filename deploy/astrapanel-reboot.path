@@ -1,0 +1,10 @@
+# Le panel demande un redémarrage de la machine en créant ce fichier : systemd lance alors astrapanel-reboot.service.
+[Unit]
+Description=Surveille les demandes de redémarrage envoyées par AstraPanel
+
+[Path]
+PathExists=@DATA@/reboot-request
+Unit=astrapanel-reboot.service
+
+[Install]
+WantedBy=multi-user.target

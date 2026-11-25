@@ -112,6 +112,10 @@ Dans AstraPanel, ouvrez **Paramètres** → **Tunnel Cloudflare**. Deux modes so
 Dans les deux cas, commencez par cliquer sur **Installer cloudflared** dans la carte **État** : le panel télécharge
 le programme officiel de Cloudflare pour le Raspberry Pi. Aucune commande à taper en SSH.
 
+Ensuite, le panel vérifie lui-même sur GitHub (au démarrage puis toutes les 12 heures) s'il existe une version plus
+récente de cloudflared. Le bouton de la carte **État** affiche alors **Mettre à jour vers la X** ; sinon, il affiche
+**Vérifier les mises à jour** pour lancer une vérification tout de suite.
+
 ## 5. Mode A : tunnel géré depuis le panel (recommandé)
 
 ### 5.1 Créer un jeton d'API Cloudflare

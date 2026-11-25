@@ -10,6 +10,8 @@ import { AppManager } from './apps/manager.js';
 import { Metrics } from './metrics.js';
 import { Tunnel } from './tunnel.js';
 import { Updater } from './update.js';
+import { AuditLog } from './audit.js';
+import { Hardware } from './hardware.js';
 import { bootId } from './system.js';
 import { Router } from './http/router.js';
 import { serveStatic } from './http/static.js';
@@ -43,9 +45,11 @@ export function createPanel(cfg = config) {
   const apps = new AppManager({ store, config: cfg, publish });
   const metrics = new Metrics(path.join(cfg.dataDir, 'metrics.json'));
   const updater = new Updater({ store, config: cfg });
+  const audit = new AuditLog({ file: path.join(cfg.dataDir, 'audit.log'), store });
+  const hardware = new Hardware({ config: cfg });
 
   const router = new Router();
-  const deps = { store, auth, apps, config: cfg, metrics, tunnel, updater, publish };
+  const deps = { store, auth, apps, config: cfg, metrics, tunnel, updater, publish, audit, hardware };
   authRoutes(router, deps);
   appRoutes(router, deps);
   fileRoutes(router, deps);
@@ -80,7 +84,9 @@ export function createPanel(cfg = config) {
         query: url.searchParams,
         ip: clientIp(req),
         user: null,
-        json: (limit = cfg.limits.jsonBody) => readJson(req, limit),
+        body: null,
+        // le corps lu est gardé pour le journal d'activité
+        json: async (limit = cfg.limits.jsonBody) => (ctx.body = await readJson(req, limit)),
       };
       if (route.auth) {
         ctx.user = auth.userFromRequest(req);
@@ -88,7 +94,11 @@ export function createPanel(cfg = config) {
         if (route.admin && ctx.user.role !== 'admin') throw new HttpError(403, 'Action réservée aux administrateurs');
         if (route.app) apps.getFor(ctx.user, params.id); // 404 si l'appli n'est pas accessible à ce compte
       }
+      // journal d'activité : chaque action réussie d'un compte connecté
+      const pre = ctx.user && MUTATING.has(req.method) ? audit.prepare(ctx, route, apps) : null;
+      const extra = pre?.key === 'POST /api/update/apply' ? { version: updater.state.latestVersion } : {};
       const result = await route.handler(ctx);
+      if (pre) audit.done(pre, ctx, result, extra);
       if (!res.headersSent) sendJson(res, 200, result ?? { ok: true });
     } catch (err) {
       if (!(err instanceof HttpError)) {
@@ -107,7 +117,7 @@ export function createPanel(cfg = config) {
   server.requestTimeout = 60 * 60 * 1000; // gros téléversements sur une connexion lente
   server.headersTimeout = 60 * 1000;
 
-  return { server, store, auth, apps, metrics, tunnel, updater };
+  return { server, store, auth, apps, metrics, tunnel, updater, audit, hardware };
 }
 
 async function main() {

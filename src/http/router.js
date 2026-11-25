@@ -14,6 +14,7 @@ export class Router {
     });
     this.routes.push({
       method,
+      pattern,
       regex: new RegExp(`^${source}/?$`),
       keys,
       handler,

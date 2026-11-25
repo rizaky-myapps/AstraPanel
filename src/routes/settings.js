@@ -5,7 +5,7 @@ import { analyze, listMounts } from '../storage.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-export function settingsRoutes(router, { store, apps, config, metrics, tunnel, updater, publish }) {
+export function settingsRoutes(router, { store, apps, config, metrics, tunnel, updater, publish, audit, hardware }) {
   // --- Système, historique, stockage ----------------------------------------
   router.get('/api/system', async () => ({
     ...(await systemInfo(config.dataDir)),
@@ -90,6 +90,33 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
       await tunnel.reset();
       return tunnel.status();
     },
+    { admin: true },
+  );
+
+  // --- Machine (onglet Hardware) ---------------------------------------------
+  router.get('/api/hardware', () => hardware.info(), { admin: true });
+  router.post(
+    '/api/hardware/reboot',
+    async (ctx) => {
+      const { confirm } = await ctx.json();
+      if (confirm !== true) throw new HttpError(400, 'Confirmation manquante');
+      return hardware.requestReboot(ctx.user);
+    },
+    { admin: true },
+  );
+
+  // --- Journal d'activité -------------------------------------------------------
+  router.get(
+    '/api/audit',
+    (ctx) =>
+      audit.query({
+        userId: ctx.query.get('user') || '',
+        appId: ctx.query.get('app') || '',
+        category: ctx.query.get('category') || '',
+        q: ctx.query.get('q') || '',
+        before: Number(ctx.query.get('before')) || 0,
+        limit: Math.min(Math.max(Number(ctx.query.get('limit')) || 100, 1), 500),
+      }),
     { admin: true },
   );
 

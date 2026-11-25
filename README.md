@@ -33,6 +33,9 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Explorateur de stockage** : les disques du Pi et leur contenu trié par taille, pour trouver ce qui prend de la place
 - **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
   aux administrateurs par un bandeau vert ; un clic suffit pour mettre à jour, sans SSH
+- **Journal d'activité** : chaque action (connexions, applications, fichiers, comptes, tunnel, mises à jour,
+  redémarrages) avec le compte, la date et l'adresse IP, filtrable par compte et par application — sans aucun secret
+- **Onglet Hardware** : informations sur la machine et redémarrage du Raspberry Pi depuis le panel, avec validation
 - **Grades ADMIN et UTILISATEUR** : chaque application a sa liste d'utilisateurs (onglet **Utilisateurs** : le
   créateur, figé, puis les comptes à qui il a donné accès) ; les administrateurs voient toutes les applications et
   gèrent aussi le panel
@@ -95,6 +98,7 @@ systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script
    │   AstraPanel :8080 ── supervise ──► cloudflared, site :4000,         │
    │   (interface + API)                  site :4001, bot Discord…        │
    │   astrapanel-update (root, sur demande) : installe AstraPanel-Latest │
+   │   astrapanel-reboot (root, sur demande) : redémarre la machine       │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -104,6 +108,7 @@ systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script
   domaine vers le bon port.
 - Le panel tourne sans privilèges. Pour se mettre à jour, il crée `data/update-request` : une unité systemd `.path`
   lance alors `astrapanel-update` en root, qui télécharge la branche `AstraPanel-Latest` et relance `install.sh`.
+  Même principe pour redémarrer la machine (Paramètres → Hardware) : `data/reboot-request` → `astrapanel-reboot`.
 - Les données sont dans `/opt/astrapanel/data` : `db.json` (configuration), `apps/<id>/` (fichiers des applis),
   `logs/` (journaux avec rotation), `metrics.json` (historique des graphiques), `bin/cloudflared`.
 
@@ -129,6 +134,8 @@ src/
   domains.js         validation des noms de domaine
   tunnel.js          tunnel Cloudflare : cloudflared, API (tunnel, ingress, DNS)
   update.js          suivi de la branche AstraPanel-Latest, demande de mise à jour
+  audit.js           journal d'activité (qui a fait quoi, quand)
+  hardware.js        informations sur la machine, demande de redémarrage
   version.js         numéros de version (+0.0.1) et noms des branches
   metrics.js         historique CPU / température / RAM (1 h, 24 h, 15 j, 30 j)
   storage.js         disques et analyse de l'espace occupé
@@ -140,7 +147,7 @@ src/
 public/              interface web (JavaScript natif, sans build)
 runtime/             serveur de fichiers statiques utilisé par les sites statiques
 templates/           modèles de départ (bot Discord, site Node.js, site statique)
-deploy/              services systemd et script de mise à jour (update.sh)
+deploy/              services systemd, scripts de mise à jour (update.sh) et de redémarrage (reboot.sh)
 scripts/             publication d'une nouvelle version (nouvelle-version.sh)
 install.sh           installation / mise à jour sur le Pi
 ```
@@ -157,8 +164,10 @@ install.sh           installation / mise à jour sur le Pi
   de même exécuter du code via ses applications : ne donnez de compte qu'à des personnes de confiance.
 - Le gestionnaire de fichiers ne sort jamais du dossier de l'application et ne suit pas les liens symboliques qui
   pointent ailleurs ; les fichiers affichés en aperçu sont servis avec une politique CSP « sandbox ».
-- Le service de mise à jour ne télécharge que le dépôt enregistré à l'installation (fichier appartenant à root) ;
-  la demande du panel ne peut choisir que la branche.
+- Le service de mise à jour ne télécharge que le dépôt enregistré à l'installation (fichier appartenant à root) et
+  installe toujours `AstraPanel-Latest`. Le service de redémarrage n'accepte qu'une demande du démarrage en cours.
+- Journal d'activité : chaque action est enregistrée avec le compte et l'adresse IP, sans mot de passe, jeton ni
+  valeur de variable.
 - **Toutes les applications tournent sous le même utilisateur** : une application peut lire les fichiers des
   autres et la configuration du panel. N'hébergez que du code en lequel vous avez confiance.
 - N'ouvrez jamais le port 8080 sur votre box : pour administrer à distance, utilisez le domaine du panel via le

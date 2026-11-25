@@ -13,7 +13,7 @@ const ROUTES = [
   { re: /^\/?$/, nav: 'dashboard', render: renderDashboard },
   { re: /^\/new$/, nav: 'new', render: renderNewApp },
   { re: /^\/apps\/([^/]+)(?:\/(\w+))?$/, nav: 'app', render: renderApp },
-  { re: /^\/settings(?:\/([\w-]+))?$/, nav: 'settings', render: renderSettings },
+  { re: /^\/settings(?:\/([\w-]+)(?:\/([\w-]+))?)?$/, nav: 'settings', render: renderSettings },
   { re: /^\/storage(?:\/(.+))?$/, nav: 'storage', render: renderStorage },
   { re: /^\/aide(?:\/([\w-]+)(?:\/(.+))?)?$/, nav: 'aide', render: renderHelp },
 ];

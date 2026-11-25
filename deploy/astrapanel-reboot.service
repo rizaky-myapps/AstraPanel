@@ -1,0 +1,7 @@
+# Redémarre la machine (en root). Déclenché par astrapanel-reboot.path.
+[Unit]
+Description=Redémarrage de la machine demandé depuis AstraPanel
+
+[Service]
+Type=oneshot
+ExecStart=@DIR@/deploy/reboot.sh
