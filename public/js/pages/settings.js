@@ -198,15 +198,25 @@ async function updateTab(el, page) {
   let info = await api.get('/update');
   if (!page.active) return;
   let logTimer = null;
-  page.onCleanup(() => clearTimeout(logTimer));
+  let refreshTimer = null;
+  page.onCleanup(() => {
+    clearTimeout(logTimer);
+    clearInterval(refreshTimer);
+  });
+
+  const inMinutes = (ts) => {
+    const min = Math.max(0, Math.round((ts - Date.now()) / 60_000));
+    return min < 1 ? 'dans moins d’une minute' : `dans ${min} min`;
+  };
 
   const draw = () => {
     const inst = info.installed;
+    const every = Math.round((info.interval || 300_000) / 60_000);
     setHTML(
       el,
       html`<div class="stack">
         <div class="card">
-          <div class="card-header"><h2>${icon('arrowUpCircle')} Version installée</h2></div>
+          <div class="card-header"><h2>${icon('arrowUpCircle')} Mises à jour d'AstraPanel</h2></div>
           <div class="card-body">
             ${!inst ? html`<div class="alert warn">${icon('alert')}<div>Ce panel n'a pas été installé depuis un clone Git : la mise à jour automatique est indisponible. Réinstallez-le avec <code>install.sh</code>.</div></div>` : ''}
             ${inst && !info.updater
@@ -216,49 +226,45 @@ async function updateTab(el, page) {
             ${inst
               ? html`<table class="table kv-table">
                   <tbody>
-                    <tr><td class="muted">Version</td><td><b>${inst.version}</b> <span class="muted">· branche <code>${inst.branch}</code> · commit <code>${short(inst.commit)}</code></span></td></tr>
+                    <tr><td class="muted">Version installée</td><td><b>${inst.version}</b> <span class="muted">· commit <code>${short(inst.commit)}</code></span></td></tr>
+                    <tr><td class="muted">Dernière version publiée</td><td>${info.latestVersion ? html`<b>${info.latestVersion}</b> <span class="muted">· branche <code>${info.branch}</code></span>` : html`<span class="muted">pas encore vérifiée</span>`}</td></tr>
                     ${inst.installedAt ? html`<tr><td class="muted">Installée le</td><td>${formatDate(inst.installedAt)}</td></tr>` : ''}
                     <tr><td class="muted">Dépôt</td><td class="mono truncate">${inst.repo || '—'}</td></tr>
-                    <tr><td class="muted">Dernière vérification</td><td>${info.checking ? 'en cours…' : info.lastCheck ? formatDate(info.lastCheck) : 'jamais'}</td></tr>
+                    <tr><td class="muted">Vérification automatique</td><td>toutes les ${every} minutes<span class="muted">${info.checking ? ' · vérification en cours…' : ''}${!info.checking && info.lastCheck ? ` · dernière : ${formatTime(info.lastCheck)}` : ''}${!info.checking && info.nextCheck > Date.now() ? ` · prochaine : ${inMinutes(info.nextCheck)}` : ''}</span></td></tr>
                   </tbody>
                 </table>`
               : ''}
           </div>
           ${inst
-            ? html`<form class="card-foot" id="branch-form">
-                <label class="muted nowrap" for="branch">Branche suivie</label>
-                <select id="branch" name="branch">
-                  <option value="" ${info.auto ? 'selected' : ''}>Automatique : dernière version publiée${info.auto ? ` (${info.branch})` : ''}</option>
-                  ${info.branches.map((b) => html`<option value="${b}" ${!info.auto && b === info.branch ? 'selected' : ''}>${b}</option>`)}
-                  ${!info.auto && !info.branches.includes(info.branch) ? html`<option value="${info.branch}" selected>${info.branch}</option>` : ''}
-                </select>
+            ? html`<div class="card-foot">
+                <span class="hint">Le panel lit la version publiée sur la branche <code>${info.branch}</code> du dépôt.</span>
                 <span class="spacer"></span>
-                <button class="btn" type="submit">${icon('refresh')} Vérifier les mises à jour</button>
-              </form>`
+                <button class="btn" data-check>${icon('refresh')} Vérifier maintenant</button>
+              </div>`
             : ''}
         </div>
 
         ${info.available
-          ? html`<div class="card highlight">
+          ? html`<div class="card highlight-ok">
               <div class="card-header">
-                <h2>${icon('sparkles')} Nouvelle version disponible${info.latestVersion ? ` : ${info.latestVersion}` : ''}</h2>
+                <h2>${icon('sparkles')} Nouvelle version disponible : ${info.latestVersion}</h2>
                 <span class="spacer"></span>
-                <code>${short(info.latest)}</code>
+                <code>${short(info.latestCommit)}</code>
               </div>
               <div class="card-body">
                 ${info.commits.length
                   ? html`<ul class="commits">
                       ${info.commits.map((c) => html`<li><span>${c.message}</span><span class="muted"> — ${c.author}${c.date ? `, ${formatDate(c.date)}` : ''}</span></li>`)}
                     </ul>`
-                  : html`<p class="muted">De nouveaux changements sont disponibles sur la branche « ${info.branch} ».</p>`}
+                  : html`<p class="muted">Vous avez la version ${inst.version} ; la version ${info.latestVersion} est disponible sur la branche « ${info.branch} ».</p>`}
                 <p class="hint">Pendant la mise à jour (1 à 3 minutes), le panel redémarre et vos applications sont relancées automatiquement.</p>
               </div>
               <div class="card-foot">
-                <button class="btn btn-primary" data-apply ${info.updater && !info.pending ? '' : 'disabled'}>${icon('arrowUpCircle')} Mettre à jour maintenant</button>
+                <button class="btn btn-primary" data-apply ${info.updater && !info.pending ? '' : 'disabled'}>${icon('arrowUpCircle')} Mettre à jour vers la ${info.latestVersion}</button>
               </div>
             </div>`
-          : inst && info.latest
-            ? html`<div class="alert info">${icon('check')}<div>Le panel est à jour (dernière version : « ${info.branch} »).</div></div>`
+          : inst && info.latestVersion && !info.error
+            ? html`<div class="alert ok">${icon('check')}<div>Le panel est à jour : version ${inst.version}.</div></div>`
             : ''}
 
         <div class="card ${info.run || info.pending ? '' : 'hidden'}" id="run-card">
@@ -268,19 +274,16 @@ async function updateTab(el, page) {
       </div>`,
     );
 
-    $('#branch-form', el)?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const branch = e.target.branch.value;
-      const current = info.auto ? '' : info.branch;
-      withBusy($('[type=submit]', e.target), async () => {
-        info = branch !== current ? await api.post('/update/branch', { branch }) : await api.post('/update/check');
+    $('[data-check]', el)?.addEventListener('click', (e) =>
+      withBusy(e.target.closest('button'), async () => {
+        info = await api.post('/update/check');
         if (!page.active) return;
         draw();
-        if (!info.error) toast(info.available ? 'Une nouvelle version est disponible' : 'Le panel est à jour', info.available ? 'info' : 'ok');
-      });
-    });
+        if (!info.error) toast(info.available ? `La version ${info.latestVersion} est disponible` : 'Le panel est à jour', info.available ? 'info' : 'ok');
+      }),
+    );
     $('[data-apply]', el)?.addEventListener('click', async (e) => {
-      if (!(await confirmDialog('Mettre à jour AstraPanel ?', 'Le panel va télécharger la nouvelle version puis redémarrer. Cela prend 1 à 3 minutes.', { confirmLabel: 'Mettre à jour' }))) return;
+      if (!(await confirmDialog(`Mettre à jour vers la version ${info.latestVersion} ?`, 'Le panel va télécharger la nouvelle version puis redémarrer. Cela prend 1 à 3 minutes.', { confirmLabel: 'Mettre à jour' }))) return;
       await withBusy(e.target.closest('button'), async () => {
         await api.post('/update/apply');
         startedAt = Date.now();
@@ -290,6 +293,16 @@ async function updateTab(el, page) {
     });
     if (info.run || info.pending) followLog();
   };
+
+  // Les vérifications automatiques du serveur apparaissent sans recharger la page.
+  refreshTimer = setInterval(async () => {
+    if (startedAt || info.pending) return; // une mise à jour est en cours : le journal a la main
+    const next = await api.get('/update').catch(() => null);
+    if (!next || !page.active) return;
+    const changed = ['latestVersion', 'available', 'error', 'checking', 'lastCheck'].some((k) => next[k] !== info[k]);
+    info = next;
+    if (changed) draw();
+  }, 30_000);
 
   // Suit le journal de la mise à jour ; le panel redémarre en cours de route (requêtes en échec un moment).
   let startedAt = 0;

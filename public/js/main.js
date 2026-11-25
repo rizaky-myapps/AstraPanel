@@ -24,7 +24,8 @@ let currentPage = null;
 let currentNav = null;
 let update = null;
 
-// Bannière « mise à jour disponible » pour les administrateurs, sur toutes les pages sauf les paramètres.
+// Bandeau vert « mise à jour disponible » en haut de la page, pour les administrateurs,
+// sur toutes les pages sauf les paramètres (qui affichent déjà la mise à jour).
 function dismissedUpdate() {
   try {
     return localStorage.getItem('astra.update.dismissed');
@@ -36,27 +37,28 @@ function dismissedUpdate() {
 function renderBanner() {
   const box = $('#banner');
   if (!box) return;
-  const show = isAdmin() && update?.available && currentNav !== 'settings' && dismissedUpdate() !== update.latest;
+  const show = isAdmin() && update?.available && currentNav !== 'settings' && dismissedUpdate() !== update.latestVersion;
   if (!show) {
     box.textContent = '';
     return;
   }
-  const count = update.commits?.length;
   setHTML(
     box,
-    html`<div class="update-banner">
+    html`<div class="update-banner" role="status">
       ${icon('arrowUpCircle')}
-      <div><b>Une mise à jour d'AstraPanel est disponible</b>${update.latestVersion ? ` : version ${update.latestVersion}` : ''}${count ? ` (${count} nouveauté${count > 1 ? 's' : ''})` : ''}.</div>
-      <span class="spacer"></span>
-      <a class="btn btn-sm btn-primary" href="#/settings/mises-a-jour">Voir la mise à jour</a>
-      <button class="btn btn-sm btn-ghost" data-later>Plus tard</button>
+      <div class="update-banner-text">
+        <b>Mise à jour disponible : AstraPanel ${update.latestVersion}</b>
+        <span>Vous utilisez la version ${update.installed?.version || '?'}.</span>
+      </div>
+      <a class="btn btn-sm update-banner-cta" href="#/settings/mises-a-jour">Mettre à jour</a>
+      <button class="btn btn-sm update-banner-later" data-later>Plus tard</button>
     </div>`,
   );
   box.querySelector('[data-later]').addEventListener('click', () => {
     try {
-      localStorage.setItem('astra.update.dismissed', update.latest);
+      localStorage.setItem('astra.update.dismissed', update.latestVersion);
     } catch {
-      // stockage indisponible : la bannière reviendra au prochain chargement
+      // stockage indisponible : le bandeau reviendra au prochain chargement
     }
     box.textContent = '';
   });
@@ -144,11 +146,12 @@ function renderShell() {
         </div>
       </aside>
       <div>
+        <div id="banner"></div>
         <header class="topbar">
           <button class="btn btn-ghost btn-icon" id="menu-btn" aria-label="Menu">${icon('menu')}</button>
           ${brand()}
         </header>
-        <main class="main"><div class="view"><div id="banner"></div><div id="view"></div></div></main>
+        <main class="main"><div class="view"><div id="view"></div></div></main>
       </div>
     </div>`,
   );
@@ -188,7 +191,8 @@ async function startSession(user) {
   route();
   clearInterval(updatePoller);
   checkUpdate();
-  updatePoller = setInterval(checkUpdate, 15 * 60_000);
+  // le panel vérifie GitHub toutes les 5 minutes ; on relit son résultat chaque minute
+  updatePoller = setInterval(checkUpdate, 60_000);
 }
 
 function endSession(setupRequired = false) {

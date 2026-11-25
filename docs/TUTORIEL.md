@@ -118,11 +118,11 @@ Toujours en SSH sur le Pi :
 sudo apt install -y git
 ```
 
-Chaque version d'AstraPanel est publiée sur sa propre branche, nommée `AstraPanel-version.X.Y.Z-latest` pour la plus
-récente. Cette commande télécharge automatiquement la dernière version :
+La dernière version d'AstraPanel se trouve toujours sur la branche `AstraPanel-Latest` (chaque version est aussi gardée
+sur sa propre branche `AstraPanel-V.X.Y.Z`). Téléchargez-la :
 
 ```bash
-git clone -b "$(git ls-remote --heads https://github.com/rizaky-myapps/AstraPanel.git 'AstraPanel-version.*-latest' | sed 's|.*refs/heads/||' | sort -V | tail -n 1)" https://github.com/rizaky-myapps/AstraPanel.git
+git clone -b AstraPanel-Latest https://github.com/rizaky-myapps/AstraPanel.git
 ```
 
 ```bash
@@ -437,14 +437,14 @@ supprimer un compte. Il reste toujours au moins un administrateur.
 
 ## 14. Entretien : mises à jour, sauvegardes, journaux
 
-**Mettre à jour AstraPanel depuis le panel.** Le panel vérifie toutes les 6 heures s'il existe une nouvelle version
-sur GitHub. Quand c'est le cas, les administrateurs voient une **bannière** en haut de chaque page. Dans
-**Paramètres → Mises à jour** :
+**Mettre à jour AstraPanel depuis le panel.** Toutes les **5 minutes**, le panel regarde la branche
+`AstraPanel-Latest` sur GitHub et lit la version écrite dans son `package.json`. Si elle est plus récente que la
+version installée, les administrateurs voient un **bandeau vert** en haut de chaque page : « Mise à jour disponible ».
+Dans **Paramètres → Mises à jour** :
 
-- **Branche suivie** : laissez **Automatique** : le panel suit la dernière version publiée (branche
-  `AstraPanel-version.X.Y.Z-latest`). Vous pouvez aussi choisir une version précise ;
-- **Vérifier les mises à jour** : vérifie tout de suite ;
-- **Mettre à jour maintenant** : télécharge la nouvelle version et l'installe. Le journal s'affiche en direct ; le
+- vous voyez la **version installée**, la **dernière version publiée** et l'heure de la prochaine vérification ;
+- **Vérifier maintenant** : vérifie tout de suite, sans attendre les 5 minutes ;
+- **Mettre à jour vers la X.Y.Z** : télécharge la nouvelle version et l'installe. Le journal s'affiche en direct ; le
   panel redémarre (vos applications aussi) et la page se recharge toute seule au bout d'une à trois minutes.
 
 > Si votre panel a été installé avant l'arrivée de cette fonction, faites une dernière mise à jour en SSH en
@@ -455,6 +455,15 @@ En SSH, la même mise à jour se lance avec :
 ```bash
 sudo astrapanel-update
 ```
+
+Pour revenir à une version précise (chaque version a sa branche `AstraPanel-V.X.Y.Z`), par exemple la 1.2.3 :
+
+```bash
+sudo astrapanel-update AstraPanel-V.1.2.3
+```
+
+Le panel proposera de nouveau la dernière version dans les 5 minutes. Ne revenez pas avant la 1.2.3 : les versions
+plus anciennes ne savent pas suivre la branche `AstraPanel-Latest`.
 
 **Journaux du panel** :
 
@@ -540,6 +549,20 @@ pas surcharger le Pi. Corrigez l'erreur visible dans la console puis cliquez sur
 
 **Tunnel Cloudflare : « Conflit DNS ».** Un enregistrement existe déjà pour ce domaine chez Cloudflare. Cliquez sur
 **Remplacer** (ou supprimez-le vous-même dans le tableau de bord Cloudflare puis **Synchroniser**).
+
+**« La branche AstraPanel-version… n'existe pas sur le dépôt ».** Votre panel est antérieur à la version 1.2.3 et
+cherche encore les anciennes branches. Réinstallez-le une fois en SSH depuis `AstraPanel-Latest` (vos applications et
+comptes sont conservés) :
+
+```bash
+rm -rf ~/AstraPanel && git clone -b AstraPanel-Latest https://github.com/rizaky-myapps/AstraPanel.git ~/AstraPanel
+```
+
+```bash
+cd ~/AstraPanel && sudo ./install.sh
+```
+
+Les mises à jour suivantes se feront depuis le panel.
 
 **La mise à jour depuis le panel échoue.** Le journal de la mise à jour s'affiche dans **Paramètres → Mises à jour**.
 Si le dépôt GitHub est privé, il doit avoir été cloné avec un jeton dans l'URL pour que le Pi puisse le télécharger.

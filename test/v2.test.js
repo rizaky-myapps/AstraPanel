@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtempSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { startTestPanel } from './helpers.js';
 import { Metrics } from '../src/metrics.js';
 import { parseTunnelToken, hostnameOf } from '../src/tunnel.js';
-import { parseGithub, parseVersionBranch, pickLatestBranch } from '../src/update.js';
+import { Updater, parseGithub } from '../src/update.js';
+import { LATEST_BRANCH, compareVersions, nextVersion, parseVersionBranch, versionBranch } from '../src/version.js';
 import { niceTicks } from '../public/js/chart.js';
 
 test('historique : agrégation par palier et conservation limitée', () => {
@@ -44,16 +46,139 @@ test('jeton de tunnel Cloudflare', () => {
   assert.equal(hostnameOf('monsite.fr'), 'monsite.fr');
 });
 
-test('branches de version : la mise à jour suit la branche « -latest »', () => {
-  const names = ['main', 'claude/test', 'AstraPanel-version.1.0.0', 'AstraPanel-version.1.1.0-latest', 'AstraPanel-version.1.0.5'];
-  assert.equal(pickLatestBranch(names), 'AstraPanel-version.1.1.0-latest');
-  // après publication de 1.2.0, 1.1.0 a perdu son suffixe
-  assert.equal(pickLatestBranch(['AstraPanel-version.1.1.0', 'AstraPanel-version.1.2.0-latest']), 'AstraPanel-version.1.2.0-latest');
-  // tri numérique, pas alphabétique
-  assert.equal(pickLatestBranch(['AstraPanel-version.1.9.0', 'AstraPanel-version.1.10.0']), 'AstraPanel-version.1.10.0');
-  assert.equal(pickLatestBranch(['main']), null);
-  assert.deepEqual(parseVersionBranch('AstraPanel-version.2.0.1-latest'), { version: '2.0.1', parts: [2, 0, 1], latest: true });
-  assert.equal(parseVersionBranch('AstraPanel-version.2.0'), null);
+test('versions : +0.0.1 avec retenue et branches AstraPanel-V.X.Y.Z', () => {
+  assert.equal(nextVersion('1.2.8'), '1.2.9');
+  assert.equal(nextVersion('1.2.9'), '1.3.0');
+  assert.equal(nextVersion('1.3.0'), '1.3.1');
+  assert.equal(nextVersion('1.9.9'), '2.0.0');
+  assert.throws(() => nextVersion('1.2'));
+  assert.ok(compareVersions('1.3.0', '1.2.9') > 0);
+  assert.ok(compareVersions('1.2.10', '1.2.9') > 0); // comparaison numérique, pas alphabétique
+  assert.equal(compareVersions('1.2.2', '1.2.2'), 0);
+  assert.equal(LATEST_BRANCH, 'AstraPanel-Latest');
+  assert.equal(versionBranch('1.3.0'), 'AstraPanel-V.1.3.0');
+  assert.equal(parseVersionBranch('AstraPanel-V.1.3.0'), '1.3.0');
+  assert.equal(parseVersionBranch('AstraPanel-version.1.3.0-latest'), null);
+});
+
+const gitIn = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { cwd, encoding: 'utf8' }).trim();
+
+function publishLocal(repo, version) {
+  writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'astrapanel', version }, null, 2) + '\n');
+  gitIn(repo, 'add', 'package.json');
+  gitIn(repo, 'commit', '-qm', `Version ${version}`);
+  return gitIn(repo, 'rev-parse', 'HEAD');
+}
+
+test('mises à jour : le panel lit la version publiée sur AstraPanel-Latest', async () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'astra-update-'));
+  const repo = path.join(tmp, 'depot');
+  mkdirSync(repo);
+  gitIn(repo, 'init', '-q', '-b', LATEST_BRANCH);
+  const first = publishLocal(repo, '1.2.2');
+  const root = path.join(tmp, 'install');
+  mkdirSync(root);
+  writeFileSync(path.join(root, 'version.json'), JSON.stringify({ repo, commit: first, installedAt: 1 }));
+  const config = { root, dataDir: path.join(tmp, 'data'), version: '1.2.2' };
+  mkdirSync(config.dataDir);
+  const updater = new Updater({ store: { data: { settings: {} } }, config });
+
+  let st = await updater.check();
+  assert.equal(st.error, null);
+  assert.equal(st.branch, 'AstraPanel-Latest');
+  assert.equal(st.latestVersion, '1.2.2');
+  assert.equal(st.available, false); // même version : rien à proposer
+  assert.equal(existsSync(updater.cacheDir), false); // le téléchargement temporaire est supprimé
+
+  const second = publishLocal(repo, '1.2.3');
+  const [a, b] = [updater.check(), updater.check()]; // vérifications simultanées : une seule à la fois
+  assert.equal(a, b);
+  st = await a;
+  assert.equal(st.latestVersion, '1.2.3');
+  assert.equal(st.latestCommit, second);
+  assert.equal(st.available, true);
+  assert.equal(st.checking, false); // la réponse arrive une fois la vérification terminée
+  assert.equal(st.installed.version, '1.2.2');
+
+  config.version = '1.2.3'; // après la mise à jour
+  assert.equal((await updater.status()).available, false);
+
+  // une branche qui ne s'appelle pas AstraPanel-Latest n'est pas suivie
+  gitIn(repo, 'branch', '-m', LATEST_BRANCH, 'main');
+  st = await updater.check();
+  assert.match(st.error, /AstraPanel-Latest/);
+});
+
+test('publication : nouvelle-version.sh pousse AstraPanel-Latest et AstraPanel-V.X.Y.Z', () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'astra-release-'));
+  const remote = path.join(tmp, 'remote.git');
+  gitIn(tmp, 'init', '-q', '--bare', remote);
+  const work = path.join(tmp, 'work');
+  mkdirSync(path.join(work, 'scripts'), { recursive: true });
+  mkdirSync(path.join(work, 'src'));
+  copyFileSync(new URL('../scripts/nouvelle-version.sh', import.meta.url), path.join(work, 'scripts/nouvelle-version.sh'));
+  copyFileSync(new URL('../src/version.js', import.meta.url), path.join(work, 'src/version.js'));
+  gitIn(work, 'init', '-q', '-b', 'dev');
+  gitIn(work, 'remote', 'add', 'origin', remote);
+  publishLocal(work, '1.2.8');
+  gitIn(work, 'add', '.');
+  gitIn(work, 'commit', '-qm', 'Projet');
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.com' };
+  const release = () => execFileSync('bash', ['scripts/nouvelle-version.sh'], { cwd: work, env, encoding: 'utf8', stdio: 'pipe' });
+  const remoteVersion = (branch) => JSON.parse(gitIn(remote, 'show', `${branch}:package.json`)).version;
+  const heads = () => gitIn(remote, 'for-each-ref', '--format=%(refname:short)', 'refs/heads').split('\n').sort();
+
+  release(); // première publication : 1.2.8 → 1.2.9
+  assert.deepEqual(heads(), ['AstraPanel-Latest', 'AstraPanel-V.1.2.9']);
+  assert.equal(remoteVersion('AstraPanel-Latest'), '1.2.9');
+  assert.equal(gitIn(remote, 'rev-parse', 'AstraPanel-Latest'), gitIn(remote, 'rev-parse', 'AstraPanel-V.1.2.9'));
+
+  writeFileSync(path.join(work, 'nouveau.txt'), 'changement');
+  gitIn(work, 'add', '.');
+  gitIn(work, 'commit', '-qm', 'Changement');
+  release(); // 1.2.9 → 1.3.0, avec les mêmes fichiers sur les deux branches
+  assert.deepEqual(heads(), ['AstraPanel-Latest', 'AstraPanel-V.1.2.9', 'AstraPanel-V.1.3.0']);
+  assert.equal(remoteVersion('AstraPanel-Latest'), '1.3.0');
+  assert.equal(remoteVersion('AstraPanel-V.1.2.9'), '1.2.9'); // l'ancienne version reste intacte
+  assert.equal(gitIn(remote, 'show', 'AstraPanel-V.1.3.0:nouveau.txt'), 'changement');
+
+  // une branche de version renommée à la main plus haut que AstraPanel-Latest : la numérotation la suit
+  gitIn(work, 'push', '-q', 'origin', 'HEAD:refs/heads/AstraPanel-V.1.3.5');
+  writeFileSync(path.join(work, 'autre.txt'), 'encore');
+  gitIn(work, 'add', '.');
+  gitIn(work, 'commit', '-qm', 'Autre changement');
+  release();
+  assert.equal(remoteVersion('AstraPanel-Latest'), '1.3.6');
+
+  // des modifications non commitées bloquent la publication
+  writeFileSync(path.join(work, 'brouillon.txt'), 'x');
+  assert.throws(release, /pas commitées/);
+});
+
+test('publication : AstraPanel-Latest sans package.json (ancien main) et versions déjà renommées', () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'astra-release2-'));
+  const remote = path.join(tmp, 'remote.git');
+  gitIn(tmp, 'init', '-q', '--bare', remote);
+  const work = path.join(tmp, 'work');
+  mkdirSync(path.join(work, 'scripts'), { recursive: true });
+  mkdirSync(path.join(work, 'src'));
+  gitIn(work, 'init', '-q', '-b', 'dev');
+  gitIn(work, 'remote', 'add', 'origin', remote);
+  writeFileSync(path.join(work, 'README.md'), '# AstraPanel');
+  gitIn(work, 'add', '.');
+  gitIn(work, 'commit', '-qm', 'README initial');
+  gitIn(work, 'push', '-q', 'origin', 'HEAD:refs/heads/AstraPanel-Latest'); // l'ancien main renommé
+  copyFileSync(new URL('../scripts/nouvelle-version.sh', import.meta.url), path.join(work, 'scripts/nouvelle-version.sh'));
+  copyFileSync(new URL('../src/version.js', import.meta.url), path.join(work, 'src/version.js'));
+  publishLocal(work, '1.2.1');
+  gitIn(work, 'add', '.');
+  gitIn(work, 'commit', '-qm', 'Panel');
+  gitIn(work, 'push', '-q', 'origin', 'HEAD:refs/heads/AstraPanel-V.1.2.2'); // anciennes branches renommées
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.com' };
+  const out = execFileSync('bash', ['scripts/nouvelle-version.sh'], { cwd: work, env, encoding: 'utf8', stdio: 'pipe' });
+  assert.match(out, /1\.2\.2 → nouvelle version : 1\.2\.3/);
+  assert.equal(JSON.parse(gitIn(remote, 'show', 'AstraPanel-Latest:package.json')).version, '1.2.3');
+  assert.equal(gitIn(remote, 'rev-parse', 'AstraPanel-Latest'), gitIn(remote, 'rev-parse', 'AstraPanel-V.1.2.3'));
 });
 
 test('analyse des URL GitHub', () => {

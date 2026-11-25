@@ -1,35 +1,16 @@
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { lstat, open, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { HttpError } from './http/util.js';
 import { baseEnv } from './apps/process.js';
 import { stripAnsi } from './apps/logs.js';
+import { LATEST_BRANCH, compareVersions, parseVersion } from './version.js';
 
 const execFileAsync = promisify(execFile);
-const BRANCH_RE = /^[A-Za-z0-9._/-]{1,200}$/;
-// Chaque version est publiée sur « AstraPanel-version.X.Y.Z-latest » ; l'ancienne perd le suffixe « -latest ».
-const VERSION_BRANCH_RE = /^AstraPanel-version\.(\d+)\.(\d+)\.(\d+)(-latest)?$/;
-
-export function parseVersionBranch(name) {
-  const m = VERSION_BRANCH_RE.exec(String(name));
-  return m ? { version: `${m[1]}.${m[2]}.${m[3]}`, parts: [Number(m[1]), Number(m[2]), Number(m[3])], latest: Boolean(m[4]) } : null;
-}
-
-// Tri des branches de version, de la plus récente à la plus ancienne.
-function compareVersionBranches(a, b) {
-  const [x, y] = [parseVersionBranch(a), parseVersionBranch(b)];
-  for (let i = 0; i < 3; i++) if (x.parts[i] !== y.parts[i]) return y.parts[i] - x.parts[i];
-  return Number(y.latest) - Number(x.latest);
-}
-
-// Branche la plus récente : celle marquée « -latest » (la plus haute s'il y en a plusieurs), sinon la plus haute version.
-export function pickLatestBranch(names) {
-  const versions = names.filter((n) => parseVersionBranch(n)).sort(compareVersionBranches);
-  return versions.find((n) => parseVersionBranch(n).latest) || versions[0] || null;
-}
-const CHECK_EVERY = 6 * 3600_000;
+// Le panel regarde la branche « AstraPanel-Latest » toutes les 5 minutes.
+export const CHECK_EVERY = 5 * 60_000;
 
 // Fichiers du service de mise à jour (installés par install.sh, écrits par root)
 const UPDATER_UNIT = '/etc/systemd/system/astrapanel-update.path';
@@ -77,7 +58,10 @@ export class Updater {
     this.store = store;
     this.config = config;
     this.requestFile = path.join(config.dataDir, 'update-request');
-    this.state = { checking: false, lastCheck: null, latest: null, latestBranch: null, commits: [], branches: [], error: null };
+    this.cacheDir = path.join(config.dataDir, 'update-cache');
+    this.inflight = null;
+    this.nextCheck = null;
+    this.state = { lastCheck: null, latestCommit: null, latestVersion: null, commits: [], error: null };
   }
 
   // Version installée : écrite par install.sh, sinon lue dans le dépôt git (mode développement).
@@ -98,73 +82,78 @@ export class Updater {
     if (v) return v;
     if (!existsSync(path.join(this.config.root, '.git'))) return null;
     try {
-      const [repo, branch, commit] = await Promise.all([
+      const [repo, commit] = await Promise.all([
         git(['remote', 'get-url', 'origin'], this.config.root),
-        git(['rev-parse', '--abbrev-ref', 'HEAD'], this.config.root),
         git(['rev-parse', 'HEAD'], this.config.root),
       ]);
-      return { repo, branch, commit, source: 'git' };
+      return { repo, commit, source: 'git' };
     } catch {
       return null;
     }
   }
 
-  // Réglage : '' = automatique (dernière version publiée), sinon une branche précise.
-  get branchSetting() {
-    return this.store.data.settings.update.branch || '';
-  }
-
-  // Branche réellement suivie, résolue à partir de la liste des branches du dépôt.
-  async branch(names = this.state.branches) {
-    if (this.branchSetting) return this.branchSetting;
-    return pickLatestBranch(names) || (await this.installedOrGit())?.branch || 'main';
-  }
-
-  setBranch(branch) {
-    const b = String(branch || '').trim();
-    if (b && (!BRANCH_RE.test(b) || b.startsWith('-') || b.includes('..'))) throw new HttpError(400, 'Nom de branche invalide');
-    this.store.data.settings.update.branch = b;
-    this.store.save();
-  }
-
-  // Compare le commit installé au dernier commit de la branche suivie sur GitHub.
-  async check() {
-    if (this.state.checking) return this.status();
-    const installed = await this.installedOrGit();
-    if (!installed?.repo) {
-      this.state.error = 'Installation non reliée à un dépôt Git : réinstallez avec install.sh depuis un clone.';
-      return this.status();
-    }
-    this.state.checking = true;
+  // Lit la version publiée sur AstraPanel-Latest : téléchargement minimal (dernier commit seulement)
+  // dans un dépôt temporaire, puis lecture de « version » dans son package.json.
+  async readLatest(repo) {
+    const dir = this.cacheDir;
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
     try {
-      const heads = await git(['ls-remote', '--heads', installed.repo]);
-      const branches = heads
-        .split('\n')
-        .map((l) => l.split('\t'))
-        .filter((p) => p[1]?.startsWith('refs/heads/'))
-        .map(([sha, ref]) => ({ name: ref.slice('refs/heads/'.length), sha }));
-      const branch = await this.branch(branches.map((b) => b.name));
-      const head = branches.find((b) => b.name === branch);
-      if (!head) throw new Error(`la branche « ${branch} » n’existe pas sur le dépôt`);
-      // versions d'abord (de la plus récente à la plus ancienne), puis les autres branches
-      const names = branches.map((b) => b.name);
-      const versions = names.filter((n) => parseVersionBranch(n)).sort(compareVersionBranches);
-      Object.assign(this.state, {
-        latest: head.sha,
-        latestBranch: branch,
-        branches: [...versions, ...names.filter((n) => !parseVersionBranch(n)).sort()],
-        commits: [],
-        error: null,
-      });
-      if (head.sha !== installed.commit) this.state.commits = await this.commitsBetween(installed, head.sha);
+      await git(['init', '--bare', '--quiet', dir]);
+      await git(['--git-dir', dir, 'fetch', '--quiet', '--depth=1', '--no-tags', repo, `+refs/heads/${LATEST_BRANCH}:refs/heads/latest`]);
+      const commit = await git(['--git-dir', dir, 'rev-parse', 'refs/heads/latest']);
+      let version = null;
+      try {
+        version = JSON.parse(await git(['--git-dir', dir, 'show', 'refs/heads/latest:package.json'])).version;
+      } catch {
+        // package.json absent ou illisible : traité ci-dessous
+      }
+      if (!parseVersion(version)) throw new Error(`version illisible dans le package.json de « ${LATEST_BRANCH} »`);
+      return { commit, version };
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // Compare la version installée à celle de la branche AstraPanel-Latest.
+  // Une seule vérification à la fois : les appels simultanés partagent la même.
+  check() {
+    this.inflight ||= this.doCheck()
+      .finally(() => {
+        this.inflight = null;
+      })
+      .then(() => this.status());
+    return this.inflight;
+  }
+
+  async doCheck() {
+    const installed = await this.installedOrGit();
+    if (!installed?.repo || String(installed.repo).startsWith('-')) {
+      this.state.error = 'Installation non reliée à un dépôt Git : réinstallez avec install.sh depuis un clone.';
+      return;
+    }
+    try {
+      // 1. dernier commit de la branche (quelques octets) ; 2. sa version, seulement s'il a changé
+      const ref = `refs/heads/${LATEST_BRANCH}`;
+      const line = (await git(['ls-remote', installed.repo, ref])).split('\n').find((l) => l.split('\t')[1] === ref);
+      if (!line) throw new Error(`la branche « ${LATEST_BRANCH} » n’existe pas sur le dépôt`);
+      const sha = line.split('\t')[0];
+      if (sha !== this.state.latestCommit || !this.state.latestVersion) {
+        const latest = await this.readLatest(installed.repo);
+        const newer = compareVersions(latest.version, this.config.version) > 0;
+        Object.assign(this.state, {
+          latestCommit: latest.commit,
+          latestVersion: latest.version,
+          commits: newer && latest.commit !== installed.commit ? await this.commitsBetween(installed, latest.commit) : [],
+        });
+      }
+      this.state.error = null;
     } catch (err) {
       const lines = (err.stderr || err.message).toString().trim().split('\n');
       this.state.error = `Vérification impossible : ${lines.find((l) => l.startsWith('fatal:')) || lines.pop()}`;
     } finally {
-      this.state.checking = false;
       this.state.lastCheck = Date.now();
     }
-    return this.status();
   }
 
   // Liste des commits à venir via l'API GitHub (facultatif : la mise à jour fonctionne sans).
@@ -204,29 +193,27 @@ export class Updater {
 
   async status() {
     const installed = await this.installedOrGit();
-    const branch = await this.branch();
     const run = await this.runStatus();
-    const sameBranch = this.state.latestBranch === branch;
+    const { latestVersion } = this.state;
     return {
       installed: installed
         ? {
             repo: maskUrl(installed.repo),
-            branch: installed.branch,
             commit: installed.commit,
             version: this.config.version,
             installedAt: installed.installedAt || null,
             source: installed.source,
           }
         : null,
-      auto: !this.branchSetting,
-      branch,
-      latestVersion: parseVersionBranch(branch)?.version || null,
-      branches: this.state.branches,
-      latest: sameBranch ? this.state.latest : null,
-      available: Boolean(installed && sameBranch && this.state.latest && this.state.latest !== installed.commit),
-      commits: sameBranch ? this.state.commits : [],
-      checking: this.state.checking,
+      branch: LATEST_BRANCH,
+      latestVersion,
+      latestCommit: this.state.latestCommit,
+      available: Boolean(installed && latestVersion && compareVersions(latestVersion, this.config.version) > 0),
+      commits: this.state.commits,
+      checking: Boolean(this.inflight),
       lastCheck: this.state.lastCheck,
+      nextCheck: this.nextCheck,
+      interval: CHECK_EVERY,
       error: this.state.error,
       updater: existsSync(UPDATER_UNIT),
       pending: existsSync(this.requestFile),
@@ -247,17 +234,25 @@ export class Updater {
     if (run?.state === 'running' && Date.now() - run.at < 30 * 60_000) throw new HttpError(409, 'Une mise à jour est déjà en cours');
     const existing = await lstat(this.requestFile).catch(() => null);
     if (existing) throw new HttpError(409, 'Une mise à jour est déjà demandée');
-    if (!this.state.latestBranch) await this.check(); // résout la branche de la dernière version
-    await writeFile(this.requestFile, JSON.stringify({ branch: await this.branch(), by: user.username, at: Date.now() }), { mode: 0o644 });
+    // le service root installe toujours AstraPanel-Latest : ce fichier sert seulement de déclencheur
+    const request = { branch: LATEST_BRANCH, version: this.state.latestVersion, by: user.username, at: Date.now() };
+    await writeFile(this.requestFile, JSON.stringify(request), { mode: 0o644 });
     return { ok: true };
   }
 
+  // Première vérification peu après le démarrage, puis toutes les 5 minutes.
   start() {
-    const tick = () => this.check().catch(() => {});
-    this.firstTimer = setTimeout(tick, 20_000);
-    this.timer = setInterval(tick, CHECK_EVERY);
+    const tick = () => {
+      this.nextCheck = Date.now() + CHECK_EVERY;
+      this.check().catch(() => {});
+    };
+    this.nextCheck = Date.now() + 15_000;
+    this.firstTimer = setTimeout(() => {
+      tick();
+      this.timer = setInterval(tick, CHECK_EVERY);
+      this.timer.unref();
+    }, 15_000);
     this.firstTimer.unref();
-    this.timer.unref();
   }
 
   stop() {

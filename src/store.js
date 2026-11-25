@@ -10,8 +10,6 @@ const DEFAULT_SETTINGS = {
     token: '',
     api: { apiToken: '', accountId: '', accountName: '', tunnelId: '', tunnelName: '', tunnelToken: '' },
   },
-  // Branche GitHub suivie pour les mises à jour (vide = celle de l'installation)
-  update: { branch: '' },
 };
 
 function mergeDefaults(defaults, value) {

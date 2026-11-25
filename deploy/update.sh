@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Mise à jour d'AstraPanel depuis son dépôt Git.
-# Lancé en root par astrapanel-update.service (demande faite depuis le panel) ou à la main : sudo astrapanel-update
+# Lancé en root par astrapanel-update.service (demande faite depuis le panel) ou à la main :
+#   sudo astrapanel-update                      dernière version (branche AstraPanel-Latest)
+#   sudo astrapanel-update AstraPanel-V.1.2.3   une version précise (retour en arrière, 1.2.3 au minimum)
 set -euo pipefail
 
 INSTALL_DIR="${ASTRA_DIR:-/opt/astrapanel}"
@@ -25,13 +27,10 @@ status() {
 }
 trap 'status failed "La mise à jour a échoué : consultez le journal."' ERR
 
-# Branche demandée par le panel (le fichier est écrit par l'utilisateur du panel : on le valide)
-requested=""
-if [ -f "$REQUEST" ] && [ ! -L "$REQUEST" ]; then
-  requested="$(head -c 4096 "$REQUEST" | "$NODE_BIN" -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
-    try { const b = String(JSON.parse(s).branch || ""); if (!b.startsWith("-") && !b.includes("..")) process.stdout.write(b); } catch {} });')"
-fi
+# La demande du panel (data/update-request) n'est qu'un déclencheur : on installe toujours AstraPanel-Latest.
 rm -f "$REQUEST"
+branch="${1:-AstraPanel-Latest}"
+[[ "$branch" =~ $BRANCH_RE ]] && [[ "$branch" != -* ]] && [[ "$branch" != *..* ]] || { echo "Branche invalide : $branch"; exit 1; }
 
 version_field() {
   "$NODE_BIN" -e 'try { process.stdout.write(String(require(process.argv[1])[process.argv[2]] || "")); } catch {}' "$INSTALL_DIR/version.json" "$1"
@@ -39,14 +38,6 @@ version_field() {
 repo="$(version_field repo)"
 [ -n "$repo" ] || { echo "Dépôt inconnu : relancez install.sh depuis un clone Git."; exit 1; }
 export GIT_TERMINAL_PROMPT=0
-
-# Sans demande du panel (sudo astrapanel-update) : dernière version publiée « AstraPanel-version.X.Y.Z-latest »
-latest=""
-if [ -z "$requested" ]; then
-  latest="$(git ls-remote --heads -- "$repo" 'AstraPanel-version.*-latest' | sed 's|.*refs/heads/||' | sort -V | tail -n 1 || true)"
-fi
-branch="${requested:-${latest:-$(version_field branch)}}"
-[[ "$branch" =~ $BRANCH_RE ]] || { echo "Branche invalide : $branch"; exit 1; }
 
 echo "==> Mise à jour depuis la branche « $branch »"
 status running "Téléchargement de la nouvelle version…"
@@ -60,7 +51,8 @@ else
   git -C "$SRC" clean -fdq
 fi
 commit="$(git -C "$SRC" rev-parse HEAD)"
-echo "==> Version ${commit:0:7} : $(git -C "$SRC" log -1 --format=%s)"
+version="$("$NODE_BIN" -e 'try { process.stdout.write(String(require(process.argv[1]).version)); } catch {}' "$SRC/package.json")"
+echo "==> Version ${version:-?} (commit ${commit:0:7} : $(git -C "$SRC" log -1 --format=%s))"
 
 status running "Installation de la nouvelle version…" "$commit"
 "$SRC/install.sh"

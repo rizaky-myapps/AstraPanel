@@ -1,36 +1,44 @@
 #!/usr/bin/env bash
-# Publie une nouvelle version d'AstraPanel sur sa propre branche.
+# Publie une nouvelle version d'AstraPanel.
 #
-#   ./scripts/nouvelle-version.sh 1.2.0
+#   ./scripts/nouvelle-version.sh
 #
-# 1. met « version » de package.json à 1.2.0 (et commite si besoin) ;
-# 2. pousse la branche « AstraPanel-version.1.2.0-latest » ;
-# 3. renomme l'ancienne branche « AstraPanel-version.X.Y.Z-latest » en « AstraPanel-version.X.Y.Z ».
-# Les panels installés suivent automatiquement la branche « -latest » pour leurs mises à jour.
+# 1. calcule la version suivante en ajoutant 0.0.1 à la dernière publiée (la plus haute entre le package.json
+#    de AstraPanel-Latest et les branches AstraPanel-V.X.Y.Z) : 1.2.8 → 1.2.9 → 1.3.0 → 1.3.1 ;
+# 2. l'écrit dans package.json et commite ;
+# 3. pousse ce commit sur « AstraPanel-Latest » (la dernière version, surveillée par les panels installés)
+#    et sur une nouvelle branche « AstraPanel-V.X.Y.Z » (copie de cette version, gardée telle quelle).
 set -euo pipefail
 
-VERSION="${1:-}"
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Usage : $0 X.Y.Z (ex. 1.2.0)" >&2; exit 1; }
+LATEST=AstraPanel-Latest
 cd "$(dirname "$0")/.."
 [ -z "$(git status --porcelain)" ] || { echo "Des modifications ne sont pas commitées." >&2; exit 1; }
 
-NEW="AstraPanel-version.$VERSION-latest"
-git fetch --quiet origin
-if git ls-remote --exit-code --heads origin "AstraPanel-version.$VERSION" "$NEW" >/dev/null; then
-  echo "La version $VERSION est déjà publiée." >&2
-  exit 1
-fi
-
-# La nouvelle version doit être plus récente que la dernière publiée
-previous="$(git ls-remote --heads origin 'AstraPanel-version.*-latest' | sed 's|.*refs/heads/||')"
-for b in $previous; do
-  v="${b#AstraPanel-version.}"
-  v="${v%-latest}"
-  if [ "$(printf '%s\n%s\n' "$v" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
-    echo "La version $VERSION doit être plus récente que $v." >&2
+# Dernière version publiée : package.json de AstraPanel-Latest et branches AstraPanel-V.X.Y.Z
+# (pour la toute première publication : la version de package.json)
+base="$(node -p "require('./package.json').version")"
+heads="$(git ls-remote --heads origin)" || { echo "Dépôt distant injoignable." >&2; exit 1; }
+published=""
+if grep -q "	refs/heads/$LATEST\$" <<<"$heads"; then
+  git fetch --quiet origin "refs/heads/$LATEST"
+  if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+    echo "$LATEST contient des commits absents d'ici : intégrez-les d'abord (git pull origin $LATEST)." >&2
     exit 1
   fi
-done
+  published="$(git show FETCH_HEAD:package.json 2>/dev/null | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { try { console.log(JSON.parse(s).version || ""); } catch {} });' || true)"
+else
+  echo "Première publication sur $LATEST."
+fi
+published="$( (echo "$published"; sed -n 's|.*refs/heads/AstraPanel-V\.\([0-9]*\.[0-9]*\.[0-9]*\)$|\1|p' <<<"$heads") | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+base="${published:-$base}"
+
+VERSION="$(node src/version.js next "$base")"
+NEW="AstraPanel-V.$VERSION"
+if git ls-remote --exit-code --heads origin "$NEW" >/dev/null; then
+  echo "La branche $NEW existe déjà." >&2
+  exit 1
+fi
+echo "Dernière version publiée : $base → nouvelle version : $VERSION"
 
 if [ "$(node -p "require('./package.json').version")" != "$VERSION" ]; then
   node -e 'const fs = require("fs"); const p = JSON.parse(fs.readFileSync("package.json"));
@@ -38,13 +46,6 @@ if [ "$(node -p "require('./package.json').version")" != "$VERSION" ]; then
   git commit -qm "Version $VERSION" package.json
 fi
 
-git push origin "HEAD:refs/heads/$NEW"
-echo "✔ Branche $NEW publiée"
-
-git ls-remote --heads origin 'AstraPanel-version.*-latest' | while read -r sha ref; do
-  b="${ref#refs/heads/}"
-  [ "$b" = "$NEW" ] && continue
-  git push origin "$sha:refs/heads/${b%-latest}"
-  git push origin --delete "$b"
-  echo "✔ $b renommée en ${b%-latest}"
-done
+# Les deux branches reçoivent le même commit, ou aucune des deux
+git push --atomic origin "HEAD:refs/heads/$LATEST" "HEAD:refs/heads/$NEW"
+echo "✔ Version $VERSION publiée sur $LATEST et $NEW"

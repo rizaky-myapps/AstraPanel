@@ -31,8 +31,8 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Tableau de bord** : graphiques du processeur, de la température et de la RAM sur 1 h, 24 h, 15 jours et 30 jours,
   alerte de sous-tension du Pi
 - **Explorateur de stockage** : les disques du Pi et leur contenu trié par taille, pour trouver ce qui prend de la place
-- **Mises à jour depuis le panel** : AstraPanel détecte les nouvelles versions sur GitHub et prévient les
-  administrateurs ; un clic suffit pour mettre à jour, sans SSH
+- **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
+  aux administrateurs par un bandeau vert ; un clic suffit pour mettre à jour, sans SSH
 - **Grades ADMIN et UTILISATEUR** : les utilisateurs gèrent les applications, les administrateurs gèrent aussi le panel
 - **Modèles de départ** : bot discord.js (commandes `/ping` et `/text`), site Node.js, site statique
 - Applications relancées automatiquement au démarrage du Pi, interface utilisable sur mobile
@@ -50,10 +50,10 @@ Sur un Raspberry Pi 5 sous **Raspberry Pi OS 64 bits** (Lite ou Desktop) :
 sudo apt install -y git
 ```
 
-Chaque version est publiée sur sa propre branche ; cette commande télécharge la plus récente :
+La dernière version est toujours sur la branche `AstraPanel-Latest` :
 
 ```bash
-git clone -b "$(git ls-remote --heads https://github.com/rizaky-myapps/AstraPanel.git 'AstraPanel-version.*-latest' | sed 's|.*refs/heads/||' | sort -V | tail -n 1)" https://github.com/rizaky-myapps/AstraPanel.git
+git clone -b AstraPanel-Latest https://github.com/rizaky-myapps/AstraPanel.git
 ```
 
 ```bash
@@ -70,11 +70,14 @@ systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script
 
 ## Versions
 
-- Chaque mise à jour est publiée sur une nouvelle branche **`AstraPanel-version.X.Y.Z-latest`** (X.Y.Z = version du
-  panel). À la publication suivante, l'ancienne branche perd son suffixe : `AstraPanel-version.X.Y.Z`.
-- Les panels installés suivent automatiquement la branche `-latest` : la bannière de mise à jour apparaît dès qu'une
-  nouvelle version est publiée, et un clic dans **Paramètres → Mises à jour** l'installe.
-- Pour publier une version : `./scripts/nouvelle-version.sh X.Y.Z`.
+- **`AstraPanel-Latest`** (branche principale) contient toujours la dernière version. Chaque version est aussi
+  conservée sur sa propre branche **`AstraPanel-V.X.Y.Z`**, avec exactement les mêmes fichiers.
+- Les versions avancent de 0.0.1 à chaque publication : 1.2.8 → 1.2.9 → 1.3.0 → 1.3.1.
+- Les panels installés regardent `AstraPanel-Latest` toutes les 5 minutes et lisent la version dans son
+  `package.json` : si elle est plus récente, un bandeau vert l'annonce aux administrateurs, et un clic dans
+  **Paramètres → Mises à jour** l'installe.
+- Pour publier une version : `./scripts/nouvelle-version.sh` (calcule la version suivante, met à jour
+  `package.json`, pousse `AstraPanel-Latest` et crée `AstraPanel-V.X.Y.Z`).
 
 ## Fonctionnement
 
@@ -89,7 +92,7 @@ systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script
    │ Raspberry Pi                                                         │
    │   AstraPanel :8080 ── supervise ──► cloudflared, site :4000,         │
    │   (interface + API)                  site :4001, bot Discord…        │
-   │   astrapanel-update (root, à la demande) : mise à jour depuis GitHub │
+   │   astrapanel-update (root, sur demande) : installe AstraPanel-Latest │
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -98,7 +101,7 @@ systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script
 - Les sites reçoivent leur port dans `PORT`. Le tunnel Cloudflare, lancé en même temps que le panel, redirige chaque
   domaine vers le bon port.
 - Le panel tourne sans privilèges. Pour se mettre à jour, il crée `data/update-request` : une unité systemd `.path`
-  lance alors `astrapanel-update` en root, qui télécharge la branche suivie et relance `install.sh`.
+  lance alors `astrapanel-update` en root, qui télécharge la branche `AstraPanel-Latest` et relance `install.sh`.
 - Les données sont dans `/opt/astrapanel/data` : `db.json` (configuration), `apps/<id>/` (fichiers des applis),
   `logs/` (journaux avec rotation), `metrics.json` (historique des graphiques), `bin/cloudflared`.
 
@@ -123,7 +126,8 @@ src/
   auth.js            comptes et grades (scrypt), sessions signées, limitation des tentatives
   domains.js         validation des noms de domaine
   tunnel.js          tunnel Cloudflare : cloudflared, API (tunnel, ingress, DNS)
-  update.js          détection des nouvelles versions sur GitHub, demande de mise à jour
+  update.js          suivi de la branche AstraPanel-Latest, demande de mise à jour
+  version.js         numéros de version (+0.0.1) et noms des branches
   metrics.js         historique CPU / température / RAM (1 h, 24 h, 15 j, 30 j)
   storage.js         disques et analyse de l'espace occupé
   system.js          statistiques du Raspberry Pi
