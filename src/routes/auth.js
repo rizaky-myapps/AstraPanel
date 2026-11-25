@@ -15,7 +15,7 @@ export function authRoutes(router, { auth, store }) {
       auth.checkRateLimit(ctx.ip);
       const { token, username, password } = await ctx.json();
       if (!auth.checkSetupToken(token)) throw new HttpError(403, 'Jeton d’installation invalide');
-      const user = await auth.createUser(String(username || '').trim(), password);
+      const user = await auth.createUser(String(username || '').trim(), password, 'admin');
       auth.resetRateLimit(ctx.ip);
       auth.setSessionCookie(ctx.req, ctx.res, user);
       return { user: publicUser(user) };
@@ -53,20 +53,47 @@ export function authRoutes(router, { auth, store }) {
     return { ok: true };
   });
 
-  router.get('/api/users', () => store.data.users.map(publicUser));
+  // --- Gestion des comptes (ADMIN) ----------------------------------------
+  const findUser = (id) => {
+    const user = store.data.users.find((u) => u.id === id);
+    if (!user) throw new HttpError(404, 'Utilisateur introuvable');
+    return user;
+  };
 
-  router.post('/api/users', async (ctx) => {
-    const { username, password } = await ctx.json();
-    return publicUser(await auth.createUser(String(username || '').trim(), password));
-  });
+  router.get('/api/users', () => store.data.users.map(publicUser), { admin: true });
 
-  router.delete('/api/users/:id', (ctx) => {
-    if (ctx.params.id === ctx.user.id) throw new HttpError(400, 'Vous ne pouvez pas supprimer votre propre compte');
-    const { users } = store.data;
-    const index = users.findIndex((u) => u.id === ctx.params.id);
-    if (index < 0) throw new HttpError(404, 'Utilisateur introuvable');
-    users.splice(index, 1);
-    store.save();
-    return { ok: true };
-  });
+  router.post(
+    '/api/users',
+    async (ctx) => {
+      const { username, password, role } = await ctx.json();
+      return publicUser(await auth.createUser(String(username || '').trim(), password, role || 'user'));
+    },
+    { admin: true },
+  );
+
+  router.patch(
+    '/api/users/:id',
+    async (ctx) => {
+      const user = findUser(ctx.params.id);
+      const { role, password } = await ctx.json();
+      await auth.updateUser(user, { role, password });
+      // l'admin qui change son propre mot de passe reste connecté
+      if (user.id === ctx.user.id) auth.setSessionCookie(ctx.req, ctx.res, user);
+      return publicUser(user);
+    },
+    { admin: true },
+  );
+
+  router.delete(
+    '/api/users/:id',
+    (ctx) => {
+      if (ctx.params.id === ctx.user.id) throw new HttpError(400, 'Vous ne pouvez pas supprimer votre propre compte');
+      const user = findUser(ctx.params.id);
+      if (user.role === 'admin' && auth.adminCount() <= 1) throw new HttpError(400, 'Il doit rester au moins un administrateur');
+      store.data.users.splice(store.data.users.indexOf(user), 1);
+      store.save();
+      return { ok: true };
+    },
+    { admin: true },
+  );
 }

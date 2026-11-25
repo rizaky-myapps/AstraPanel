@@ -8,12 +8,16 @@ import { Store } from './store.js';
 import { Auth } from './auth.js';
 import { Caddy } from './caddy.js';
 import { AppManager } from './apps/manager.js';
+import { Metrics } from './metrics.js';
+import { Tunnel } from './tunnel.js';
+import { Updater } from './update.js';
 import { Router } from './http/router.js';
 import { serveStatic } from './http/static.js';
 import { HttpError, clientIp, readJson, sendJson } from './http/util.js';
 import { authRoutes } from './routes/auth.js';
 import { appRoutes } from './routes/apps.js';
 import { settingsRoutes } from './routes/settings.js';
+import { fileRoutes } from './routes/files.js';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -34,12 +38,18 @@ export function createPanel(cfg = config) {
   const auth = new Auth(store, cfg.dataDir);
   auth.ensureSetupToken();
   const caddy = new Caddy({ store, dir: cfg.caddyDir, mainConfig: cfg.caddyMainConfig, panelPort: cfg.port });
-  const apps = new AppManager({ store, caddy, config: cfg });
+  const tunnel = new Tunnel({ store, config: cfg });
+  // les domaines des applis sont publiés par Caddy et/ou par le tunnel Cloudflare
+  const publish = async () => ({ caddy: await caddy.apply(), tunnel: await tunnel.sync() });
+  const apps = new AppManager({ store, caddy, config: cfg, publish });
+  const metrics = new Metrics(path.join(cfg.dataDir, 'metrics.json'));
+  const updater = new Updater({ store, config: cfg });
 
   const router = new Router();
-  const deps = { store, auth, caddy, apps, config: cfg };
+  const deps = { store, auth, caddy, apps, config: cfg, metrics, tunnel, updater, publish };
   authRoutes(router, deps);
   appRoutes(router, deps);
+  fileRoutes(router, deps);
   settingsRoutes(router, deps);
 
   async function handle(req, res) {
@@ -72,6 +82,7 @@ export function createPanel(cfg = config) {
       if (route.auth) {
         ctx.user = auth.userFromRequest(req);
         if (!ctx.user) throw new HttpError(401, 'Non connecté');
+        if (route.admin && ctx.user.role !== 'admin') throw new HttpError(403, 'Action réservée aux administrateurs');
       }
       const result = await route.handler(ctx);
       if (!res.headersSent) sendJson(res, 200, result ?? { ok: true });
@@ -92,12 +103,12 @@ export function createPanel(cfg = config) {
   server.requestTimeout = 60 * 60 * 1000; // gros téléversements sur une connexion lente
   server.headersTimeout = 60 * 1000;
 
-  return { server, store, auth, caddy, apps };
+  return { server, store, auth, caddy, apps, metrics, tunnel, updater };
 }
 
 async function main() {
   const panel = createPanel();
-  const { server, auth, caddy, apps } = panel;
+  const { server, auth, caddy, apps, metrics, tunnel, updater } = panel;
 
   server.listen(config.port, config.host, async () => {
     console.log(`AstraPanel ${config.version} — http://${config.host === '0.0.0.0' ? '<ip-du-pi>' : config.host}:${config.port}`);
@@ -109,9 +120,12 @@ async function main() {
       console.log(` (aussi disponible dans ${config.dataDir}/setup-token)`);
       console.log('──────────────────────────────────────────────');
     }
+    metrics.start();
+    updater.start();
     const result = await caddy.apply();
     if (!result.ok) console.warn(`Caddy : ${result.error}`);
     apps.bootstrap();
+    tunnel.bootstrap();
   });
   server.on('error', (err) => {
     console.error(`Impossible de démarrer le serveur : ${err.message}`);
@@ -124,7 +138,9 @@ async function main() {
     stopping = true;
     console.log(`${signal} reçu : arrêt des applications…`);
     server.close();
-    await apps.shutdown();
+    metrics.stop();
+    updater.stop();
+    await Promise.all([apps.shutdown(), tunnel.shutdown()]);
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));

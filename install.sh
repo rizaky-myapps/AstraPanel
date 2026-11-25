@@ -54,7 +54,7 @@ esac
 info "Installation des paquets système (git, unzip, outils de compilation)…"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y ca-certificates curl gnupg git unzip tar rsync build-essential python3
+apt-get install -y ca-certificates curl gnupg git zip unzip tar rsync build-essential python3
 
 # --- Node.js -----------------------------------------------------------------
 need_node=1
@@ -153,7 +153,33 @@ fi
 cd "$INSTALL_DIR" && sudo -u $PANEL_USER $NODE_BIN "$INSTALL_DIR/src/cli.js" "\$@"
 CLI
 chmod 755 /usr/local/bin/astrapanel-cli
+
+# Version installée (permet au panel de détecter les nouvelles versions sur GitHub)
+GIT_SRC=(git -c safe.directory="$SRC_DIR" -C "$SRC_DIR")
+if "${GIT_SRC[@]}" rev-parse HEAD >/dev/null 2>&1; then
+  "$NODE_BIN" -e 'const [file, repo, branch, commit, source] = process.argv.slice(1);
+    require("fs").writeFileSync(file, JSON.stringify({ repo, branch, commit, source, installedAt: Date.now() }, null, 2));' \
+    "$INSTALL_DIR/version.json" \
+    "$("${GIT_SRC[@]}" remote get-url origin 2>/dev/null || true)" \
+    "$("${GIT_SRC[@]}" rev-parse --abbrev-ref HEAD)" \
+    "$("${GIT_SRC[@]}" rev-parse HEAD)" \
+    "$SRC_DIR"
+  chown "root:$PANEL_USER" "$INSTALL_DIR/version.json"
+  chmod 640 "$INSTALL_DIR/version.json"
+else
+  warn "Le dossier source n'est pas un clone Git : la mise à jour depuis le panel sera indisponible."
+fi
+
+# Service de mise à jour : le panel crée data/update-request, systemd lance la mise à jour en root
+mkdir -p /var/lib/astrapanel
+chmod 755 "$INSTALL_DIR/deploy/update.sh"
+for unit in astrapanel-update.service astrapanel-update.path; do
+  sed -e "s|@DIR@|$INSTALL_DIR|g" -e "s|@DATA@|$DATA_DIR|g" "$INSTALL_DIR/deploy/$unit" >"/etc/systemd/system/$unit"
+done
+ln -sf "$INSTALL_DIR/deploy/update.sh" /usr/local/bin/astrapanel-update
 systemctl daemon-reload
+systemctl enable astrapanel-update.path >/dev/null 2>&1
+systemctl start astrapanel-update.path
 systemctl enable astrapanel >/dev/null 2>&1
 systemctl restart astrapanel
 
@@ -177,7 +203,7 @@ fi
 echo
 echo "  Journaux du panel : sudo journalctl -u astrapanel -f"
 echo "  Mot de passe perdu : sudo astrapanel-cli reset-password <utilisateur>"
-echo "  Mise à jour       : cd $SRC_DIR && git pull && sudo ./install.sh"
+echo "  Mise à jour       : depuis le panel (Paramètres → Mises à jour) ou « sudo astrapanel-update »"
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
   echo
   warn "Le pare-feu ufw est actif : autorisez le panel avec « sudo ufw allow $PANEL_PORT/tcp »."

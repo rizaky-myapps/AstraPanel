@@ -60,6 +60,10 @@ export class Caddy {
   generate() {
     const { apps, settings } = this.store.data;
     const blocks = ['# Fichier généré automatiquement par AstraPanel : ne pas modifier à la main.', ''];
+    if (settings.tunnel?.enabled && settings.tunnel.mode === 'api') {
+      blocks.push('# Les domaines sont publiés par le tunnel Cloudflare : Caddy ne les sert pas.', '');
+      return blocks.join('\n');
+    }
     if (settings.panelDomain) {
       blocks.push(`# Panel AstraPanel`, `${settings.panelDomain} {`, '\tencode zstd gzip', `\treverse_proxy 127.0.0.1:${this.panelPort}`, '}', '');
     }

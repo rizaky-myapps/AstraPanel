@@ -1,0 +1,118 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { startTestPanel } from './helpers.js';
+import { Metrics } from '../src/metrics.js';
+import { parseTunnelToken, hostnameOf } from '../src/tunnel.js';
+import { parseGithub } from '../src/update.js';
+import { niceTicks } from '../public/js/chart.js';
+
+test('historique : agrégation par palier et conservation limitée', () => {
+  const m = new Metrics(path.join(mkdtempSync(path.join(os.tmpdir(), 'astra-metrics-')), 'metrics.json'));
+  const t0 = Math.floor(Date.now() / 60_000) * 60_000 - 30 * 60_000; // aligné sur la minute, il y a 30 min
+  m.add({ cpu: 10, temp: 50, mem: 1000 }, t0);
+  m.add({ cpu: 30, temp: null, mem: 3000 }, t0 + 5000);
+  m.add({ cpu: 50, temp: 60, mem: 2000 }, t0 + 15_000); // nouvel intervalle de 10 s
+  const h = m.query('1h');
+  assert.equal(h.step, 10_000);
+  assert.deepEqual(h.points[0], [t0, 20, 50, 2000]); // moyenne, la température absente est ignorée
+  assert.deepEqual(h.points[1], [t0 + 10_000, 50, 60, 2000]); // intervalle en cours
+  assert.equal(m.query('24h').points.length, 1);
+  m.add({ cpu: 1, temp: 1, mem: 1 }, t0 + 2 * 3600_000); // deux heures plus tard
+  assert.ok(m.query('1h').points.every((p) => p[0] >= t0 + 3600_000));
+  assert.equal(m.query('7j'), null);
+  m.save();
+  const reloaded = new Metrics(m.file);
+  assert.ok(reloaded.query('24h').points.length >= 1);
+  assert.equal(reloaded.query('1h').points.length, 0); // le palier 1h n'est pas écrit sur la carte SD
+});
+
+test('graduations rondes', () => {
+  assert.deepEqual(niceTicks(0, 100, 4), [0, 25, 50, 75, 100]);
+  assert.deepEqual(niceTicks(0, 15.7, 4), [0, 5, 10, 15]);
+  assert.deepEqual(niceTicks(30, 70, 4), [30, 40, 50, 60, 70]);
+});
+
+test('jeton de tunnel Cloudflare', () => {
+  const token = Buffer.from(JSON.stringify({ a: 'acc', t: 'tun-id', s: 'secret' })).toString('base64');
+  assert.deepEqual(parseTunnelToken(`sudo cloudflared service install ${token}`), { token, accountId: 'acc', tunnelId: 'tun-id' });
+  assert.throws(() => parseTunnelToken('rien'), { status: 400 });
+  assert.throws(() => parseTunnelToken(`eyJ${'a'.repeat(30)}`), { status: 400 });
+  assert.equal(hostnameOf('http://site.local:8080'), 'site.local');
+  assert.equal(hostnameOf('monsite.fr'), 'monsite.fr');
+});
+
+test('analyse des URL GitHub', () => {
+  assert.deepEqual(parseGithub('https://github.com/moi/AstraPanel.git'), { owner: 'moi', repo: 'AstraPanel', token: null });
+  assert.deepEqual(parseGithub('https://ghp_x@github.com/moi/AstraPanel'), { owner: 'moi', repo: 'AstraPanel', token: 'ghp_x' });
+  assert.deepEqual(parseGithub('git@github.com:moi/bot.git'), { owner: 'moi', repo: 'bot', token: null });
+  assert.equal(parseGithub('https://gitlab.com/moi/bot.git'), null);
+});
+
+test('grades : un UTILISATEUR gère les applis mais pas le panel', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const adminCookie = ctx.getCookie();
+  let res = await ctx.request('POST', '/api/users', { body: { username: 'alice', password: 'motdepasse123', role: 'user' } });
+  assert.equal(res.data.role, 'user');
+  const { data: app } = await ctx.request('POST', '/api/apps', { body: { name: 'Site', type: 'static', source: 'empty' } });
+
+  ctx.setCookie('');
+  res = await ctx.request('POST', '/api/auth/login', { body: { username: 'alice', password: 'motdepasse123' } });
+  assert.equal(res.data.user.role, 'user');
+  for (const url of ['/api/settings', '/api/users', '/api/storage', '/api/update', '/api/tunnel']) {
+    assert.equal((await ctx.request('GET', url)).status, 403, url);
+  }
+  assert.equal((await ctx.request('GET', '/api/apps')).status, 200);
+  assert.equal((await ctx.request('GET', '/api/system/metrics?range=24h')).status, 200);
+  assert.equal((await ctx.request('DELETE', `/api/apps/${app.app.id}`)).status, 403);
+  assert.equal((await ctx.request('PUT', `/api/apps/${app.app.id}/files/content`, { body: { path: 'a.txt', content: 'x' } })).status, 200);
+
+  ctx.setCookie(adminCookie);
+  const users = (await ctx.request('GET', '/api/users')).data;
+  const admin = users.find((u) => u.username === 'admin');
+  res = await ctx.request('PATCH', `/api/users/${admin.id}`, { body: { role: 'user' } });
+  assert.equal(res.status, 400); // dernier administrateur
+  const alice = users.find((u) => u.username === 'alice');
+  res = await ctx.request('PATCH', `/api/users/${alice.id}`, { body: { role: 'admin' } });
+  assert.equal(res.data.role, 'admin');
+  res = await ctx.request('PATCH', `/api/users/${admin.id}`, { body: { role: 'user' } });
+  assert.equal(res.data.role, 'user'); // possible maintenant qu'alice est admin
+});
+
+test('gestionnaire de fichiers : copier, déplacer, compresser, extraire, aperçu', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const { data } = await ctx.request('POST', '/api/apps', { body: { name: 'Fichiers', type: 'static', source: 'empty' } });
+  const f = `/api/apps/${data.app.id}/files`;
+  await ctx.request('PUT', `${f}/content`, { body: { path: 'notes.txt', content: 'bonjour' } });
+  await ctx.request('POST', `${f}/upload?path=media&name=clip.mp4`, { raw: Buffer.alloc(1000, 1) });
+
+  let res = await ctx.request('POST', `${f}/copy`, { body: { paths: ['notes.txt'], dest: '' } });
+  assert.deepEqual(res.data.names, ['notes (2).txt']);
+  res = await ctx.request('POST', `${f}/move`, { body: { paths: ['notes (2).txt'], dest: 'archives' } });
+  assert.deepEqual(res.data.names, ['notes (2).txt']);
+  res = await ctx.request('POST', `${f}/move`, { body: { paths: ['media'], dest: 'media/sous' } });
+  assert.equal(res.status, 400);
+
+  res = await ctx.request('POST', `${f}/compress`, { body: { dir: '', names: ['archives', 'notes.txt'], archive: 'sauvegarde' } });
+  assert.equal(res.data.name, 'sauvegarde.zip');
+  res = await ctx.request('POST', `${f}/extract`, { body: { path: 'sauvegarde.zip' } });
+  assert.equal(res.data.name, 'sauvegarde');
+  res = await ctx.request('GET', `${f}?path=sauvegarde/archives`);
+  assert.deepEqual(res.data.entries.map((e) => e.name), ['notes (2).txt']);
+
+  const range = await fetch(`${ctx.base}${f}/raw?path=media/clip.mp4`, { headers: { Cookie: ctx.getCookie(), Range: 'bytes=10-19' } });
+  assert.equal(range.status, 206);
+  assert.equal(range.headers.get('content-range'), 'bytes 10-19/1000');
+  assert.match(range.headers.get('content-security-policy'), /sandbox/);
+
+  res = await ctx.request('POST', `${f}/delete`, { body: { paths: ['sauvegarde', 'sauvegarde.zip', 'absent.txt'] } });
+  assert.equal(res.status, 200);
+  res = await ctx.request('GET', `${f}?path=`);
+  assert.deepEqual(res.data.entries.map((e) => e.name).sort(), ['archives', 'media', 'notes.txt']);
+});

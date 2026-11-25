@@ -5,7 +5,7 @@ export class Router {
     this.routes = [];
   }
 
-  // options : { auth: false } pour une route publique
+  // options : { auth: false } pour une route publique, { admin: true } pour une route réservée aux ADMIN
   add(method, pattern, handler, options = {}) {
     const keys = [];
     const source = pattern.replace(/\/:(\w+)/g, (_, key) => {
@@ -18,6 +18,7 @@ export class Router {
       keys,
       handler,
       auth: options.auth !== false,
+      admin: options.admin === true,
     });
     return this;
   }

@@ -97,3 +97,22 @@ export function isHttps(req) {
   if (req.socket.encrypted) return true;
   return isLoopback(req.socket.remoteAddress) && req.headers['x-forwarded-proto'] === 'https';
 }
+
+// Diffuse un journal (LogBuffer) en direct via Server-Sent Events.
+export function streamLog(req, res, log) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write(`event: backlog\ndata: ${JSON.stringify(log.lines)}\n\n`);
+  const unsubscribe = log.subscribe((line) => {
+    res.write(line.clear ? 'event: clear\ndata: {}\n\n' : `data: ${JSON.stringify(line)}\n\n`);
+  });
+  const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.on('close', () => {
+    unsubscribe();
+    clearInterval(ping);
+  });
+}

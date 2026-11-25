@@ -1,7 +1,7 @@
 import { api, qs, upload } from '../api.js';
 import { refreshApps } from '../state.js';
 import { envEditor } from '../env-editor.js';
-import { $, html, icon, setHTML, toast } from '../ui.js';
+import { $, html, icon, routingWarnings, setHTML, toast, toggle } from '../ui.js';
 
 const TYPES = [
   { id: 'bot', title: 'Bot Discord', desc: 'Un bot discord.js, ou tout programme Node.js sans site web.', icon: 'bot' },
@@ -161,7 +161,7 @@ export function renderNewApp(view) {
                     </div>
                     <div class="field">
                       <label>&nbsp;</label>
-                      <label class="check"><input type="checkbox" name="spa" ${f.spa ? 'checked' : ''} /><span>Application monopage (SPA)<small>Renvoie index.html pour les routes inconnues (React Router, Vue Router…).</small></span></label>
+                      <label class="check">${toggle('spa', f.spa)}<span>Application monopage (SPA)<small>Renvoie index.html pour les routes inconnues (React Router, Vue Router…).</small></span></label>
                     </div>`
                 : ''}
               ${hasPort
@@ -173,7 +173,7 @@ export function renderNewApp(view) {
                     <div class="field">
                       <label>Nom(s) de domaine <span class="faint">(optionnel)</span></label>
                       <input type="text" name="domains" class="mono" value="${f.domains}" placeholder="monsite.fr, www.monsite.fr" spellcheck="false" />
-                      <span class="hint">Servi en HTTPS par Caddy (voir Paramètres).</span>
+                      <span class="hint">Publié par le tunnel Cloudflare ou par Caddy (voir Paramètres).</span>
                     </div>`
                 : ''}
             </div>
@@ -186,10 +186,10 @@ export function renderNewApp(view) {
 
           <div class="card">
             <div class="card-body">
-              <label class="check"><input type="checkbox" name="autoRestart" ${f.autoRestart ? 'checked' : ''} /><span>Redémarrage automatique<small>Relance l'application si elle plante.</small></span></label>
+              <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique<small>Relance l'application si elle plante.</small></span></label>
               ${f.source === 'empty'
                 ? ''
-                : html`<label class="check"><input type="checkbox" name="start" ${f.start ? 'checked' : ''} /><span>Démarrer après la création<small>Installe les dépendances, lance le build éventuel puis démarre l'application.</small></span></label>`}
+                : html`<label class="check">${toggle('start', f.start)}<span>Démarrer après la création<small>Installe les dépendances, lance le build éventuel puis démarre l'application.</small></span></label>`}
               <div class="error-text"></div>
               <div class="progress hidden" id="progress"><i></i></div>
             </div>
@@ -264,8 +264,8 @@ export function renderNewApp(view) {
 
     button.disabled = true;
     try {
-      const { app, caddy } = await api.post('/apps', body);
-      if (caddy && !caddy.ok) toast(`Caddy : ${caddy.error}`, 'err');
+      const { app, ...routing } = await api.post('/apps', body);
+      routingWarnings(routing);
       if (f.source === 'archive') {
         const progress = $('#progress', form);
         progress.classList.remove('hidden');

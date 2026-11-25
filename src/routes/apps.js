@@ -1,20 +1,10 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { rename, rm } from 'node:fs/promises';
-import { HttpError, readBody, receiveToFile } from '../http/util.js';
-import {
-  downloadInfo,
-  listDir,
-  makeDir,
-  readTextFile,
-  removePath,
-  renamePath,
-  uploadTarget,
-  writeTextFile,
-} from '../apps/files.js';
+import { rm } from 'node:fs/promises';
+import { HttpError, readBody, receiveToFile, streamLog } from '../http/util.js';
 
-function sendDownload(res, file, size, name, type = 'application/octet-stream') {
+export function sendDownload(res, file, size, name, type = 'application/octet-stream') {
   res.writeHead(200, {
     'Content-Type': type,
     'Content-Length': size,
@@ -26,14 +16,13 @@ function sendDownload(res, file, size, name, type = 'application/octet-stream') 
 
 export function appRoutes(router, { apps, config }) {
   const q = (ctx, key) => ctx.query.get(key) ?? '';
-  const appDir = (ctx) => apps.dir(apps.get(ctx.params.id));
 
   // --- Applications -------------------------------------------------------
   router.get('/api/apps', () => apps.list());
   router.post('/api/apps', async (ctx) => apps.create(await ctx.json()));
   router.get('/api/apps/:id', (ctx) => apps.serialize(apps.get(ctx.params.id)));
   router.patch('/api/apps/:id', async (ctx) => apps.update(ctx.params.id, await ctx.json()));
-  router.delete('/api/apps/:id', (ctx) => apps.remove(ctx.params.id));
+  router.delete('/api/apps/:id', (ctx) => apps.remove(ctx.params.id), { admin: true });
 
   router.post('/api/apps/:id/start', (ctx) => apps.start(ctx.params.id));
   router.post('/api/apps/:id/stop', (ctx) => apps.stop(ctx.params.id));
@@ -70,24 +59,7 @@ export function appRoutes(router, { apps, config }) {
 
   // --- Journaux -----------------------------------------------------------
   router.get('/api/apps/:id/logs/stream', (ctx) => {
-    const app = apps.get(ctx.params.id);
-    const log = apps.logsFor(app.id);
-    const { req, res } = ctx;
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-store',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-    res.write(`event: backlog\ndata: ${JSON.stringify(log.lines)}\n\n`);
-    const unsubscribe = log.subscribe((line) => {
-      res.write(line.clear ? 'event: clear\ndata: {}\n\n' : `data: ${JSON.stringify(line)}\n\n`);
-    });
-    const ping = setInterval(() => res.write(': ping\n\n'), 25000);
-    req.on('close', () => {
-      unsubscribe();
-      clearInterval(ping);
-    });
+    streamLog(ctx.req, ctx.res, apps.logsFor(apps.get(ctx.params.id).id));
   });
 
   router.delete('/api/apps/:id/logs', (ctx) => {
@@ -99,35 +71,6 @@ export function appRoutes(router, { apps, config }) {
     const file = path.join(config.logsDir, `${app.id}.log`);
     if (!existsSync(file)) throw new HttpError(404, 'Aucun journal');
     sendDownload(ctx.res, file, statSync(file).size, `${app.id}.log`, 'text/plain; charset=utf-8');
-  });
-
-  // --- Fichiers -----------------------------------------------------------
-  router.get('/api/apps/:id/files', (ctx) => listDir(appDir(ctx), q(ctx, 'path')));
-  router.get('/api/apps/:id/files/content', (ctx) =>
-    readTextFile(appDir(ctx), q(ctx, 'path'), config.limits.editableFile),
-  );
-  router.put('/api/apps/:id/files/content', async (ctx) => {
-    const { path: rel, content } = await ctx.json(config.limits.editableFile * 4);
-    await writeTextFile(appDir(ctx), rel, content);
-  });
-  router.post('/api/apps/:id/files/mkdir', async (ctx) => {
-    const { path: rel } = await ctx.json();
-    await makeDir(appDir(ctx), rel);
-  });
-  router.post('/api/apps/:id/files/rename', async (ctx) => {
-    const { from, to } = await ctx.json();
-    await renamePath(appDir(ctx), from, to);
-  });
-  router.delete('/api/apps/:id/files', (ctx) => removePath(appDir(ctx), q(ctx, 'path')));
-  router.post('/api/apps/:id/files/upload', async (ctx) => {
-    const target = await uploadTarget(appDir(ctx), q(ctx, 'path'), q(ctx, 'name'));
-    const part = `${target}.astra-upload`;
-    await receiveToFile(ctx.req, part, config.limits.upload);
-    await rename(part, target);
-  });
-  router.get('/api/apps/:id/files/download', async (ctx) => {
-    const { file, size, name } = await downloadInfo(appDir(ctx), q(ctx, 'path'));
-    sendDownload(ctx.res, file, size, name);
   });
 
   // --- Webhook de déploiement (GitHub, GitLab, Gitea…) --------------------

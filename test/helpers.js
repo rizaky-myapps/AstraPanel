@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { config } from '../src/config.js';
 import { createPanel } from '../src/server.js';
 
@@ -44,11 +44,17 @@ export async function startTestPanel() {
   }
 
   async function close() {
-    await panel.apps.shutdown();
+    await Promise.all([panel.apps.shutdown(), panel.tunnel.shutdown()]);
     await new Promise((resolve) => panel.server.close(resolve));
   }
 
-  return { panel, cfg, base, request, close, setCookie: (c) => (cookie = c) };
+  // Connexion en tant qu'admin (création du premier compte)
+  async function setupAdmin() {
+    const token = readFileSync(path.join(dataDir, 'setup-token'), 'utf8').trim();
+    return request('POST', '/api/auth/setup', { body: { token, username: 'admin', password: 'motdepasse123' } });
+  }
+
+  return { panel, cfg, base, request, close, setupAdmin, getCookie: () => cookie, setCookie: (c) => (cookie = c) };
 }
 
 export async function waitFor(fn, { timeout = 15000, interval = 100 } = {}) {

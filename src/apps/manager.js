@@ -88,9 +88,11 @@ function isPortFree(port) {
 }
 
 export class AppManager {
-  constructor({ store, caddy, config }) {
+  constructor({ store, caddy, config, publish }) {
     this.store = store;
     this.caddy = caddy;
+    // appelé quand les domaines ou les ports changent (Caddy, tunnel Cloudflare)
+    this.publish = publish || (async () => ({ caddy: await caddy.apply() }));
     this.config = config;
     this.runtime = new Map();
     this.logs = new Map();
@@ -269,9 +271,9 @@ export class AppManager {
     this.store.save();
     this.logsFor(app.id).system(`Application « ${app.name} » créée`);
 
-    const caddy = app.domains.length ? await this.caddy.apply() : null;
+    const routing = app.domains.length ? await this.publish() : {};
     if (source === 'git' || source === 'template') this.runTask(app.id, 'deploy', { start: Boolean(input.start) });
-    return { app: this.serialize(app), caddy };
+    return { app: this.serialize(app), ...routing };
   }
 
   async update(id, input) {
@@ -282,8 +284,8 @@ export class AppManager {
     const routingChanged = JSON.stringify([app.domains, app.port]) !== JSON.stringify([copy.domains, copy.port]);
     Object.assign(app, copy, { updatedAt: Date.now() });
     this.store.save();
-    const caddy = routingChanged ? await this.caddy.apply() : null;
-    return { app: this.serialize(app), caddy };
+    const routing = routingChanged ? await this.publish() : {};
+    return { app: this.serialize(app), ...routing };
   }
 
   async remove(id) {
@@ -301,7 +303,7 @@ export class AppManager {
     const logFile = path.join(this.config.logsDir, `${id}.log`);
     await Promise.all([rm(logFile, { force: true }), rm(`${logFile}.1`, { force: true })]);
     await rm(this.dir(app), { recursive: true, force: true });
-    return { caddy: app.domains?.length ? await this.caddy.apply() : null };
+    return app.domains?.length ? this.publish() : {};
   }
 
   appEnv(app, extra = {}) {

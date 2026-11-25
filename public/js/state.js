@@ -20,3 +20,4 @@ export async function refreshApps() {
 }
 
 export const findApp = (id) => state.apps.find((a) => a.id === id);
+export const isAdmin = () => state.user?.role === 'admin';

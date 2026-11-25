@@ -27,6 +27,8 @@ setInterval(() => {
   previous = current;
 }, 2000).unref();
 
+export const currentCpu = () => cpuUsage;
+
 async function readText(file) {
   try {
     return (await readFile(file, 'utf8')).replace(/\0/g, '').trim();
@@ -35,7 +37,7 @@ async function readText(file) {
   }
 }
 
-async function memory() {
+export async function memory() {
   const total = os.totalmem();
   let available = os.freemem();
   const meminfo = await readText('/proc/meminfo');
@@ -44,7 +46,7 @@ async function memory() {
   return { total, used: total - available, available };
 }
 
-async function temperature() {
+export async function temperature() {
   const raw = await readText('/sys/class/thermal/thermal_zone0/temp');
   return raw ? Number(raw) / 1000 : null;
 }
@@ -86,7 +88,7 @@ async function throttling() {
   return value;
 }
 
-async function disk(dir) {
+export async function disk(dir) {
   try {
     const s = await statfs(dir);
     const total = s.blocks * s.bsize;

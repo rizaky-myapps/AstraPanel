@@ -7,6 +7,15 @@ const DEFAULT_SETTINGS = {
   },
   panelDomain: '',
   portRange: { start: 4000, end: 4999 },
+  // Tunnel Cloudflare : « token » = géré depuis le site Cloudflare, « api » = géré depuis le panel
+  tunnel: {
+    enabled: false,
+    mode: 'token',
+    token: '',
+    api: { apiToken: '', accountId: '', accountName: '', tunnelId: '', tunnelName: '', tunnelToken: '' },
+  },
+  // Branche GitHub suivie pour les mises à jour (vide = celle de l'installation)
+  update: { branch: '' },
 };
 
 function mergeDefaults(defaults, value) {
@@ -30,7 +39,8 @@ export class Store {
     }
     this.data = {
       version: 1,
-      users: data.users || [],
+      // les comptes créés avant l'arrivée des rôles étaient tous administrateurs
+      users: (data.users || []).map((u) => ({ role: 'admin', ...u })),
       apps: data.apps || [],
       settings: mergeDefaults(DEFAULT_SETTINGS, data.settings),
     };

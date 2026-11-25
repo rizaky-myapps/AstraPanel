@@ -8,6 +8,7 @@ const scrypt = promisify(crypto.scrypt);
 const COOKIE = 'astra_session';
 const SESSION_TTL = 7 * 24 * 3600 * 1000;
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
+export const ROLES = ['admin', 'user'];
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
 
@@ -87,12 +88,14 @@ export class Auth {
     return this.store.data.users.find((u) => u.username.toLowerCase() === String(username).toLowerCase());
   }
 
-  async createUser(username, password) {
+  async createUser(username, password, role = 'user') {
     validateCredentials(username, password);
+    if (!ROLES.includes(role)) throw new HttpError(400, 'Rôle invalide');
     if (this.findUser(username)) throw new HttpError(409, "Ce nom d'utilisateur existe déjà");
     const user = {
       id: crypto.randomUUID(),
       username,
+      role,
       hash: await hashPassword(password),
       tokenVersion: 1,
       createdAt: Date.now(),
@@ -112,6 +115,28 @@ export class Auth {
       return null;
     }
     return (await verifyPassword(String(password || ''), user.hash)) ? user : null;
+  }
+
+  adminCount() {
+    return this.store.data.users.filter((u) => u.role === 'admin').length;
+  }
+
+  // Changement de rôle ou de mot de passe d'un compte par un administrateur.
+  async updateUser(user, { role, password }) {
+    if (role !== undefined) {
+      if (!ROLES.includes(role)) throw new HttpError(400, 'Rôle invalide');
+      if (user.role === 'admin' && role !== 'admin' && this.adminCount() <= 1) {
+        throw new HttpError(400, 'Il doit rester au moins un administrateur');
+      }
+      if (role !== user.role) user.tokenVersion += 1;
+      user.role = role;
+    }
+    if (password !== undefined) {
+      validatePassword(password);
+      user.hash = await hashPassword(password);
+      user.tokenVersion += 1;
+    }
+    this.store.save();
   }
 
   async changePassword(user, current, next) {
@@ -196,5 +221,5 @@ export class Auth {
 }
 
 export function publicUser(user) {
-  return user ? { id: user.id, username: user.username, createdAt: user.createdAt } : null;
+  return user ? { id: user.id, username: user.username, role: user.role, createdAt: user.createdAt } : null;
 }

@@ -1,21 +1,74 @@
 import { api, setUnauthorizedHandler } from './api.js';
-import { $, html, icon, setHTML, statusOf } from './ui.js';
+import { $, ROLE_LABEL, html, icon, setHTML, statusOf } from './ui.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderNewApp } from './pages/new-app.js';
 import { renderApp } from './pages/app.js';
 import { renderSettings } from './pages/settings.js';
-import { onAppsChange, refreshApps, state } from './state.js';
+import { renderStorage } from './pages/storage.js';
+import { isAdmin, onAppsChange, refreshApps, state } from './state.js';
 
 const ROUTES = [
   { re: /^\/?$/, nav: 'dashboard', render: renderDashboard },
   { re: /^\/new$/, nav: 'new', render: renderNewApp },
   { re: /^\/apps\/([^/]+)(?:\/(\w+))?$/, nav: 'app', render: renderApp },
-  { re: /^\/settings$/, nav: 'settings', render: renderSettings },
+  { re: /^\/settings(?:\/([\w-]+))?$/, nav: 'settings', render: renderSettings },
+  { re: /^\/storage(?:\/(.+))?$/, nav: 'storage', render: renderStorage },
 ];
 
 let poller = null;
+let updatePoller = null;
 let currentPage = null;
+let currentNav = null;
+let update = null;
+
+// Bannière « mise à jour disponible » pour les administrateurs, sur toutes les pages sauf les paramètres.
+function dismissedUpdate() {
+  try {
+    return localStorage.getItem('astra.update.dismissed');
+  } catch {
+    return null;
+  }
+}
+
+function renderBanner() {
+  const box = $('#banner');
+  if (!box) return;
+  const show = isAdmin() && update?.available && currentNav !== 'settings' && dismissedUpdate() !== update.latest;
+  if (!show) {
+    box.textContent = '';
+    return;
+  }
+  const count = update.commits?.length;
+  setHTML(
+    box,
+    html`<div class="update-banner">
+      ${icon('arrowUpCircle')}
+      <div><b>Une mise à jour d'AstraPanel est disponible</b>${count ? ` (${count} nouveauté${count > 1 ? 's' : ''})` : ''}.</div>
+      <span class="spacer"></span>
+      <a class="btn btn-sm btn-primary" href="#/settings/mises-a-jour">Voir la mise à jour</a>
+      <button class="btn btn-sm btn-ghost" data-later>Plus tard</button>
+    </div>`,
+  );
+  box.querySelector('[data-later]').addEventListener('click', () => {
+    try {
+      localStorage.setItem('astra.update.dismissed', update.latest);
+    } catch {
+      // stockage indisponible : la bannière reviendra au prochain chargement
+    }
+    box.textContent = '';
+  });
+}
+
+async function checkUpdate() {
+  if (!isAdmin()) return;
+  try {
+    update = await api.get('/update');
+  } catch {
+    return;
+  }
+  renderBanner();
+}
 
 function route() {
   if (!state.user) return;
@@ -45,6 +98,8 @@ function route() {
     return;
   }
   const params = match.m.slice(1);
+  currentNav = match.r.nav;
+  renderBanner();
   setActiveNav(match.r.nav, params[0]);
   const view = $('#view');
   if (match.r.nav !== 'app' || view.dataset.app !== params[0]) window.scrollTo(0, 0);
@@ -77,7 +132,10 @@ function renderShell() {
         <div id="side-apps"></div>
         <div class="side-foot">
           <div class="avatar">${name.slice(0, 1).toUpperCase()}</div>
-          <span class="truncate">${name}</span>
+          <div class="truncate">
+            <div class="truncate">${name}</div>
+            <div class="faint side-role">${ROLE_LABEL[state.user.role] || ''}</div>
+          </div>
           <span class="spacer"></span>
           <button class="btn btn-ghost btn-sm btn-icon" id="logout" title="Se déconnecter">${icon('logout')}</button>
         </div>
@@ -87,7 +145,7 @@ function renderShell() {
           <button class="btn btn-ghost btn-icon" id="menu-btn" aria-label="Menu">${icon('menu')}</button>
           ${brand()}
         </header>
-        <main class="main"><div class="view" id="view"></div></main>
+        <main class="main"><div class="view"><div id="banner"></div><div id="view"></div></div></main>
       </div>
     </div>`,
   );
@@ -125,12 +183,17 @@ async function startSession(user) {
   clearInterval(poller);
   poller = setInterval(refreshApps, 3000);
   route();
+  clearInterval(updatePoller);
+  checkUpdate();
+  updatePoller = setInterval(checkUpdate, 15 * 60_000);
 }
 
 function endSession(setupRequired = false) {
   state.user = null;
   state.apps = [];
   clearInterval(poller);
+  clearInterval(updatePoller);
+  update = null;
   if (currentPage) {
     currentPage.active = false;
     currentPage.cleanups.forEach((fn) => fn());

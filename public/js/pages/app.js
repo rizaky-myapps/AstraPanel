@@ -1,6 +1,7 @@
 import { api, qs, upload } from '../api.js';
-import { findApp, onAppsChange, refreshApps } from '../state.js';
+import { findApp, isAdmin, onAppsChange, refreshApps } from '../state.js';
 import { envEditor } from '../env-editor.js';
+import { filesTab } from './files.js';
 import {
   $,
   TYPE_INFO,
@@ -16,10 +17,11 @@ import {
   icon,
   localUrl,
   modal,
-  promptDialog,
+  routingWarnings,
   setHTML,
   statusBadge,
   toast,
+  toggle,
   withBusy,
 } from '../ui.js';
 
@@ -154,7 +156,7 @@ function consoleTab(el, page, app) {
       <div class="console-toolbar">
         <span class="badge plain" id="live">Connexion…</span>
         <span class="spacer"></span>
-        <label class="check" style="margin:0"><input type="checkbox" id="autoscroll" checked /><span class="hint">Défilement auto</span></label>
+        <label class="check inline">${toggle('autoscroll', true, { id: 'autoscroll', sm: true })}<span class="hint">Défilement auto</span></label>
         <a class="btn btn-ghost btn-sm" href="/api/apps/${app.id}/logs/download">${icon('download')} <span class="hide-sm">Télécharger</span></a>
         <button class="btn btn-ghost btn-sm" id="clear-logs">${icon('trash')} <span class="hide-sm">Effacer</span></button>
       </div>
@@ -229,200 +231,6 @@ function consoleTab(el, page, app) {
       input.value = '';
     });
   });
-}
-
-// ---- Fichiers ----------------------------------------------------------------
-const lastDir = new Map();
-
-function filesTab(el, page, app) {
-  let cwd = lastDir.get(app.id) || '';
-  const join = (dir, name) => (dir ? `${dir}/${name}` : name);
-
-  async function showList(dir = cwd) {
-    let data;
-    try {
-      data = await api.get(`/apps/${app.id}/files?${qs({ path: dir })}`);
-    } catch (err) {
-      if (dir) return showList('');
-      throw err;
-    }
-    if (!page.active) return;
-    cwd = data.path;
-    lastDir.set(app.id, cwd);
-    const parts = cwd ? cwd.split('/') : [];
-    setHTML(
-      el,
-      html`<div class="card" id="drop">
-        <div class="card-header">
-          <div class="crumbs">
-            <a data-dir="">${icon('folder')} ${app.id}</a>
-            ${parts.map((p, i) => html`<span class="sep">/</span><a data-dir="${parts.slice(0, i + 1).join('/')}">${p}</a>`)}
-          </div>
-          <span class="spacer"></span>
-          <button class="btn btn-ghost btn-sm" data-new-file title="Nouveau fichier">${icon('filePlus')} <span class="hide-sm">Fichier</span></button>
-          <button class="btn btn-ghost btn-sm" data-new-dir title="Nouveau dossier">${icon('folderPlus')} <span class="hide-sm">Dossier</span></button>
-          <label class="btn btn-sm" title="Téléverser">${icon('upload')} <span class="hide-sm">Téléverser</span><input type="file" multiple hidden data-upload /></label>
-        </div>
-        <div class="progress hidden" id="upload-progress"><i></i></div>
-        <div style="overflow-x:auto">
-          <table class="table">
-            <thead><tr><th>Nom</th><th class="hide-sm">Taille</th><th class="hide-sm">Modifié</th><th></th></tr></thead>
-            <tbody>
-              ${cwd ? html`<tr><td colspan="4"><a class="file-name dir" data-dir="${parts.slice(0, -1).join('/')}">${icon('up')} ..</a></td></tr>` : ''}
-              ${data.entries.length || cwd ? '' : html`<tr><td colspan="4" class="muted">Dossier vide. Glissez-déposez des fichiers ici ou utilisez « Téléverser ».</td></tr>`}
-              ${data.entries.map(
-                (f) => html`<tr>
-                  <td>
-                    <a class="file-name ${f.type}" ${f.type === 'dir' ? html`data-dir="${join(cwd, f.name)}"` : html`data-open="${join(cwd, f.name)}"`}>
-                      ${icon(f.type === 'dir' ? 'folder' : 'file')}<span class="truncate">${f.name}</span>
-                    </a>
-                  </td>
-                  <td class="muted hide-sm nowrap">${f.type === 'dir' ? '—' : formatBytes(f.size)}</td>
-                  <td class="muted hide-sm nowrap">${formatDate(f.mtime)}</td>
-                  <td>
-                    <div class="file-actions">
-                      ${f.type === 'file'
-                        ? html`<a class="btn btn-ghost btn-sm btn-icon" title="Télécharger" href="/api/apps/${app.id}/files/download?${qs({ path: join(cwd, f.name) })}">${icon('download')}</a>`
-                        : ''}
-                      <button class="btn btn-ghost btn-sm btn-icon" title="Renommer" data-rename="${f.name}">${icon('edit')}</button>
-                      <button class="btn btn-ghost btn-sm btn-icon" title="Supprimer" data-delete="${f.name}">${icon('trash')}</button>
-                    </div>
-                  </td>
-                </tr>`,
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>`,
-    );
-  }
-
-  async function showEditor(path) {
-    let file;
-    try {
-      file = await api.get(`/apps/${app.id}/files/content?${qs({ path })}`);
-    } catch (err) {
-      toast(err.message, 'err');
-      return;
-    }
-    if (!page.active) return;
-    let saved = file.content;
-    setHTML(
-      el,
-      html`<div class="card">
-        <div class="card-header">
-          <button class="btn btn-ghost btn-sm" data-close>${icon('back')} Fichiers</button>
-          <span class="mono truncate">${path}</span>
-          <span class="badge plain hidden" id="dirty">modifié</span>
-          <span class="spacer"></span>
-          <span class="hint hide-sm">Ctrl+S pour enregistrer</span>
-          <button class="btn btn-primary btn-sm" data-save>${icon('save')} Enregistrer</button>
-        </div>
-        <textarea class="editor" spellcheck="false"></textarea>
-      </div>`,
-    );
-    const area = $('textarea', el);
-    const dirty = $('#dirty', el);
-    area.value = file.content;
-    area.setSelectionRange(0, 0);
-    area.focus();
-    area.scrollTop = 0;
-    const markDirty = () => dirty.classList.toggle('hidden', area.value === saved);
-    const save = () =>
-      withBusy($('[data-save]', el), async () => {
-        await api.put(`/apps/${app.id}/files/content`, { path, content: area.value });
-        saved = area.value;
-        markDirty();
-        toast('Fichier enregistré');
-      });
-    area.addEventListener('input', markDirty);
-    area.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        save();
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        area.setRangeText('  ', area.selectionStart, area.selectionEnd, 'end');
-        markDirty();
-      }
-    });
-    $('[data-save]', el).addEventListener('click', save);
-    $('[data-close]', el).addEventListener('click', async () => {
-      if (area.value !== saved && !(await confirmDialog('Modifications non enregistrées', 'Quitter l’éditeur sans enregistrer ?', { confirmLabel: 'Quitter' }))) return;
-      showList();
-    });
-  }
-
-  async function uploadFiles(files) {
-    const bar = $('#upload-progress', el);
-    bar?.classList.remove('hidden');
-    for (const [i, file] of [...files].entries()) {
-      try {
-        await upload(`/apps/${app.id}/files/upload?${qs({ path: cwd, name: file.name })}`, file, (r) => {
-          if (bar) bar.firstElementChild.style.width = `${(((i + r) / files.length) * 100).toFixed(0)}%`;
-        });
-      } catch (err) {
-        toast(`${file.name} : ${err.message}`, 'err');
-      }
-    }
-    toast(files.length > 1 ? `${files.length} fichiers téléversés` : 'Fichier téléversé');
-    showList();
-  }
-
-  el.addEventListener('click', async (e) => {
-    const target = e.target.closest('[data-dir], [data-open], [data-rename], [data-delete], [data-new-file], [data-new-dir]');
-    if (!target) return;
-    const d = target.dataset;
-    try {
-      if ('dir' in d) {
-        await showList(d.dir);
-      } else if ('open' in d) {
-        await showEditor(d.open);
-      } else if ('newFile' in d) {
-        const name = await promptDialog('Nouveau fichier', { label: 'Nom du fichier', placeholder: 'index.js', confirmLabel: 'Créer' });
-        if (!name) return;
-        await api.put(`/apps/${app.id}/files/content`, { path: join(cwd, name), content: '' });
-        await showEditor(join(cwd, name));
-      } else if ('newDir' in d) {
-        const name = await promptDialog('Nouveau dossier', { label: 'Nom du dossier', confirmLabel: 'Créer' });
-        if (!name) return;
-        await api.post(`/apps/${app.id}/files/mkdir`, { path: join(cwd, name) });
-        await showList();
-      } else if ('rename' in d) {
-        const name = await promptDialog('Renommer', { label: 'Nouveau nom', value: d.rename, confirmLabel: 'Renommer' });
-        if (!name || name === d.rename) return;
-        await api.post(`/apps/${app.id}/files/rename`, { from: join(cwd, d.rename), to: join(cwd, name) });
-        await showList();
-      } else if ('delete' in d) {
-        const ok = await confirmDialog('Supprimer ?', `« ${d.delete} » sera supprimé définitivement.`, { danger: true, confirmLabel: 'Supprimer' });
-        if (!ok) return;
-        await api.del(`/apps/${app.id}/files?${qs({ path: join(cwd, d.delete) })}`);
-        await showList();
-      }
-    } catch (err) {
-      toast(err.message, 'err');
-    }
-  });
-
-  el.addEventListener('change', (e) => {
-    if (e.target.matches('[data-upload]') && e.target.files.length) uploadFiles(e.target.files);
-  });
-  el.addEventListener('dragover', (e) => {
-    if (!$('#drop', el)) return;
-    e.preventDefault();
-    $('#drop', el).classList.add('drop-hint');
-  });
-  el.addEventListener('dragleave', (e) => {
-    if (!el.contains(e.relatedTarget)) $('#drop', el)?.classList.remove('drop-hint');
-  });
-  el.addEventListener('drop', (e) => {
-    if (!$('#drop', el)) return;
-    e.preventDefault();
-    $('#drop', el).classList.remove('drop-hint');
-    if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
-  });
-
-  showList().catch((err) => setHTML(el, html`<div class="alert err">${icon('alert')}<div>${err.message}</div></div>`));
 }
 
 // ---- Variables -----------------------------------------------------------------
@@ -505,8 +313,8 @@ function deployTab(el, page, app) {
             <input type="file" name="file" accept=".zip,.tar,.tar.gz,.tgz" />
             <span class="hint">Le contenu est copié dans le dossier de l'application. Un ZIP téléchargé depuis GitHub fonctionne tel quel.</span>
           </div>
-          <label class="check"><input type="checkbox" name="clean" /><span>Vider le dossier avant l'import<small>Supprime tous les fichiers actuels (y compris .env et node_modules).</small></span></label>
-          <label class="check"><input type="checkbox" name="deploy" checked /><span>Déployer ensuite<small>Installe les dépendances, build et redémarre.</small></span></label>
+          <label class="check">${toggle('clean')}<span>Vider le dossier avant l'import<small>Supprime tous les fichiers actuels (y compris .env et node_modules).</small></span></label>
+          <label class="check">${toggle('deploy', true)}<span>Déployer ensuite<small>Installe les dépendances, build et redémarre.</small></span></label>
           <div class="progress hidden"><i></i></div>
           <div class="row"><span class="spacer"></span><button class="btn" type="submit">${icon('upload')} Importer</button></div>
         </form>
@@ -619,7 +427,7 @@ function settingsTab(el, page, app) {
                 </div>
                 <div class="field">
                   <label>&nbsp;</label>
-                  <label class="check"><input type="checkbox" name="spa" ${app.spa ? 'checked' : ''} /><span>Application monopage (SPA)</span></label>
+                  <label class="check">${toggle('spa', app.spa)}<span>Application monopage (SPA)</span></label>
                 </div>`
             : ''}
           ${hasPort
@@ -630,11 +438,11 @@ function settingsTab(el, page, app) {
                 <div class="field">
                   <label>Nom(s) de domaine</label>
                   <input type="text" name="domains" class="mono" value="${app.domains.join(', ')}" placeholder="monsite.fr, www.monsite.fr" spellcheck="false" />
-                  <span class="hint">Préfixez par <code>http://</code> pour un domaine local sans HTTPS.</span>
+                  <span class="hint">Publiés par le tunnel Cloudflare ou par Caddy (voir Paramètres). Préfixez par <code>http://</code> pour un domaine local sans HTTPS.</span>
                 </div>`
             : ''}
           <div class="full">
-            <label class="check"><input type="checkbox" name="autoRestart" ${app.autoRestart ? 'checked' : ''} /><span>Redémarrage automatique en cas de plantage</span></label>
+            <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage</span></label>
           </div>
           <div class="full hint">Dossier sur le Raspberry Pi : <code>${app.dir}</code></div>
         </div>
@@ -645,17 +453,19 @@ function settingsTab(el, page, app) {
         </div>
       </form>
 
-      <div class="card">
-        <div class="card-header"><h2>Zone dangereuse</h2></div>
-        <div class="card-body row">
-          <div>
-            <div class="label">Supprimer l'application</div>
-            <div class="hint">Arrête l'application et supprime définitivement ses fichiers et ses journaux.</div>
-          </div>
-          <span class="spacer"></span>
-          <button class="btn btn-danger" data-delete>${icon('trash')} Supprimer</button>
-        </div>
-      </div>
+      ${isAdmin()
+        ? html`<div class="card">
+            <div class="card-header"><h2>Zone dangereuse</h2></div>
+            <div class="card-body row">
+              <div>
+                <div class="label">Supprimer l'application</div>
+                <div class="hint">Arrête l'application et supprime définitivement ses fichiers et ses journaux.</div>
+              </div>
+              <span class="spacer"></span>
+              <button class="btn btn-danger" data-delete>${icon('trash')} Supprimer</button>
+            </div>
+          </div>`
+        : html`<p class="hint">Seul un administrateur peut supprimer une application.</p>`}
     </div>`,
   );
 
@@ -673,14 +483,13 @@ function settingsTab(el, page, app) {
     if (isStatic) Object.assign(body, { staticDir: values.staticDir, spa: form.spa.checked });
     if (hasPort) Object.assign(body, { port: values.port || null, domains: values.domains });
     withBusy($('[type=submit]', form), async () => {
-      const { caddy } = await api.patch(`/apps/${app.id}`, body);
-      if (caddy && !caddy.ok) toast(`Enregistré, mais Caddy a refusé la configuration : ${caddy.error}`, 'err');
-      else toast('Paramètres enregistrés');
+      const result = await api.patch(`/apps/${app.id}`, body);
+      if (routingWarnings(result)) toast('Paramètres enregistrés');
       await refreshApps();
     });
   });
 
-  $('[data-delete]', el).addEventListener('click', async () => {
+  $('[data-delete]', el)?.addEventListener('click', async () => {
     const result = await modal({
       title: `Supprimer « ${app.name} » ?`,
       danger: true,

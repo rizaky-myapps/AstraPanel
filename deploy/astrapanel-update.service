@@ -1,0 +1,8 @@
+# Applique une mise à jour d'AstraPanel (en root). Déclenché par astrapanel-update.path.
+[Unit]
+Description=Mise à jour d'AstraPanel depuis GitHub
+
+[Service]
+Type=oneshot
+ExecStart=@DIR@/deploy/update.sh
+TimeoutStartSec=30min

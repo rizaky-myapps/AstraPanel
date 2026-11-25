@@ -1,6 +1,11 @@
 import path from 'node:path';
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { execFile, spawn } from 'node:child_process';
+import { cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { HttpError } from '../http/util.js';
+
+const execFileAsync = promisify(execFile);
+const ARCHIVE_RE = /\.(zip|tar|tar\.gz|tgz|tar\.xz|tar\.bz2)$/i;
 
 function isInside(root, target) {
   return target === root || target.startsWith(root + path.sep);
@@ -9,12 +14,20 @@ function isInside(root, target) {
 /**
  * Résout un chemin relatif à l'intérieur du dossier d'une app, en refusant toute sortie
  * (../, chemins absolus, liens symboliques qui pointent ailleurs).
+ * noFollowLast : l'élément lui-même n'est pas suivi s'il s'agit d'un lien (pour le supprimer,
+ * le renommer ou l'archiver tel quel) ; seul son dossier parent doit être dans l'application.
  */
-export async function resolveInside(root, rel = '', { mustExist = false } = {}) {
+export async function resolveInside(root, rel = '', { mustExist = false, noFollowLast = false } = {}) {
   if (typeof rel !== 'string' || rel.includes('\0')) throw new HttpError(400, 'Chemin invalide');
   const realRoot = await realpath(root);
   const target = path.resolve(realRoot, '.' + path.sep + rel.replace(/\\/g, '/'));
   if (!isInside(realRoot, target)) throw new HttpError(400, 'Chemin en dehors du dossier de l’application');
+
+  if (noFollowLast && target !== realRoot) {
+    await resolveInside(realRoot, path.relative(realRoot, path.dirname(target)));
+    if (mustExist && !(await lstat(target).then(() => true, () => false))) throw new HttpError(404, 'Fichier introuvable');
+    return { root: realRoot, target, rel: path.relative(realRoot, target).split(path.sep).join('/') };
+  }
 
   // On vérifie le chemin réel du plus proche parent existant.
   let probe = target;
@@ -95,13 +108,13 @@ export async function makeDir(root, rel) {
 }
 
 export async function removePath(root, rel) {
-  const { target, root: realRoot } = await resolveInside(root, rel, { mustExist: true });
+  const { target, root: realRoot } = await resolveInside(root, rel, { mustExist: true, noFollowLast: true });
   if (target === realRoot) throw new HttpError(400, 'Impossible de supprimer le dossier racine');
   await rm(target, { recursive: true, force: true });
 }
 
 export async function renamePath(root, fromRel, toRel) {
-  const from = await resolveInside(root, fromRel, { mustExist: true });
+  const from = await resolveInside(root, fromRel, { mustExist: true, noFollowLast: true });
   const to = await resolveInside(root, toRel);
   if (from.target === from.root || to.target === to.root) throw new HttpError(400, 'Chemin invalide');
   validateName(path.basename(to.target));
@@ -124,4 +137,114 @@ export async function downloadInfo(root, rel) {
   const info = await stat(target);
   if (!info.isFile()) throw new HttpError(400, 'Seuls les fichiers peuvent être téléchargés');
   return { file: target, size: info.size, name: path.basename(target) };
+}
+
+const exists = (p) => lstat(p).then(() => true, () => false);
+
+// « photo.png » -> « photo (2).png » si le nom est déjà pris dans le dossier.
+async function uniqueTarget(dir, name) {
+  let target = path.join(dir, name);
+  if (!(await exists(target))) return target;
+  const match = /^(.*?)((?:\.tar)?\.[^.]+)?$/.exec(name);
+  const base = match[1] || name;
+  const ext = match[2] || '';
+  for (let i = 2; i < 1000; i++) {
+    target = path.join(dir, `${base} (${i})${ext}`);
+    if (!(await exists(target))) return target;
+  }
+  throw new HttpError(409, 'Impossible de trouver un nom libre');
+}
+
+function validatePaths(paths) {
+  if (!Array.isArray(paths) || !paths.length) throw new HttpError(400, 'Aucun élément sélectionné');
+  if (paths.length > 1000) throw new HttpError(400, 'Trop d’éléments sélectionnés');
+  return paths;
+}
+
+// Supprime tout ce qui peut l'être ; les éléments déjà absents sont ignorés.
+export async function removePaths(root, paths) {
+  const failed = [];
+  for (const rel of validatePaths(paths)) {
+    try {
+      await removePath(root, rel);
+    } catch (err) {
+      if (err.status !== 404) failed.push(`${path.basename(rel)} (${err.message})`);
+    }
+  }
+  if (failed.length) throw new HttpError(400, `Non supprimé : ${failed.join(', ')}`);
+}
+
+// Déplace ou copie des éléments dans un dossier (les doublons de nom sont renommés).
+export async function transferPaths(root, paths, destRel, mode) {
+  const dest = await resolveInside(root, destRel);
+  await mkdir(dest.target, { recursive: true });
+  const realDest = await realpath(dest.target);
+  const done = [];
+  for (const rel of validatePaths(paths)) {
+    const src = await resolveInside(root, rel, { mustExist: true, noFollowLast: true });
+    if (src.target === src.root) throw new HttpError(400, 'Impossible de déplacer le dossier racine');
+    if (isInside(src.target, realDest)) throw new HttpError(400, `« ${path.basename(src.target)} » ne peut pas être placé dans lui-même`);
+    if (mode === 'move' && path.dirname(src.target) === realDest) continue;
+    const target = await uniqueTarget(realDest, path.basename(src.target));
+    if (mode === 'move') await rename(src.target, target);
+    else await cp(src.target, target, { recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false });
+    done.push(path.basename(target));
+  }
+  return done;
+}
+
+// Compresse des éléments d'un même dossier dans une archive ZIP créée à côté d'eux.
+export async function compressPaths(root, dirRel, names, archiveName) {
+  const dir = await resolveInside(root, dirRel, { mustExist: true });
+  validatePaths(names);
+  for (const name of names) {
+    validateName(name);
+    await resolveInside(root, path.posix.join(dir.rel, name), { mustExist: true, noFollowLast: true });
+  }
+  let archive = String(archiveName || '').trim() || (names.length === 1 ? names[0] : 'archive');
+  if (!archive.toLowerCase().endsWith('.zip')) archive += '.zip';
+  validateName(archive);
+  const target = await uniqueTarget(dir.target, archive);
+  try {
+    // -y : les liens symboliques sont stockés tels quels, jamais suivis hors du dossier
+    await execFileAsync('zip', ['-r', '-q', '-y', target, '--', ...names], { cwd: dir.target, timeout: 15 * 60 * 1000 });
+  } catch (err) {
+    await rm(target, { force: true });
+    if (err.code === 'ENOENT' && String(err.syscall).startsWith('spawn')) {
+      throw new HttpError(500, 'La commande zip est absente : sudo apt install zip');
+    }
+    throw new HttpError(500, `Compression impossible : ${(err.stderr || err.message).toString().trim()}`);
+  }
+  return path.basename(target);
+}
+
+// Extrait une archive dans un nouveau dossier portant son nom.
+export async function extractArchive(root, rel) {
+  const src = await resolveInside(root, rel, { mustExist: true });
+  const name = path.basename(src.target);
+  if (!ARCHIVE_RE.test(name)) throw new HttpError(400, 'Format non pris en charge (.zip, .tar, .tar.gz, .tgz)');
+  const dest = await uniqueTarget(path.dirname(src.target), name.replace(ARCHIVE_RE, '') || 'archive');
+  await mkdir(dest);
+  const [command, args] = name.toLowerCase().endsWith('.zip')
+    ? ['unzip', ['-q', '-o', src.target, '-d', dest]]
+    : ['tar', ['-xf', src.target, '-C', dest, '--no-same-owner']];
+  try {
+    await execFileAsync(command, args, { timeout: 15 * 60 * 1000 });
+  } catch (err) {
+    await rm(dest, { recursive: true, force: true });
+    throw new HttpError(500, `Extraction impossible : ${(err.stderr || err.message).toString().trim()}`);
+  }
+  return path.basename(dest);
+}
+
+// Lance `zip` en écrivant l'archive sur sa sortie standard (téléchargement d'un dossier ou d'une sélection).
+export async function zipStream(root, dirRel, names) {
+  const dir = await resolveInside(root, dirRel, { mustExist: true });
+  validatePaths(names);
+  for (const name of names) {
+    validateName(name);
+    await resolveInside(root, path.posix.join(dir.rel, name), { mustExist: true, noFollowLast: true });
+  }
+  const child = spawn('zip', ['-r', '-q', '-y', '-', '--', ...names], { cwd: dir.target, stdio: ['ignore', 'pipe', 'ignore'] });
+  return { child, name: names.length === 1 ? `${names[0]}.zip` : `${path.basename(dir.target)}.zip` };
 }
