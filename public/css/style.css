@@ -1956,31 +1956,6 @@ pre.code {
 .steps b {
   color: var(--text);
 }
-.steps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
-}
-.step {
-  padding: 14px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius);
-  background: var(--bg-2);
-}
-.step.done {
-  border-color: rgba(52, 211, 153, 0.45);
-}
-.step.disabled {
-  opacity: 0.55;
-}
-.step-title {
-  font-weight: 650;
-  margin-bottom: 4px;
-}
-.step .hint {
-  margin: 0 0 10px;
-}
 .card.inner {
   background: var(--bg-2);
 }
@@ -2054,5 +2029,184 @@ pre.code {
   }
   .grid.charts {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Pas-à-pas (onglet Tunnel Cloudflare) */
+.stepper {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.stepper > li {
+  counter-increment: step;
+  position: relative;
+  padding: 16px 18px 16px 62px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.stepper > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 18px;
+  top: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: #c4b5fd;
+  border: 1px solid rgba(139, 108, 255, 0.5);
+}
+.stepper > li.done {
+  border-color: rgba(52, 211, 153, 0.45);
+}
+.stepper > li.done::before {
+  content: '✓';
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.5);
+}
+.stepper > li.disabled {
+  opacity: 0.55;
+}
+.stepper-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 650;
+  font-size: 15px;
+  margin: 4px 0 8px;
+}
+.stepper .hint {
+  margin: 0 0 10px;
+}
+.stepper details {
+  margin: 0 0 12px;
+}
+.stepper details summary {
+  color: var(--accent-2);
+  font-weight: 550;
+}
+.guide {
+  margin: 8px 0 12px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  line-height: 1.6;
+}
+.guide li::marker {
+  color: var(--muted);
+  font-weight: 600;
+}
+.ui-label {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border-2);
+  background: var(--panel-3);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.perm-wrap {
+  overflow-x: auto;
+  margin: 8px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.site-links {
+  gap: 8px;
+}
+
+/* Page Aide : tutoriels */
+.doc {
+  padding: 8px 32px 28px;
+  max-width: 920px;
+  line-height: 1.7;
+}
+.doc h1 {
+  font-size: 24px;
+  margin: 22px 0 10px;
+}
+.doc h2 {
+  font-size: 19px;
+  margin: 30px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 16px;
+}
+.doc h3 {
+  font-size: 16px;
+  margin: 22px 0 8px;
+  scroll-margin-top: 16px;
+}
+.doc p {
+  margin: 0 0 12px;
+}
+.doc ul,
+.doc ol {
+  margin: 0 0 14px;
+  padding-left: 24px;
+}
+.doc li {
+  margin: 4px 0;
+}
+.doc li > ul,
+.doc li > ol {
+  margin: 6px 0;
+}
+.doc blockquote {
+  margin: 0 0 14px;
+  padding: 10px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.doc blockquote p:last-child {
+  margin-bottom: 0;
+}
+.doc pre.code {
+  margin: 0 0 14px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.doc img {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.doc hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+.doc-table {
+  overflow-x: auto;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+@media (max-width: 900px) {
+  .doc {
+    padding: 4px 16px 20px;
+  }
+  .stepper > li {
+    padding: 14px 14px 14px 52px;
+  }
+  .stepper > li::before {
+    left: 12px;
+  }
+  .ui-label {
+    white-space: normal;
   }
 }

@@ -6,6 +6,7 @@ import { renderNewApp } from './pages/new-app.js';
 import { renderApp } from './pages/app.js';
 import { renderSettings } from './pages/settings.js';
 import { renderStorage } from './pages/storage.js';
+import { renderHelp } from './pages/help.js';
 import { isAdmin, onAppsChange, refreshApps, state } from './state.js';
 
 const ROUTES = [
@@ -14,6 +15,7 @@ const ROUTES = [
   { re: /^\/apps\/([^/]+)(?:\/(\w+))?$/, nav: 'app', render: renderApp },
   { re: /^\/settings(?:\/([\w-]+))?$/, nav: 'settings', render: renderSettings },
   { re: /^\/storage(?:\/(.+))?$/, nav: 'storage', render: renderStorage },
+  { re: /^\/aide(?:\/([\w-]+)(?:\/(.+))?)?$/, nav: 'aide', render: renderHelp },
 ];
 
 let poller = null;
@@ -127,6 +129,7 @@ function renderShell() {
           <a href="#/" data-nav="dashboard">${icon('grid')} Tableau de bord</a>
           <a href="#/new" data-nav="new">${icon('plus')} Nouvelle application</a>
           <a href="#/settings" data-nav="settings">${icon('sliders')} Paramètres</a>
+          <a href="#/aide" data-nav="aide">${icon('book')} Aide</a>
         </nav>
         <div class="side-title">Applications</div>
         <div id="side-apps"></div>

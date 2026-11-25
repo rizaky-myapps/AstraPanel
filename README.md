@@ -25,7 +25,9 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Déploiement** depuis Git en un clic (pull + `npm install` + build + redémarrage), import d'archive ZIP, webhook
   pour redéployer à chaque `git push`
 - **Tunnel Cloudflare intégré** : mise en ligne en HTTPS sans ouvrir de port ; en mode « géré par le panel », ajouter
-  un domaine à une application crée tout seul la route du tunnel et l'enregistrement DNS
+  un domaine à une application crée tout seul la route du tunnel et l'enregistrement DNS, avec un pas-à-pas en
+  français dans le panel
+- **Page Aide** : les tutoriels (installation, tunnel Cloudflare) lisibles directement dans le panel
 - **Tableau de bord** : graphiques du processeur, de la température et de la RAM sur 1 h, 24 h, 15 jours et 30 jours,
   alerte de sous-tension du Pi
 - **Explorateur de stockage** : les disques du Pi et leur contenu trié par taille, pour trouver ce qui prend de la place

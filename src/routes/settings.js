@@ -2,7 +2,8 @@ import { HttpError, streamLog } from '../http/util.js';
 import { normalizeDomains } from '../domains.js';
 import { systemInfo } from '../system.js';
 import { analyze, listMounts } from '../storage.js';
-import { parseGithub } from '../update.js';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 export function settingsRoutes(router, { store, apps, config, metrics, tunnel, updater, publish }) {
   // --- Système, historique, stockage ----------------------------------------
@@ -40,13 +41,7 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
   router.get('/api/update/log', async () => ({ log: await updater.log(), run: await updater.runStatus() }), { admin: true });
 
   // --- Tunnel Cloudflare ------------------------------------------------------
-  // Lien vers le tutoriel Cloudflare de la version installée (sur GitHub)
-  const guideUrl = async () => {
-    const installed = await updater.installedOrGit();
-    const gh = installed && parseGithub(installed.repo);
-    return gh && installed.commit ? `https://github.com/${gh.owner}/${gh.repo}/blob/${installed.commit}/docs/CLOUDFLARE.md` : null;
-  };
-  router.get('/api/tunnel', async () => ({ ...(await tunnel.status()), guide: await guideUrl() }), { admin: true });
+  router.get('/api/tunnel', () => tunnel.status(), { admin: true });
   router.get('/api/tunnel/logs/stream', (ctx) => streamLog(ctx.req, ctx.res, tunnel.log), { admin: true });
   router.post('/api/tunnel/install', async () => ({ version: await tunnel.install() }), { admin: true });
   router.post(
@@ -105,6 +100,14 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
     },
     { admin: true },
   );
+
+  // --- Tutoriels (affichés dans la page Aide) -----------------------------------
+  const DOCS = { tutoriel: 'TUTORIEL.md', cloudflare: 'CLOUDFLARE.md' };
+  router.get('/api/docs/:name', async (ctx) => {
+    const file = DOCS[ctx.params.name];
+    if (!file) throw new HttpError(404, 'Tutoriel introuvable');
+    return { markdown: await readFile(path.join(config.root, 'docs', file), 'utf8') };
+  });
 
   // --- Paramètres généraux ------------------------------------------------------
 

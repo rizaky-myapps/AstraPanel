@@ -188,3 +188,52 @@ test('démarrage avec le Raspberry Pi : option par application', async (t) => {
   assert.equal(apps.rt(auto.id).status, 'stopped');
   assert.equal(apps.rt(manuel.id).status, 'running');
 });
+
+test('rendu des tutoriels (Markdown) dans la page Aide', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { renderMarkdown, slugify } = await import('../public/js/markdown.js');
+  const ctx = {
+    image: (src) => `/docs/${src}`,
+    link: (label, href) => `<a href="${href}">${label}</a>`,
+  };
+  // identifiants des titres identiques à ceux de GitHub (liens du sommaire)
+  assert.equal(slugify("1. Ce qu'il vous faut"), '1-ce-quil-vous-faut');
+  assert.equal(slugify('5. Mode A : tunnel géré depuis le panel (recommandé)'), '5-mode-a--tunnel-géré-depuis-le-panel-recommandé');
+
+  const out = renderMarkdown(
+    [
+      '## Titre **gras**',
+      '',
+      '1. Étape un',
+      '   suite de la ligne',
+      '',
+      '   ```',
+      '   sudo cloudflared service install <jeton>',
+      '   ```',
+      '',
+      '2. Étape deux avec `code` et [lien](https://exemple.fr)',
+      '   - sous-point',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| *x* | <script>alert(1)</script> |',
+      '',
+      '> **Note** : attention',
+    ].join('\n'),
+    ctx,
+  );
+  assert.match(out, /<h2 id="titre-gras">Titre <strong>gras<\/strong><\/h2>/);
+  assert.match(out, /<ol><li><p>Étape un suite de la ligne<\/p>\n<pre class="code"><code>sudo cloudflared service install &lt;jeton&gt;<\/code><\/pre><\/li>/);
+  assert.match(out, /<li><p>Étape deux avec <code>code<\/code> et <a href="https:\/\/exemple.fr">lien<\/a><\/p>\n<ul><li>sous-point<\/li><\/ul><\/li><\/ol>/);
+  assert.match(out, /<td><em>x<\/em><\/td><td>&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/td>/);
+  assert.match(out, /<blockquote><p><strong>Note<\/strong> : attention<\/p><\/blockquote>/);
+  assert.doesNotMatch(out, /<script>/);
+
+  // les vrais tutoriels : chaque lien du sommaire pointe vers un titre existant
+  for (const file of ['CLOUDFLARE.md', 'TUTORIEL.md']) {
+    const md = readFileSync(new URL(`../docs/${file}`, import.meta.url), 'utf8');
+    const html = renderMarkdown(md, { ...ctx, link: (label, href) => `<a href="${href}">${label}</a>` });
+    const ids = new Set([...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]));
+    for (const [, anchor] of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.has(anchor), `${file} : ancre #${anchor} introuvable`);
+  }
+});

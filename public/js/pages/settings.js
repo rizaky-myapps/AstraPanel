@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { isAdmin, state } from '../state.js';
+import { helpHref } from './help.js';
 import {
   $,
   ROLE_LABEL,
@@ -331,7 +332,9 @@ async function updateTab(el, page) {
 async function tunnelTab(el, page) {
   let status = await api.get('/tunnel');
   if (!page.active) return;
-  let mode = status.mode;
+  // Tant qu'aucun tunnel n'est configuré, on propose le mode recommandé (géré depuis le panel).
+  const isConfigured = (st) => (st.mode === 'api' ? Boolean(st.api.tunnelId) : Boolean(st.token)) || st.api.connected;
+  let mode = isConfigured(status) ? status.mode : 'api';
   let accounts = null;
   let pollTimer = null;
   let source = null;
@@ -355,7 +358,7 @@ async function tunnelTab(el, page) {
           Le <b>tunnel Cloudflare</b> met vos sites en ligne sur votre nom de domaine, en HTTPS, <b>sans ouvrir de port sur votre box</b>
           (il fonctionne même sans IPv4 publique). Le Raspberry Pi garde une connexion sortante vers Cloudflare, qui lui transmet les visites.
           Il faut un domaine géré par Cloudflare (offre gratuite).
-          ${status.guide ? html`<br /><a href="${status.guide}" target="_blank" rel="noopener">${icon('external')} Tutoriel pas à pas (domaine, jeton d'API, tunnel)</a>` : ''}
+          <br /><a href="${helpHref('cloudflare')}">${icon('book')} Lire le tutoriel complet (création du compte, ajout du domaine, jeton d'API, dépannage)</a>
         </div></div>
 
         <div class="card">
@@ -412,9 +415,26 @@ async function tunnelTab(el, page) {
     openLog();
   }
 
+  // Libellé d'un bouton du site Cloudflare (en anglais à l'écran), avec sa traduction
+  const ui = (label, fr = '') => html`<b class="ui-label">${label}</b>${fr ? html` <span class="muted">(${fr})</span>` : ''}`;
+
+  const domainPrereq = () =>
+    html`<div class="alert info">${icon('info')}<div>
+      <b>Avant de commencer</b> : votre nom de domaine doit déjà être ajouté à votre compte Cloudflare et marqué « Active ».
+      Pas encore fait ? Suivez <a href="${helpHref('cloudflare', '3-ajouter-votre-nom-de-domaine-à-cloudflare')}">l'étape 3 du tutoriel</a>
+      (ajout du domaine et changement des serveurs DNS chez votre registrar).
+    </div></div>`;
+
+  const siteLinks = () => {
+    const sites = state.apps.filter((x) => x.port);
+    return sites.length
+      ? html`<div class="row site-links">${sites.map((x) => html`<a class="btn btn-sm" href="#/apps/${x.id}/settings">${icon('globe')} ${x.name}${x.domains?.length ? ` · ${x.domains[0]}` : ' : ajouter un domaine'}</a>`)}</div>`
+      : html`<p class="hint">Vous n'avez pas encore de site : créez-en un avec <a href="#/new">Nouvelle application</a>.</p>`;
+  };
+
   const appsTable = () =>
     html`<table class="table compact">
-      <thead><tr><th>Application</th><th>Service à indiquer dans Cloudflare</th></tr></thead>
+      <thead><tr><th>Site</th><th>À indiquer dans « Service URL »</th></tr></thead>
       <tbody>
         ${state.apps.filter((a) => a.port).length
           ? state.apps.filter((a) => a.port).map((a) => html`<tr><td>${a.name}</td><td><code>http://localhost:${a.port}</code></td></tr>`)
@@ -431,10 +451,34 @@ async function tunnelTab(el, page) {
         html`${status.mode === 'token' && status.token
             ? html`<div class="alert info">${icon('check')}<div>Tunnel configuré : <code>${status.token.tunnelId}</code></div></div>`
             : ''}
-          <ol class="steps">
-            <li>Sur <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">dash.cloudflare.com</a>, ouvrez <b>Networking → Tunnels</b>, cliquez sur <b>Create a tunnel</b>, donnez un nom puis <b>Create Tunnel</b>.</li>
-            <li>Choisissez le système <b>Debian</b> et copiez la commande affichée (elle contient le jeton qui commence par <code>eyJ</code>). <b>Ne la lancez pas sur le Pi</b> : collez-la ci-dessous.</li>
-            <li>Dans le tunnel, onglet <b>Routes</b> → <b>Add route</b> → <b>Published application</b> : un domaine par site, avec en <b>Service URL</b> l'adresse indiquée dans ce tableau :</li>
+          ${domainPrereq()}
+          <ol class="stepper">
+            <li>
+              <div class="stepper-title">Créer le tunnel sur le site de Cloudflare</div>
+              <ol class="guide">
+                <li>Ouvrez <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">dash.cloudflare.com</a> et connectez-vous.</li>
+                <li>Dans le menu de gauche, cliquez sur ${ui('Networking', 'Réseau')}, puis sur ${ui('Tunnels')}.</li>
+                <li>Cliquez sur ${ui('Create a tunnel', 'créer un tunnel')}, donnez-lui un nom (par exemple <code>raspberry-pi</code>), puis cliquez sur ${ui('Create Tunnel')}.</li>
+              </ol>
+            </li>
+            <li>
+              <div class="stepper-title">Donner le jeton du tunnel au panel</div>
+              <ol class="guide">
+                <li>Cloudflare affiche une page d'installation : choisissez le système ${ui('Debian')}.</li>
+                <li>Copiez la commande affichée. Elle ressemble à <code>sudo cloudflared service install eyJhIjoi…</code>. <b>Ne la lancez pas sur le Raspberry Pi</b> : le panel s'en occupe.</li>
+                <li>Collez-la dans le champ en bas de cette page, puis cliquez sur <b>Enregistrer et démarrer</b>. L'état en haut de la page passe à « Connecté ».</li>
+                <li>Revenez sur Cloudflare : le connecteur apparaît comme connecté. Cliquez sur ${ui('Continue', 'continuer')}.</li>
+              </ol>
+            </li>
+            <li>
+              <div class="stepper-title">Publier vos sites</div>
+              <ol class="guide">
+                <li>Sur Cloudflare, ouvrez votre tunnel (${ui('Networking')} → ${ui('Tunnels')} → nom du tunnel), puis l'onglet ${ui('Routes')}.</li>
+                <li>Cliquez sur ${ui('Add route', 'ajouter une route')}, puis sur ${ui('Published application', 'application publiée')}.</li>
+                <li>Remplissez ${ui('Subdomain', 'sous-domaine, par exemple blog ; vide pour le domaine seul')}, choisissez votre domaine dans ${ui('Domain', 'domaine')}, et indiquez dans ${ui('Service URL', 'adresse du service')} l'adresse du site donnée dans le tableau ci-dessous.</li>
+                <li>Cliquez sur ${ui('Add route')}. Cloudflare crée lui-même l'enregistrement DNS : le site est en ligne en HTTPS.</li>
+              </ol>
+            </li>
           </ol>
           ${appsTable()}
           <form id="token-form" style="margin-top:16px">
@@ -462,41 +506,81 @@ async function tunnelTab(el, page) {
     const a = status.api;
     setHTML(
       box,
-      html`<div class="steps-grid">
-        <div class="step ${a.connected ? 'done' : ''}">
-          <div class="step-title">1. Jeton d'API Cloudflare</div>
-          ${a.connected
-            ? html`<p class="hint">Jeton enregistré <code>${a.apiToken}</code>.</p>`
-            : html`<p class="hint">
-                Sur <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com/profile/api-tokens</a> :
-                <b>Create Token</b> → <b>Custom token</b>, avec les permissions <b>Account · Cloudflare Tunnel · Edit</b>,
-                <b>Zone · DNS · Edit</b> et <b>Zone · Zone · Read</b> (zones : toutes, ou celles de vos domaines).
-              </p>`}
+      html`${domainPrereq()}
+      <ol class="stepper">
+        <li class="${a.connected ? 'done' : ''}">
+          <div class="stepper-title">Créer un jeton d'API Cloudflare ${a.connected ? html`<span class="badge st-running">Fait</span>` : ''}</div>
+          <p class="hint">
+            Ce jeton autorise le panel à créer le tunnel et les enregistrements DNS de vos sites, et rien d'autre.
+            Les boutons du site de Cloudflare sont écrits ici comme à l'écran (en anglais), avec leur traduction.
+          </p>
+          <details ${a.connected ? '' : 'open'}>
+            <summary>${a.connected ? 'Revoir comment créer un jeton' : 'Comment créer le jeton (2 minutes)'}</summary>
+            <ol class="guide">
+              <li>Ouvrez la page <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com/profile/api-tokens</a> (connectez-vous si besoin).</li>
+              <li>Cliquez sur le bouton ${ui('Create Token', 'créer un jeton')}.</li>
+              <li>Tout en bas de la liste des modèles, dans ${ui('Custom token', 'jeton personnalisé')}, cliquez sur ${ui('Get started', 'commencer')}.</li>
+              <li>Dans ${ui('Token name', 'nom du jeton')}, écrivez par exemple <code>AstraPanel</code>.</li>
+              <li>
+                Dans ${ui('Permissions')}, réglez les trois listes déroulantes de la première ligne, puis cliquez sur
+                ${ui('+ Add more', 'ajouter une ligne')} pour les suivantes :
+                <div class="perm-wrap">
+                  <table class="table compact">
+                    <thead><tr><th>1re liste</th><th>2e liste</th><th>3e liste</th><th class="hide-sm">À quoi ça sert</th></tr></thead>
+                    <tbody>
+                      <tr><td><b>Account</b></td><td><b>Cloudflare Tunnel</b></td><td><b>Edit</b></td><td class="hide-sm">créer et configurer le tunnel</td></tr>
+                      <tr><td><b>Zone</b></td><td><b>DNS</b></td><td><b>Edit</b></td><td class="hide-sm">créer les adresses de vos sites</td></tr>
+                      <tr><td><b>Zone</b></td><td><b>Zone</b></td><td><b>Read</b></td><td class="hide-sm">lister vos noms de domaine</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </li>
+              <li>Dans ${ui('Account Resources', 'comptes concernés')} : ${ui('Include')} puis votre compte.</li>
+              <li>Dans ${ui('Zone Resources', 'domaines concernés')} : ${ui('Include')} puis ${ui('All zones', 'tous les domaines')}.</li>
+              <li>Cliquez sur ${ui('Continue to summary', 'voir le résumé')}, puis sur ${ui('Create Token', 'créer le jeton')}.</li>
+              <li>Cliquez sur ${ui('Copy', 'copier')} à côté du jeton affiché. <b>Il ne sera plus jamais affiché</b> : collez-le tout de suite ci-dessous.</li>
+            </ol>
+          </details>
           <form id="api-form" class="input-group">
-            <input type="password" name="apiToken" class="mono" placeholder="${a.connected ? 'Remplacer le jeton…' : 'Collez le jeton d’API'}" autocomplete="off" />
-            <button class="btn" type="submit">${a.connected ? 'Remplacer' : 'Connecter'}</button>
+            <input type="password" name="apiToken" class="mono" placeholder="${a.connected ? `Jeton enregistré (${a.apiToken}) : collez-en un autre pour le remplacer` : 'Collez ici le jeton d’API'}" autocomplete="off" />
+            <button class="btn ${a.connected ? '' : 'btn-primary'}" type="submit">${a.connected ? 'Remplacer' : 'Connecter'}</button>
           </form>
-        </div>
-        <div class="step ${a.tunnelId ? 'done' : ''} ${a.connected ? '' : 'disabled'}">
-          <div class="step-title">2. Tunnel</div>
+        </li>
+
+        <li class="${a.tunnelId ? 'done' : ''} ${a.connected ? '' : 'disabled'}">
+          <div class="stepper-title">Créer le tunnel ${a.tunnelId ? html`<span class="badge st-running">Fait</span>` : ''}</div>
           ${a.tunnelId
-            ? html`<p class="hint">Tunnel <b>${a.tunnelName}</b> sur le compte ${a.accountName} (<code>${a.tunnelId.slice(0, 8)}…</code>).</p>`
-            : html`<p class="hint">Le panel crée le tunnel sur votre compte (ou réutilise celui qui porte ce nom).</p>`}
+            ? html`<p class="hint">Tunnel <b>${a.tunnelName}</b> sur le compte « ${a.accountName} » (<code>${a.tunnelId.slice(0, 8)}…</code>). Il démarre automatiquement avec le Raspberry Pi.</p>`
+            : html`<p class="hint">
+                Choisissez votre compte Cloudflare, gardez le nom proposé (ou changez-le), puis cliquez sur <b>Créer le tunnel</b>.
+                Le panel installe cloudflared si besoin, crée le tunnel sur votre compte et le démarre : l'état en haut de la
+                page passe à « Connecté ».
+              </p>`}
           <form id="setup-form" class="stack-sm">
             <select name="accountId" ${a.connected ? '' : 'disabled'}>
               ${accounts
                 ? accounts.map((x) => html`<option value="${x.id}" ${x.id === a.accountId ? 'selected' : ''}>${x.name}</option>`)
                 : a.accountId
                   ? html`<option value="${a.accountId}">${a.accountName}</option>`
-                  : html`<option value="">Compte Cloudflare…</option>`}
+                  : html`<option value="">${a.connected ? 'Chargement des comptes…' : 'Connectez d’abord le jeton (étape 1)'}</option>`}
             </select>
             <div class="input-group">
-              <input type="text" name="name" class="mono" value="${a.tunnelName || `astrapanel-${location.hostname.split('.')[0] || 'pi'}`}" ${a.connected ? '' : 'disabled'} />
-              <button class="btn btn-primary" type="submit" ${a.connected ? '' : 'disabled'}>${a.tunnelId ? 'Relier' : 'Créer le tunnel'}</button>
+              <input type="text" name="name" class="mono" value="${a.tunnelName || `astrapanel-${location.hostname.split('.')[0] || 'pi'}`}" ${a.connected ? '' : 'disabled'} aria-label="Nom du tunnel" />
+              <button class="btn btn-primary" type="submit" ${a.connected ? '' : 'disabled'}>${a.tunnelId ? 'Relier à nouveau' : 'Créer le tunnel'}</button>
             </div>
           </form>
-        </div>
-      </div>
+        </li>
+
+        <li class="${a.tunnelId ? '' : 'disabled'}">
+          <div class="stepper-title">Mettre un site en ligne</div>
+          <ol class="guide">
+            <li>Ouvrez l'application (le site) dans le panel, onglet <b>Paramètres</b>.</li>
+            <li>Dans <b>Nom(s) de domaine</b>, écrivez l'adresse voulue : <code>monsite.fr</code>, <code>blog.monsite.fr</code>… (plusieurs, séparées par des virgules).</li>
+            <li>Cliquez sur <b>Enregistrer</b>. Le panel crée tout seul la route du tunnel et l'enregistrement DNS : le site est en ligne en HTTPS en moins d'une minute, et apparaît ci-dessous comme « En ligne ».</li>
+          </ol>
+          ${siteLinks()}
+        </li>
+      </ol>
       ${a.tunnelId ? routesCard() : ''}`,
     );
 
@@ -625,7 +709,7 @@ async function tunnelTab(el, page) {
     }
     if (!page.active) return;
     if (full) {
-      mode = status.mode;
+      mode = isConfigured(status) ? status.mode : 'api';
       rerender();
       return;
     }

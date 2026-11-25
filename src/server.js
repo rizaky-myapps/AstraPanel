@@ -56,6 +56,10 @@ export function createPanel(cfg = config) {
     const url = new URL(req.url, 'http://localhost');
     const { pathname } = url;
     try {
+      if (pathname.startsWith('/docs/images/')) {
+        await serveStatic(req, res, path.join(cfg.root, 'docs', 'images'), pathname.slice('/docs/images'.length));
+        return;
+      }
       if (!pathname.startsWith('/api/') && !pathname.startsWith('/hooks/')) {
         await serveStatic(req, res, cfg.publicDir, pathname, { cacheControl: 'no-cache' });
         return;
