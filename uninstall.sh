@@ -13,10 +13,9 @@ rm -f /etc/systemd/system/astrapanel.service /etc/systemd/system/astrapanel-upda
 systemctl daemon-reload
 
 if [ "$PURGE" -eq 1 ]; then
-  rm -rf "$INSTALL_DIR" /etc/caddy/astrapanel /var/lib/astrapanel /var/log/astrapanel-update.log
+  rm -rf "$INSTALL_DIR" /var/lib/astrapanel /var/log/astrapanel-update.log
   userdel astrapanel 2>/dev/null || true
   echo "AstraPanel et toutes ses données ont été supprimés."
-  echo "Pensez à retirer la ligne « import /etc/caddy/astrapanel/*.caddy » de /etc/caddy/Caddyfile si besoin."
 else
   find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 ! -name data -exec rm -rf {} +
   echo "AstraPanel est désinstallé. Vos données sont conservées dans $INSTALL_DIR/data"

@@ -47,6 +47,7 @@ export function renderNewApp(view) {
     port: '',
     domains: '',
     autoRestart: true,
+    startOnBoot: true,
     start: true,
   };
   let file = null;
@@ -173,7 +174,7 @@ export function renderNewApp(view) {
                     <div class="field">
                       <label>Nom(s) de domaine <span class="faint">(optionnel)</span></label>
                       <input type="text" name="domains" class="mono" value="${f.domains}" placeholder="monsite.fr, www.monsite.fr" spellcheck="false" />
-                      <span class="hint">Publié par le tunnel Cloudflare ou par Caddy (voir Paramètres).</span>
+                      <span class="hint">Publié en HTTPS par le tunnel Cloudflare (voir Paramètres).</span>
                     </div>`
                 : ''}
             </div>
@@ -187,6 +188,7 @@ export function renderNewApp(view) {
           <div class="card">
             <div class="card-body">
               <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique<small>Relance l'application si elle plante.</small></span></label>
+              <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec le Raspberry Pi<small>Lance l'application à chaque démarrage du Raspberry Pi.</small></span></label>
               ${f.source === 'empty'
                 ? ''
                 : html`<label class="check">${toggle('start', f.start)}<span>Démarrer après la création<small>Installe les dépendances, lance le build éventuel puis démarre l'application.</small></span></label>`}
@@ -255,6 +257,7 @@ export function renderNewApp(view) {
       buildCommand: f.buildCommand,
       env,
       autoRestart: f.autoRestart,
+      startOnBoot: f.startOnBoot,
       start: f.start && f.source !== 'archive',
     };
     if (f.type !== 'static') body.startCommand = f.startCommand;

@@ -22,10 +22,6 @@ export const config = {
   host: process.env.ASTRA_HOST || '0.0.0.0',
   port: Number(process.env.ASTRA_PORT || 8080),
 
-  // Dossier où le panel écrit sa configuration Caddy (importée par /etc/caddy/Caddyfile)
-  caddyDir: process.env.ASTRA_CADDY_DIR || '/etc/caddy/astrapanel',
-  caddyMainConfig: process.env.ASTRA_CADDY_CONFIG || '/etc/caddy/Caddyfile',
-
   limits: {
     jsonBody: 2 * 1024 * 1024,
     upload: 1024 * 1024 * 1024,

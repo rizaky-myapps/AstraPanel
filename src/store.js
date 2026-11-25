@@ -1,10 +1,6 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 const DEFAULT_SETTINGS = {
-  caddy: {
-    // null = détection automatique (activé si le dossier Caddy du panel est accessible en écriture)
-    enabled: null,
-  },
   panelDomain: '',
   portRange: { start: 4000, end: 4999 },
   // Tunnel Cloudflare : « token » = géré depuis le site Cloudflare, « api » = géré depuis le panel
@@ -43,7 +39,10 @@ export class Store {
       users: (data.users || []).map((u) => ({ role: 'admin', ...u })),
       apps: data.apps || [],
       settings: mergeDefaults(DEFAULT_SETTINGS, data.settings),
+      // identifiant du dernier démarrage du système vu par le panel
+      state: { bootId: null, ...data.state },
     };
+    delete this.data.settings.caddy; // réglage des anciennes versions (Caddy a été retiré)
     this.save();
   }
 

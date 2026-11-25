@@ -6,7 +6,7 @@ import { mkdtempSync } from 'node:fs';
 import { startTestPanel } from './helpers.js';
 import { Metrics } from '../src/metrics.js';
 import { parseTunnelToken, hostnameOf } from '../src/tunnel.js';
-import { parseGithub } from '../src/update.js';
+import { parseGithub, parseVersionBranch, pickLatestBranch } from '../src/update.js';
 import { niceTicks } from '../public/js/chart.js';
 
 test('historique : agrégation par palier et conservation limitée', () => {
@@ -42,6 +42,18 @@ test('jeton de tunnel Cloudflare', () => {
   assert.throws(() => parseTunnelToken(`eyJ${'a'.repeat(30)}`), { status: 400 });
   assert.equal(hostnameOf('http://site.local:8080'), 'site.local');
   assert.equal(hostnameOf('monsite.fr'), 'monsite.fr');
+});
+
+test('branches de version : la mise à jour suit la branche « -latest »', () => {
+  const names = ['main', 'claude/test', 'AstraPanel-version.1.0.0', 'AstraPanel-version.1.1.0-latest', 'AstraPanel-version.1.0.5'];
+  assert.equal(pickLatestBranch(names), 'AstraPanel-version.1.1.0-latest');
+  // après publication de 1.2.0, 1.1.0 a perdu son suffixe
+  assert.equal(pickLatestBranch(['AstraPanel-version.1.1.0', 'AstraPanel-version.1.2.0-latest']), 'AstraPanel-version.1.2.0-latest');
+  // tri numérique, pas alphabétique
+  assert.equal(pickLatestBranch(['AstraPanel-version.1.9.0', 'AstraPanel-version.1.10.0']), 'AstraPanel-version.1.10.0');
+  assert.equal(pickLatestBranch(['main']), null);
+  assert.deepEqual(parseVersionBranch('AstraPanel-version.2.0.1-latest'), { version: '2.0.1', parts: [2, 0, 1], latest: true });
+  assert.equal(parseVersionBranch('AstraPanel-version.2.0'), null);
 });
 
 test('analyse des URL GitHub', () => {
@@ -115,4 +127,64 @@ test('gestionnaire de fichiers : copier, déplacer, compresser, extraire, aperç
   assert.equal(res.status, 200);
   res = await ctx.request('GET', `${f}?path=`);
   assert.deepEqual(res.data.entries.map((e) => e.name).sort(), ['archives', 'media', 'notes.txt']);
+});
+
+test('le tunnel Cloudflare démarre avec le panel, et réessaie si cloudflared manque', async (t) => {
+  const { copyFileSync, mkdirSync } = await import('node:fs');
+  const { waitFor } = await import('./helpers.js');
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  const { tunnel, store } = ctx.panel;
+  const token = Buffer.from(JSON.stringify({ a: 'acc', t: 'tunnel-test', s: 'c2VjcmV0' })).toString('base64');
+  Object.assign(store.data.settings.tunnel, { enabled: true, mode: 'token', token });
+
+  // cloudflared absent au démarrage : une nouvelle tentative est programmée
+  await tunnel.bootstrap();
+  assert.equal(tunnel.child, null);
+  assert.ok(tunnel.restartTimer);
+
+  // il apparaît : le tunnel démarre au prochain essai (2 s) et se connecte
+  mkdirSync(path.dirname(tunnel.localBinary), { recursive: true });
+  copyFileSync(new URL('./fixtures/fake-cloudflared.js', import.meta.url), tunnel.localBinary);
+  const ready = await waitFor(async () => (await tunnel.ready())?.readyConnections > 0, { timeout: 8000 });
+  assert.ok(ready);
+  assert.equal((await tunnel.status()).running, true);
+
+  // redémarrage du panel : le tunnel est relancé tout de suite
+  await tunnel.stop({ persist: false });
+  const begin = Date.now();
+  await tunnel.bootstrap();
+  await waitFor(async () => (await tunnel.ready())?.readyConnections > 0, { timeout: 5000 });
+  assert.ok(Date.now() - begin < 3000, 'le tunnel doit être connecté en moins de 3 s');
+});
+
+test('démarrage avec le Raspberry Pi : option par application', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const cmd = 'node -e "setInterval(() => {}, 1000)"';
+  const mk = async (name, startOnBoot) =>
+    (await ctx.request('POST', '/api/apps', { body: { name, type: 'bot', source: 'empty', startCommand: cmd, startOnBoot } })).data.app;
+  const auto = await mk('Bot auto', true);
+  const manuel = await mk('Bot manuel', false);
+  assert.equal(auto.startOnBoot, true);
+  assert.equal(manuel.startOnBoot, false);
+  const { apps } = ctx.panel;
+  // avant le redémarrage : « Bot manuel » tournait, « Bot auto » était arrêté
+  apps.get(manuel.id).desired = 'running';
+  apps.get(auto.id).desired = 'stopped';
+
+  // démarrage du Raspberry Pi : seule l'app avec l'option est lancée
+  await apps.bootstrap({ systemBoot: true });
+  assert.equal(apps.rt(auto.id).status, 'running');
+  assert.equal(apps.rt(manuel.id).status, 'stopped');
+  assert.equal(apps.get(manuel.id).desired, 'stopped');
+
+  // simple redémarrage du panel : chaque app retrouve son état précédent
+  await apps.stop(auto.id);
+  apps.get(auto.id).desired = 'stopped';
+  apps.get(manuel.id).desired = 'running';
+  await apps.bootstrap({ systemBoot: false });
+  assert.equal(apps.rt(auto.id).status, 'stopped');
+  assert.equal(apps.rt(manuel.id).status, 'running');
 });

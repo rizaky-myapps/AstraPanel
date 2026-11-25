@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { Store } from './store.js';
 import { Auth } from './auth.js';
-import { Caddy } from './caddy.js';
 import { AppManager } from './apps/manager.js';
 import { Metrics } from './metrics.js';
 import { Tunnel } from './tunnel.js';
 import { Updater } from './update.js';
+import { bootId } from './system.js';
 import { Router } from './http/router.js';
 import { serveStatic } from './http/static.js';
 import { HttpError, clientIp, readJson, sendJson } from './http/util.js';
@@ -37,16 +37,15 @@ export function createPanel(cfg = config) {
   const store = new Store(cfg.dbFile);
   const auth = new Auth(store, cfg.dataDir);
   auth.ensureSetupToken();
-  const caddy = new Caddy({ store, dir: cfg.caddyDir, mainConfig: cfg.caddyMainConfig, panelPort: cfg.port });
   const tunnel = new Tunnel({ store, config: cfg });
-  // les domaines des applis sont publiés par Caddy et/ou par le tunnel Cloudflare
-  const publish = async () => ({ caddy: await caddy.apply(), tunnel: await tunnel.sync() });
-  const apps = new AppManager({ store, caddy, config: cfg, publish });
+  // les domaines des applis sont publiés par le tunnel Cloudflare
+  const publish = async () => ({ tunnel: await tunnel.sync() });
+  const apps = new AppManager({ store, config: cfg, publish });
   const metrics = new Metrics(path.join(cfg.dataDir, 'metrics.json'));
   const updater = new Updater({ store, config: cfg });
 
   const router = new Router();
-  const deps = { store, auth, caddy, apps, config: cfg, metrics, tunnel, updater, publish };
+  const deps = { store, auth, apps, config: cfg, metrics, tunnel, updater, publish };
   authRoutes(router, deps);
   appRoutes(router, deps);
   fileRoutes(router, deps);
@@ -103,12 +102,23 @@ export function createPanel(cfg = config) {
   server.requestTimeout = 60 * 60 * 1000; // gros téléversements sur une connexion lente
   server.headersTimeout = 60 * 1000;
 
-  return { server, store, auth, caddy, apps, metrics, tunnel, updater };
+  return { server, store, auth, apps, metrics, tunnel, updater };
 }
 
 async function main() {
   const panel = createPanel();
-  const { server, auth, caddy, apps, metrics, tunnel, updater } = panel;
+  const { server, store, auth, apps, metrics, tunnel, updater } = panel;
+
+  // Premier lancement depuis le démarrage du Pi ? (sans identifiant connu, on considère un simple redémarrage)
+  const currentBoot = bootId();
+  const systemBoot = Boolean(currentBoot && store.data.state.bootId && store.data.state.bootId !== currentBoot);
+  if (currentBoot !== store.data.state.bootId) {
+    store.data.state.bootId = currentBoot;
+    store.save();
+  }
+
+  // Le tunnel Cloudflare démarre tout de suite, en même temps que le serveur web du panel.
+  tunnel.bootstrap();
 
   server.listen(config.port, config.host, async () => {
     console.log(`AstraPanel ${config.version} — http://${config.host === '0.0.0.0' ? '<ip-du-pi>' : config.host}:${config.port}`);
@@ -122,10 +132,7 @@ async function main() {
     }
     metrics.start();
     updater.start();
-    const result = await caddy.apply();
-    if (!result.ok) console.warn(`Caddy : ${result.error}`);
-    apps.bootstrap();
-    tunnel.bootstrap();
+    apps.bootstrap({ systemBoot });
   });
   server.on('error', (err) => {
     console.error(`Impossible de démarrer le serveur : ${err.message}`);

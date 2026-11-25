@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { Router } from '../src/http/router.js';
-import { normalizeDomains, Caddy } from '../src/caddy.js';
+import { assertDomainsFree, normalizeDomains } from '../src/domains.js';
 import { LogBuffer, lineSplitter, stripAnsi } from '../src/apps/logs.js';
 import { resolveInside } from '../src/apps/files.js';
 import { maskUrl } from '../src/apps/manager.js';
@@ -27,29 +27,21 @@ test('le routeur extrait les paramètres et distingue 404 / 405', () => {
   assert.throws(() => router.match('DELETE', '/api/apps/x/files'), { status: 405 });
 });
 
-test('les domaines sont validés strictement (pas d’injection dans le Caddyfile)', () => {
+test('les domaines sont validés strictement', () => {
   assert.deepEqual(normalizeDomains('MonSite.fr, www.monsite.fr monsite.fr'), ['monsite.fr', 'www.monsite.fr']);
-  assert.deepEqual(normalizeDomains(['http://bot.local:8081/']), ['http://bot.local:8081']);
+  assert.deepEqual(normalizeDomains(['https://api.monsite.fr/']), ['api.monsite.fr']);
+  assert.deepEqual(normalizeDomains('*.monsite.fr'), ['*.monsite.fr']);
   assert.deepEqual(normalizeDomains(''), []);
-  for (const bad of ['evil.com {', 'a.com\nimport /etc', 'exa_mple.com', '-site.fr', 'site.fr/chemin']) {
+  for (const bad of ['evil.com {', 'a.com\nimport /etc', 'exa_mple.com', '-site.fr', 'site.fr/chemin', 'localhost', 'site.fr:8080']) {
     assert.throws(() => normalizeDomains([bad]), { status: 400 }, bad);
   }
 });
 
-test('la configuration Caddy générée contient le panel et les sites', () => {
-  const store = {
-    data: {
-      settings: { panelDomain: 'panel.exemple.fr', caddy: { enabled: true } },
-      apps: [
-        { id: 'site-1', name: 'Site', port: 4000, domains: ['exemple.fr', 'www.exemple.fr'] },
-        { id: 'bot-1', name: 'Bot', port: null, domains: [] },
-      ],
-    },
-  };
-  const out = new Caddy({ store, dir: '/nope', mainConfig: '/nope', panelPort: 8080 }).generate();
-  assert.match(out, /panel\.exemple\.fr \{\n\tencode zstd gzip\n\treverse_proxy 127\.0\.0\.1:8080\n\}/);
-  assert.match(out, /exemple\.fr, www\.exemple\.fr \{[^}]*reverse_proxy 127\.0\.0\.1:4000/);
-  assert.doesNotMatch(out, /bot-1/);
+test('un domaine ne peut servir qu’une seule application', () => {
+  const store = { data: { settings: { panelDomain: 'panel.exemple.fr' }, apps: [{ id: 'a1', name: 'Site', domains: ['exemple.fr'] }] } };
+  assert.throws(() => assertDomainsFree(store, ['exemple.fr'], 'a2'), { status: 409 });
+  assert.throws(() => assertDomainsFree(store, ['panel.exemple.fr'], 'a2'), { status: 409 });
+  assert.doesNotThrow(() => assertDomainsFree(store, ['exemple.fr'], 'a1'));
 });
 
 test('découpage des lignes et suppression des codes couleur', () => {

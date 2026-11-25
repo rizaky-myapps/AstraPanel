@@ -1,9 +1,10 @@
 import { HttpError, streamLog } from '../http/util.js';
-import { normalizeDomains } from '../caddy.js';
+import { normalizeDomains } from '../domains.js';
 import { systemInfo } from '../system.js';
 import { analyze, listMounts } from '../storage.js';
+import { parseGithub } from '../update.js';
 
-export function settingsRoutes(router, { store, caddy, apps, config, metrics, tunnel, updater, publish }) {
+export function settingsRoutes(router, { store, apps, config, metrics, tunnel, updater, publish }) {
   // --- Système, historique, stockage ----------------------------------------
   router.get('/api/system', async () => ({
     ...(await systemInfo(config.dataDir)),
@@ -39,7 +40,13 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
   router.get('/api/update/log', async () => ({ log: await updater.log(), run: await updater.runStatus() }), { admin: true });
 
   // --- Tunnel Cloudflare ------------------------------------------------------
-  router.get('/api/tunnel', () => tunnel.status(), { admin: true });
+  // Lien vers le tutoriel Cloudflare de la version installée (sur GitHub)
+  const guideUrl = async () => {
+    const installed = await updater.installedOrGit();
+    const gh = installed && parseGithub(installed.repo);
+    return gh && installed.commit ? `https://github.com/${gh.owner}/${gh.repo}/blob/${installed.commit}/docs/CLOUDFLARE.md` : null;
+  };
+  router.get('/api/tunnel', async () => ({ ...(await tunnel.status()), guide: await guideUrl() }), { admin: true });
   router.get('/api/tunnel/logs/stream', (ctx) => streamLog(ctx.req, ctx.res, tunnel.log), { admin: true });
   router.post('/api/tunnel/install', async () => ({ version: await tunnel.install() }), { admin: true });
   router.post(
@@ -47,7 +54,6 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
     async (ctx) => {
       const { token } = await ctx.json();
       await tunnel.setToken(token);
-      await caddy.apply();
       return tunnel.status();
     },
     { admin: true },
@@ -67,7 +73,6 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
     async (ctx) => {
       const { accountId, name } = await ctx.json();
       const sync = await tunnel.setupApiTunnel(accountId, name);
-      await caddy.apply(); // Caddy laisse désormais les domaines au tunnel
       return { sync, status: await tunnel.status() };
     },
     { admin: true },
@@ -78,7 +83,6 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
       const { enabled } = await ctx.json();
       if (enabled) await tunnel.enable();
       else await tunnel.stop();
-      await caddy.apply();
       return tunnel.status();
     },
     { admin: true },
@@ -97,7 +101,6 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
     '/api/tunnel/reset',
     async () => {
       await tunnel.reset();
-      await caddy.apply();
       return tunnel.status();
     },
     { admin: true },
@@ -107,7 +110,6 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
 
   router.get('/api/settings', async () => ({
     settings: store.data.settings,
-    caddy: await caddy.status(),
     panel: { version: config.version, port: config.port, dataDir: config.dataDir, node: process.version },
   }), { admin: true });
 
@@ -115,9 +117,6 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
     const input = await ctx.json();
     const next = structuredClone(store.data.settings);
 
-    if ('caddyEnabled' in input) {
-      next.caddy.enabled = input.caddyEnabled === null ? null : Boolean(input.caddyEnabled);
-    }
     if ('panelDomain' in input) {
       const domains = normalizeDomains(input.panelDomain);
       if (domains.length > 1) throw new HttpError(400, 'Un seul domaine pour le panel');
@@ -139,5 +138,4 @@ export function settingsRoutes(router, { store, caddy, apps, config, metrics, tu
     return { settings: next, ...(await publish()) };
   }, { admin: true });
 
-  router.post('/api/settings/caddy/apply', () => caddy.apply(), { admin: true });
 }

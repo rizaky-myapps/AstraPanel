@@ -25,7 +25,6 @@ LimitNOFILE=65536
 NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true
-ReadWritePaths=-/etc/caddy/astrapanel
 
 [Install]
 WantedBy=multi-user.target

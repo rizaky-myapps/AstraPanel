@@ -706,6 +706,7 @@ input.mono,
 textarea.mono {
   font-family: var(--mono);
   font-size: 13px;
+  font-variant-ligatures: none;
 }
 textarea {
   resize: vertical;
@@ -906,18 +907,19 @@ input[type='file']::file-selector-button:hover {
 }
 
 /* ---- Onglets ---- */
+/* Onglets : jamais de barre de défilement, ils passent à la ligne si la place manque */
 .tabs {
   display: flex;
-  gap: 2px;
+  flex-wrap: wrap;
+  gap: 2px 4px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 18px;
-  overflow-x: auto;
 }
 .tabs a {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   color: var(--muted);
   font-weight: 550;
   border-bottom: 2px solid transparent;
@@ -966,16 +968,19 @@ input[type='file']::file-selector-button:hover {
   display: flex;
   gap: 12px;
 }
+.console-output {
+  color: #f1f3f9;
+}
 .console-output .ts {
-  color: var(--faint);
+  color: #8a93b0;
   flex: none;
   user-select: none;
 }
 .console-output .err .m {
-  color: #fca5a5;
+  color: #ff4d4d;
 }
 .console-output .sys .m {
-  color: #a5b4fc;
+  color: #6cb6ff;
 }
 .console-empty {
   color: var(--faint);
@@ -1322,6 +1327,16 @@ details summary {
   .console-output {
     height: 68vh;
     min-height: 320px;
+    padding: 8px 10px;
+  }
+  /* sur téléphone, l'horodatage passe au-dessus du message pour lui laisser toute la largeur */
+  .console-output .l {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .console-output .ts {
+    display: block;
+    font-size: 11px;
   }
 }
 
@@ -2014,6 +2029,22 @@ pre.code {
   .grid.stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+  .tabs {
+    border-bottom: 0;
+    gap: 6px;
+  }
+  .tabs a {
+    margin-bottom: 0;
+    padding: 6px 11px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    background: var(--panel);
+  }
+  .tabs a.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
   }
   .stat {
     padding: 12px 14px;

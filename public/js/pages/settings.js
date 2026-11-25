@@ -6,6 +6,7 @@ import {
   confirmDialog,
   copyText,
   formatDate,
+  formatLogTime,
   formatTime,
   html,
   icon,
@@ -22,7 +23,6 @@ const TABS = [
   { id: 'utilisateurs', label: 'Utilisateurs', icon: 'users', admin: true },
   { id: 'mises-a-jour', label: 'Mises à jour', icon: 'arrowUpCircle', admin: true },
   { id: 'tunnel', label: 'Tunnel Cloudflare', icon: 'cloud', admin: true },
-  { id: 'caddy', label: 'Caddy (HTTPS)', icon: 'globe', admin: true },
   { id: 'general', label: 'Général', icon: 'sliders', admin: true },
 ];
 
@@ -41,7 +41,7 @@ export function renderSettings(view, page, tab = 'compte') {
       <div id="settings-tab"></div>`,
   );
   const el = $('#settings-tab', root);
-  const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, caddy: caddyTab, general: generalTab };
+  const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, general: generalTab };
   return Promise.resolve(renderers[tab](el, page)).catch((err) => {
     if (page.active) setHTML(el, html`<div class="alert err">${icon('alert')}<div>${err.message}</div></div>`);
   });
@@ -209,13 +209,14 @@ async function updateTab(el, page) {
           <div class="card-body">
             ${!inst ? html`<div class="alert warn">${icon('alert')}<div>Ce panel n'a pas été installé depuis un clone Git : la mise à jour automatique est indisponible. Réinstallez-le avec <code>install.sh</code>.</div></div>` : ''}
             ${inst && !info.updater
-              ? html`<div class="alert warn">${icon('alert')}<div>Le service de mise à jour n'est pas encore installé sur le Pi. Faites une dernière mise à jour en SSH (<code>cd ~/AstraPanel && git pull && sudo ./install.sh</code>) : les suivantes se feront d'ici.</div></div>`
+              ? html`<div class="alert warn">${icon('alert')}<div>Le service de mise à jour n'est pas encore installé sur le Pi. Faites une dernière mise à jour en SSH, en réinstallant la dernière version (tutoriel, étape 5 : <code>git clone</code> puis <code>sudo ./install.sh</code>) : les suivantes se feront d'ici.</div></div>`
               : ''}
             ${info.error ? html`<div class="alert err">${icon('alert')}<div>${info.error}</div></div>` : ''}
             ${inst
               ? html`<table class="table kv-table">
                   <tbody>
-                    <tr><td class="muted">Commit</td><td><code>${short(inst.commit)}</code>${inst.installedAt ? html` <span class="muted">· installé le ${formatDate(inst.installedAt)}</span>` : ''}</td></tr>
+                    <tr><td class="muted">Version</td><td><b>${inst.version}</b> <span class="muted">· branche <code>${inst.branch}</code> · commit <code>${short(inst.commit)}</code></span></td></tr>
+                    ${inst.installedAt ? html`<tr><td class="muted">Installée le</td><td>${formatDate(inst.installedAt)}</td></tr>` : ''}
                     <tr><td class="muted">Dépôt</td><td class="mono truncate">${inst.repo || '—'}</td></tr>
                     <tr><td class="muted">Dernière vérification</td><td>${info.checking ? 'en cours…' : info.lastCheck ? formatDate(info.lastCheck) : 'jamais'}</td></tr>
                   </tbody>
@@ -225,9 +226,11 @@ async function updateTab(el, page) {
           ${inst
             ? html`<form class="card-foot" id="branch-form">
                 <label class="muted nowrap" for="branch">Branche suivie</label>
-                ${info.branches.length
-                  ? html`<select id="branch" name="branch">${info.branches.map((b) => html`<option value="${b}" ${b === info.branch ? 'selected' : ''}>${b}</option>`)}</select>`
-                  : html`<input id="branch" name="branch" type="text" class="mono" value="${info.branch}" />`}
+                <select id="branch" name="branch">
+                  <option value="" ${info.auto ? 'selected' : ''}>Automatique : dernière version publiée${info.auto ? ` (${info.branch})` : ''}</option>
+                  ${info.branches.map((b) => html`<option value="${b}" ${!info.auto && b === info.branch ? 'selected' : ''}>${b}</option>`)}
+                  ${!info.auto && !info.branches.includes(info.branch) ? html`<option value="${info.branch}" selected>${info.branch}</option>` : ''}
+                </select>
                 <span class="spacer"></span>
                 <button class="btn" type="submit">${icon('refresh')} Vérifier les mises à jour</button>
               </form>`
@@ -237,7 +240,7 @@ async function updateTab(el, page) {
         ${info.available
           ? html`<div class="card highlight">
               <div class="card-header">
-                <h2>${icon('sparkles')} Nouvelle version disponible</h2>
+                <h2>${icon('sparkles')} Nouvelle version disponible${info.latestVersion ? ` : ${info.latestVersion}` : ''}</h2>
                 <span class="spacer"></span>
                 <code>${short(info.latest)}</code>
               </div>
@@ -254,7 +257,7 @@ async function updateTab(el, page) {
               </div>
             </div>`
           : inst && info.latest
-            ? html`<div class="alert info">${icon('check')}<div>Le panel est à jour sur la branche « ${info.branch} ».</div></div>`
+            ? html`<div class="alert info">${icon('check')}<div>Le panel est à jour (dernière version : « ${info.branch} »).</div></div>`
             : ''}
 
         <div class="card ${info.run || info.pending ? '' : 'hidden'}" id="run-card">
@@ -267,8 +270,9 @@ async function updateTab(el, page) {
     $('#branch-form', el)?.addEventListener('submit', (e) => {
       e.preventDefault();
       const branch = e.target.branch.value;
+      const current = info.auto ? '' : info.branch;
       withBusy($('[type=submit]', e.target), async () => {
-        info = branch !== info.branch ? await api.post('/update/branch', { branch }) : await api.post('/update/check');
+        info = branch !== current ? await api.post('/update/branch', { branch }) : await api.post('/update/check');
         if (!page.active) return;
         draw();
         if (!info.error) toast(info.available ? 'Une nouvelle version est disponible' : 'Le panel est à jour', info.available ? 'info' : 'ok');
@@ -351,6 +355,7 @@ async function tunnelTab(el, page) {
           Le <b>tunnel Cloudflare</b> met vos sites en ligne sur votre nom de domaine, en HTTPS, <b>sans ouvrir de port sur votre box</b>
           (il fonctionne même sans IPv4 publique). Le Raspberry Pi garde une connexion sortante vers Cloudflare, qui lui transmet les visites.
           Il faut un domaine géré par Cloudflare (offre gratuite).
+          ${status.guide ? html`<br /><a href="${status.guide}" target="_blank" rel="noopener">${icon('external')} Tutoriel pas à pas (domaine, jeton d'API, tunnel)</a>` : ''}
         </div></div>
 
         <div class="card">
@@ -427,9 +432,9 @@ async function tunnelTab(el, page) {
             ? html`<div class="alert info">${icon('check')}<div>Tunnel configuré : <code>${status.token.tunnelId}</code></div></div>`
             : ''}
           <ol class="steps">
-            <li>Sur <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noopener">one.dash.cloudflare.com</a>, ouvrez <b>Networks → Tunnels</b> et créez un tunnel de type <b>Cloudflared</b>.</li>
-            <li>À l'étape d'installation, copiez la commande affichée (elle contient le jeton, qui commence par <code>eyJ</code>) et collez-la ci-dessous.</li>
-            <li>Dans l'onglet <b>Public Hostname</b> du tunnel, ajoutez un nom de domaine par site, de type <b>HTTP</b>, vers l'adresse indiquée dans ce tableau :</li>
+            <li>Sur <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">dash.cloudflare.com</a>, ouvrez <b>Networking → Tunnels</b>, cliquez sur <b>Create a tunnel</b>, donnez un nom puis <b>Create Tunnel</b>.</li>
+            <li>Choisissez le système <b>Debian</b> et copiez la commande affichée (elle contient le jeton qui commence par <code>eyJ</code>). <b>Ne la lancez pas sur le Pi</b> : collez-la ci-dessous.</li>
+            <li>Dans le tunnel, onglet <b>Routes</b> → <b>Add route</b> → <b>Published application</b> : un domaine par site, avec en <b>Service URL</b> l'adresse indiquée dans ce tableau :</li>
           </ol>
           ${appsTable()}
           <form id="token-form" style="margin-top:16px">
@@ -589,7 +594,7 @@ async function tunnelTab(el, page) {
         row.className = `l ${line.s}`;
         const ts = document.createElement('span');
         ts.className = 'ts';
-        ts.textContent = formatTime(line.t);
+        ts.textContent = formatLogTime(line.t);
         const m = document.createElement('span');
         m.className = 'm';
         m.textContent = line.m;
@@ -681,85 +686,6 @@ async function tunnelTab(el, page) {
   refresh();
 }
 
-// ---- Caddy ---------------------------------------------------------------------------
-async function caddyTab(el, page) {
-  const { settings, caddy } = await api.get('/settings');
-  if (!page.active) return;
-  const caddyMode = settings.caddy.enabled === null ? 'auto' : settings.caddy.enabled ? 'on' : 'off';
-  const tunnelOwns = settings.tunnel.enabled && settings.tunnel.mode === 'api';
-  setHTML(
-    el,
-    html`<div class="stack">
-      <div class="card">
-        <div class="card-header"><h2>${icon('info')} À quoi sert Caddy ?</h2></div>
-        <div class="card-body prose">
-          <p>
-            Caddy est un <b>serveur web « frontal »</b> (reverse proxy). Il écoute sur les ports 80 et 443 du Raspberry Pi,
-            regarde quel nom de domaine le visiteur demande (<code>monsite.fr</code>, <code>api.monsite.fr</code>…) et transmet
-            la visite à la bonne application (port 4000, 4001…). Il obtient et renouvelle tout seul les <b>certificats HTTPS</b>
-            (Let's Encrypt).
-          </p>
-          <p>
-            <b>Vous n'en avez besoin que si</b> vous publiez vos sites via votre propre adresse IP publique, en ouvrant les ports
-            80 et 443 de votre box. Avec le <b>tunnel Cloudflare</b>, c'est Cloudflare qui fait ce travail : Caddy est inutile.
-            Pour un usage uniquement sur votre réseau local (<code>http://ip-du-pi:4000</code>), il est inutile aussi.
-          </p>
-        </div>
-      </div>
-      ${tunnelOwns ? html`<div class="alert info">${icon('cloud')}<div>Le tunnel Cloudflare (géré par le panel) publie vos domaines : Caddy ne les sert pas.</div></div>` : ''}
-      <form class="card" id="caddy-form">
-        <div class="card-header"><h2>${icon('globe')} Intégration Caddy</h2></div>
-        <div class="card-body">
-          <div class="alert ${caddy.version ? 'info' : 'warn'}">
-            ${icon(caddy.version ? 'check' : 'alert')}
-            <div>
-              ${caddy.version ? html`Caddy <b>${caddy.version}</b> est installé.` : html`Caddy n'est pas installé (<code>sudo ./install.sh --with-caddy</code> pour l'ajouter).`}
-              ${caddy.dirWritable ? html` Configuration écrite dans <code>${caddy.dir}</code>.` : ''}
-              Statut : <b>${caddy.enabled ? 'activé' : 'désactivé'}</b>.
-            </div>
-          </div>
-          ${caddy.lastError ? html`<div class="alert err">${icon('alert')}<div><b>Dernière erreur :</b> ${caddy.lastError}</div></div>` : ''}
-          <div class="field">
-            <label>Intégration</label>
-            <select name="caddyEnabled">
-              <option value="auto" ${caddyMode === 'auto' ? 'selected' : ''}>Automatique (si Caddy est installé)</option>
-              <option value="on" ${caddyMode === 'on' ? 'selected' : ''}>Activée</option>
-              <option value="off" ${caddyMode === 'off' ? 'selected' : ''}>Désactivée</option>
-            </select>
-          </div>
-          <details>
-            <summary>Voir la configuration générée</summary>
-            <pre class="code">${caddy.preview}</pre>
-          </details>
-          <p class="hint">Pour désinstaller Caddy complètement : <code>sudo apt remove caddy</code>, puis réglez l'intégration sur « Désactivée ».</p>
-        </div>
-        <div class="card-foot">
-          <button class="btn btn-ghost" type="button" data-reload>${icon('refresh')} Recharger Caddy</button>
-          <button class="btn btn-primary" type="submit">${icon('save')} Enregistrer</button>
-        </div>
-      </form>
-    </div>`,
-  );
-  $('#caddy-form', el).addEventListener('submit', (e) => {
-    e.preventDefault();
-    const v = e.target.caddyEnabled.value;
-    withBusy($('[type=submit]', e.target), async () => {
-      const result = await api.patch('/settings', { caddyEnabled: v === 'auto' ? null : v === 'on' });
-      if (routingWarnings(result)) toast('Paramètres enregistrés');
-      rerender();
-    });
-  });
-  $('[data-reload]', el).addEventListener('click', (e) =>
-    withBusy(e.currentTarget, async () => {
-      const result = await api.post('/settings/caddy/apply');
-      if (result.skipped) toast('Intégration Caddy désactivée', 'info');
-      else if (result.ok) toast('Configuration Caddy rechargée');
-      else toast(`Caddy : ${result.error}`, 'err');
-      rerender();
-    }),
-  );
-}
-
 // ---- Général ---------------------------------------------------------------------------
 async function generalTab(el, page) {
   const { settings, panel } = await api.get('/settings');
@@ -773,7 +699,7 @@ async function generalTab(el, page) {
           <div class="field">
             <label>Nom de domaine <span class="faint">(optionnel)</span></label>
             <input type="text" name="panelDomain" class="mono" value="${settings.panelDomain}" placeholder="panel.mondomaine.fr" spellcheck="false" />
-            <span class="hint">Pour administrer le panel en HTTPS depuis Internet. Publié par le tunnel Cloudflare (géré par le panel) ou par Caddy.</span>
+            <span class="hint">Pour administrer le panel en HTTPS depuis Internet, via le tunnel Cloudflare (mode « géré depuis le panel »).</span>
           </div>
         </div>
         <div class="card-foot"><button class="btn btn-primary" type="submit">${icon('save')} Enregistrer</button></div>

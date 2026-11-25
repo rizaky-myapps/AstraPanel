@@ -3,7 +3,6 @@
 # Testé pour Raspberry Pi OS 64 bits (Bookworm / Trixie). Fonctionne aussi sur Debian et Ubuntu.
 #
 #   sudo ./install.sh                 installe ou met à jour le panel
-#   sudo ./install.sh --with-caddy    installe aussi Caddy (domaines + HTTPS automatique)
 #   sudo ./install.sh --port=9000     change le port du panel (8080 par défaut)
 set -euo pipefail
 
@@ -12,8 +11,6 @@ DATA_DIR="$INSTALL_DIR/data"
 PANEL_USER="astrapanel"
 NODE_MAJOR="${NODE_MAJOR:-24}"
 UNIT_FILE="/etc/systemd/system/astrapanel.service"
-CADDY_DIR="/etc/caddy/astrapanel"
-WITH_CADDY=0
 PANEL_PORT=""
 
 info() { printf '\033[1;35m==>\033[0m %s\n' "$*"; }
@@ -26,7 +23,6 @@ usage() {
 
 for arg in "$@"; do
   case "$arg" in
-    --with-caddy) WITH_CADDY=1 ;;
     --port=*) PANEL_PORT="${arg#*=}" ;;
     -h | --help) usage; exit 0 ;;
     *) usage; fail "Option inconnue : $arg" ;;
@@ -93,48 +89,18 @@ mkdir -p "$DATA_DIR"
 chown "$PANEL_USER:$PANEL_USER" "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 
-# --- Caddy (optionnel) -------------------------------------------------------
-add_caddy_repo() {
-  apt-get install -y debian-keyring debian-archive-keyring apt-transport-https &&
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' |
-    gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg &&
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' >/etc/apt/sources.list.d/caddy-stable.list &&
-    chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg /etc/apt/sources.list.d/caddy-stable.list &&
-    apt-get update -y
-}
-
-if [ "$WITH_CADDY" -eq 1 ]; then
-  if ! command -v caddy >/dev/null 2>&1; then
-    info "Installation de Caddy (dépôt officiel)…"
-    if ! add_caddy_repo; then
-      warn "Dépôt officiel de Caddy injoignable : installation de la version fournie par la distribution."
-      rm -f /etc/apt/sources.list.d/caddy-stable.list
-      apt-get update -y
-    fi
-    apt-get install -y caddy
+# --- Ancienne intégration Caddy (retirée) -------------------------------------
+# Les versions précédentes pouvaient configurer Caddy : on retire ce que le panel avait ajouté.
+if [ -d /etc/caddy/astrapanel ]; then
+  info "Retrait de l'ancienne configuration Caddy d'AstraPanel…"
+  if [ -f /etc/caddy/Caddyfile.avant-astrapanel ]; then
+    mv /etc/caddy/Caddyfile.avant-astrapanel /etc/caddy/Caddyfile
+  elif [ -f /etc/caddy/Caddyfile ]; then
+    sed -i '\|/etc/caddy/astrapanel|d' /etc/caddy/Caddyfile
   fi
-  info "Configuration de Caddy pour AstraPanel…"
-  mkdir -p "$CADDY_DIR"
-  if [ ! -f "$CADDY_DIR/sites.caddy" ]; then
-    echo "# Géré par AstraPanel" >"$CADDY_DIR/sites.caddy"
-  fi
-  chown -R "$PANEL_USER:$PANEL_USER" "$CADDY_DIR"
-  chmod 755 "$CADDY_DIR"
-  if ! grep -q "$CADDY_DIR" /etc/caddy/Caddyfile 2>/dev/null; then
-    if [ -f /etc/caddy/Caddyfile ]; then
-      cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.avant-astrapanel
-      warn "Ancien Caddyfile sauvegardé dans /etc/caddy/Caddyfile.avant-astrapanel"
-    fi
-    cat >/etc/caddy/Caddyfile <<CADDY
-# Configuration principale de Caddy.
-# Les sites créés dans AstraPanel sont générés dans $CADDY_DIR/ et importés ici.
-# Vous pouvez ajouter vos propres blocs de site sous la ligne import.
-
-import $CADDY_DIR/*.caddy
-CADDY
-  fi
-  systemctl enable caddy >/dev/null 2>&1 || true
-  systemctl restart caddy
+  rm -rf /etc/caddy/astrapanel
+  systemctl reload caddy >/dev/null 2>&1 || true
+  warn "AstraPanel n'utilise plus Caddy. Pour le désinstaller : sudo apt purge caddy"
 fi
 
 # --- Service systemd ---------------------------------------------------------

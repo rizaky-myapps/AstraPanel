@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { HttpError } from '../http/util.js';
-import { normalizeDomains } from '../caddy.js';
+import { assertDomainsFree, normalizeDomains } from '../domains.js';
 import { LogBuffer } from './logs.js';
 import { baseEnv, killGroup, pipeOutput, runCommand, runShell } from './process.js';
 import { CLK_TCK, sampleProcessGroups } from './stats.js';
@@ -88,11 +88,10 @@ function isPortFree(port) {
 }
 
 export class AppManager {
-  constructor({ store, caddy, config, publish }) {
+  constructor({ store, config, publish }) {
     this.store = store;
-    this.caddy = caddy;
-    // appelé quand les domaines ou les ports changent (Caddy, tunnel Cloudflare)
-    this.publish = publish || (async () => ({ caddy: await caddy.apply() }));
+    // appelé quand les domaines ou les ports changent (tunnel Cloudflare)
+    this.publish = publish || (async () => ({}));
     this.config = config;
     this.runtime = new Map();
     this.logs = new Map();
@@ -215,12 +214,13 @@ export class AppManager {
     if ('staticDir' in input) app.staticDir = cleanRelDir(input.staticDir);
     if ('spa' in input) app.spa = Boolean(input.spa);
     if ('autoRestart' in input) app.autoRestart = Boolean(input.autoRestart);
+    if ('startOnBoot' in input) app.startOnBoot = Boolean(input.startOnBoot);
     if ('env' in input) app.env = cleanEnv(input.env);
     if ('git' in input) app.git = cleanGit(input.git);
     if ('domains' in input) {
       const domains = normalizeDomains(input.domains);
       if (domains.length && !needsPort(app.type)) throw new HttpError(400, 'Un bot ne peut pas avoir de domaine');
-      this.caddy.assertDomainsFree(domains, app.id);
+      assertDomainsFree(this.store, domains, app.id);
       app.domains = domains;
     }
     if ('port' in input && needsPort(app.type)) {
@@ -253,6 +253,7 @@ export class AppManager {
       domains: [],
       env: {},
       autoRestart: true,
+      startOnBoot: true,
       git: null,
       desired: 'stopped',
       webhookToken: crypto.randomBytes(24).toString('base64url'),
@@ -687,10 +688,22 @@ export class AppManager {
   }
 
   // Au démarrage du panel : relance les apps qui tournaient avant (en les espaçant un peu).
-  async bootstrap() {
+  /**
+   * Lancement des applications au démarrage du panel.
+   * - démarrage du Raspberry Pi : on lance les apps dont l'option « Démarrer avec le Raspberry Pi » est active ;
+   * - simple redémarrage du panel (mise à jour…) : on remet chaque app dans l'état où elle était.
+   */
+  async bootstrap({ systemBoot = false } = {}) {
     for (const app of this.apps) {
-      if (app.desired !== 'running' || this.shuttingDown) continue;
-      this.logsFor(app.id).system('Démarrage automatique avec le panel');
+      if (this.shuttingDown) return;
+      const start = systemBoot ? app.startOnBoot !== false : app.desired === 'running';
+      const wanted = start ? 'running' : 'stopped';
+      if (app.desired !== wanted) {
+        app.desired = wanted;
+        this.store.save();
+      }
+      if (!start) continue;
+      this.logsFor(app.id).system(systemBoot ? 'Démarrage automatique avec le Raspberry Pi' : 'Démarrage automatique avec le panel');
       this.spawnApp(app);
       await new Promise((r) => setTimeout(r, 500));
     }

@@ -37,13 +37,19 @@ version_field() {
   "$NODE_BIN" -e 'try { process.stdout.write(String(require(process.argv[1])[process.argv[2]] || "")); } catch {}' "$INSTALL_DIR/version.json" "$1"
 }
 repo="$(version_field repo)"
-branch="${requested:-$(version_field branch)}"
 [ -n "$repo" ] || { echo "Dépôt inconnu : relancez install.sh depuis un clone Git."; exit 1; }
+export GIT_TERMINAL_PROMPT=0
+
+# Sans demande du panel (sudo astrapanel-update) : dernière version publiée « AstraPanel-version.X.Y.Z-latest »
+latest=""
+if [ -z "$requested" ]; then
+  latest="$(git ls-remote --heads -- "$repo" 'AstraPanel-version.*-latest' | sed 's|.*refs/heads/||' | sort -V | tail -n 1 || true)"
+fi
+branch="${requested:-${latest:-$(version_field branch)}}"
 [[ "$branch" =~ $BRANCH_RE ]] || { echo "Branche invalide : $branch"; exit 1; }
 
 echo "==> Mise à jour depuis la branche « $branch »"
 status running "Téléchargement de la nouvelle version…"
-export GIT_TERMINAL_PROMPT=0
 if [ ! -d "$SRC/.git" ]; then
   rm -rf "$SRC"
   git clone --quiet --depth 1 --branch "$branch" -- "$repo" "$SRC"

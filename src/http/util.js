@@ -82,7 +82,7 @@ function isLoopback(addr = '') {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 }
 
-// Les en-têtes X-Forwarded-* ne sont pris en compte que s'ils viennent d'un proxy local (Caddy, cloudflared).
+// Les en-têtes X-Forwarded-* ne sont pris en compte que s'ils viennent d'un proxy local (cloudflared).
 export function clientIp(req) {
   const remote = req.socket.remoteAddress || '';
   const fwd = req.headers['x-forwarded-for'];

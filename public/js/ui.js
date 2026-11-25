@@ -119,13 +119,9 @@ export function toggle(name, checked = false, { id = '', disabled = false, sm = 
   ></span>`;
 }
 
-// Affiche les erreurs éventuelles de publication des domaines (Caddy, tunnel Cloudflare).
+// Affiche les erreurs éventuelles de publication des domaines par le tunnel Cloudflare.
 export function routingWarnings(result = {}) {
   let ok = true;
-  if (result.caddy && !result.caddy.ok && !result.caddy.skipped) {
-    ok = false;
-    toast(`Caddy a refusé la configuration : ${result.caddy.error}`, 'err');
-  }
   if (result.tunnel && !result.tunnel.ok && !result.tunnel.skipped) {
     ok = false;
     toast(`Tunnel Cloudflare : ${result.tunnel.error}`, 'err');
@@ -197,6 +193,13 @@ export function formatPercent(value) {
 
 export function formatDate(ts) {
   return ts ? new Date(ts).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+}
+
+// Horodatage des consoles : [jj/mm/aa-hh:mm:ss]
+export function formatLogTime(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, '0');
+  return `[${p(d.getDate())}/${p(d.getMonth() + 1)}/${p(d.getFullYear() % 100)}-${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}]`;
 }
 
 export function formatTime(ts) {

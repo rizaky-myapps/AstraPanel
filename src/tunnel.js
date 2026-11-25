@@ -189,7 +189,10 @@ export class Tunnel {
     if (!this.settings.enabled) return;
     const delay = Math.min(60_000, 2000 * 2 ** (this.crashCount - 1));
     this.log.system(`↻ Nouvel essai dans ${delay / 1000} s`);
-    this.restartTimer = setTimeout(() => this.start().catch((err) => this.log.system(`✖ ${err.message}`)), delay);
+    this.restartTimer = setTimeout(() => this.start().catch((err) => {
+      this.log.system(`✖ ${err.message}`);
+      this.handleStartFailure();
+    }), delay);
   }
 
   stop({ persist = true } = {}) {
@@ -456,18 +459,60 @@ export class Tunnel {
     };
   }
 
+  // Démarrage avec le panel : le tunnel est lancé en premier, avant les applications.
   async bootstrap() {
+    this.startWatchdog();
     if (!this.settings.enabled || !this.token()) return;
     try {
       await this.start();
-      if (this.settings.mode === 'api') await this.sync();
+      console.log('Tunnel Cloudflare démarré avec le panel');
     } catch (err) {
+      // binaire absent… : on réessaie comme après un plantage plutôt que d'abandonner
       this.log.system(`✖ ${err.message}`);
+      this.handleStartFailure();
     }
+    if (this.settings.mode === 'api') this.sync().catch(() => {});
+  }
+
+  handleStartFailure() {
+    if (!this.settings.enabled) return;
+    this.crashCount += 1;
+    const delay = Math.min(60_000, 2000 * 2 ** (this.crashCount - 1));
+    this.log.system(`↻ Nouvel essai dans ${delay / 1000} s`);
+    clearTimeout(this.restartTimer);
+    this.restartTimer = setTimeout(() => this.start().catch((err) => {
+      this.log.system(`✖ ${err.message}`);
+      this.handleStartFailure();
+    }), delay);
+  }
+
+  // Filet de sécurité : si cloudflared tourne mais reste sans connexion 5 minutes, on le relance.
+  startWatchdog() {
+    clearInterval(this.watchdog);
+    let disconnectedSince = null;
+    this.watchdog = setInterval(async () => {
+      if (!this.child || !this.settings.enabled) {
+        disconnectedSince = null;
+        return;
+      }
+      const ready = await this.ready();
+      if (ready?.readyConnections > 0) {
+        disconnectedSince = null;
+        return;
+      }
+      disconnectedSince ??= Date.now();
+      if (Date.now() - disconnectedSince > 5 * 60_000) {
+        disconnectedSince = null;
+        this.log.system('Aucune connexion à Cloudflare depuis 5 minutes : redémarrage du tunnel');
+        await this.restart().catch((err) => this.log.system(`✖ ${err.message}`));
+      }
+    }, 60_000);
+    this.watchdog.unref();
   }
 
   async shutdown() {
     clearTimeout(this.restartTimer);
+    clearInterval(this.watchdog);
     await this.stop({ persist: false });
     this.log.close();
   }

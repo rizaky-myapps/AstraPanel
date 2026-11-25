@@ -14,7 +14,6 @@ export async function startTestPanel() {
     logsDir: path.join(dataDir, 'logs'),
     tmpDir: path.join(dataDir, 'tmp'),
     dbFile: path.join(dataDir, 'db.json'),
-    caddyDir: path.join(dataDir, 'caddy-absent'),
     port: 0,
   };
   const panel = createPanel(cfg);

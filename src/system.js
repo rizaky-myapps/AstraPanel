@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readdir, readFile, statfs } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
@@ -28,6 +29,15 @@ setInterval(() => {
 }, 2000).unref();
 
 export const currentCpu = () => cpuUsage;
+
+// Change à chaque démarrage du Raspberry Pi : permet de distinguer un démarrage du Pi d'un redémarrage du panel.
+export function bootId() {
+  try {
+    return readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
 
 async function readText(file) {
   try {

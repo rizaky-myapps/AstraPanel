@@ -10,6 +10,8 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 
 ## 👉 [Tutoriel complet : installer AstraPanel sur un Raspberry Pi 5](docs/TUTORIEL.md)
 
+## 👉 [Tutoriel Cloudflare : mettre vos sites en ligne avec votre nom de domaine](docs/CLOUDFLARE.md)
+
 ## Fonctionnalités
 
 - **Bots Discord** (discord.js ou tout programme Node.js) avec redémarrage automatique en cas de plantage
@@ -24,7 +26,6 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
   pour redéployer à chaque `git push`
 - **Tunnel Cloudflare intégré** : mise en ligne en HTTPS sans ouvrir de port ; en mode « géré par le panel », ajouter
   un domaine à une application crée tout seul la route du tunnel et l'enregistrement DNS
-- **Caddy** en option, pour publier les sites via votre propre IP publique (HTTPS Let's Encrypt)
 - **Tableau de bord** : graphiques du processeur, de la température et de la RAM sur 1 h, 24 h, 15 jours et 30 jours,
   alerte de sous-tension du Pi
 - **Explorateur de stockage** : les disques du Pi et leur contenu trié par taille, pour trouver ce qui prend de la place
@@ -47,8 +48,10 @@ Sur un Raspberry Pi 5 sous **Raspberry Pi OS 64 bits** (Lite ou Desktop) :
 sudo apt install -y git
 ```
 
+Chaque version est publiée sur sa propre branche ; cette commande télécharge la plus récente :
+
 ```bash
-git clone https://github.com/rizaky-myapps/AstraPanel.git
+git clone -b "$(git ls-remote --heads https://github.com/rizaky-myapps/AstraPanel.git 'AstraPanel-version.*-latest' | sed 's|.*refs/heads/||' | sort -V | tail -n 1)" https://github.com/rizaky-myapps/AstraPanel.git
 ```
 
 ```bash
@@ -61,30 +64,37 @@ affiché à la fin du script. Toutes les étapes, de la carte SD jusqu'à la mis
 
 Le script installe Node.js 24 LTS (si besoin), git, zip, les outils de compilation (pour les modules natifs de vos
 bots), crée l'utilisateur système `astrapanel`, copie le panel dans `/opt/astrapanel` et le lance comme service
-systemd, avec le service de mise à jour `astrapanel-update`. Ajoutez `--with-caddy` seulement si vous publiez vos sites
-via votre propre IP publique (ports 80/443 ouverts) ; avec le tunnel Cloudflare, Caddy est inutile. Relancer le script
-ne touche pas à vos applications.
+systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script ne touche pas à vos applications.
+
+## Versions
+
+- Chaque mise à jour est publiée sur une nouvelle branche **`AstraPanel-version.X.Y.Z-latest`** (X.Y.Z = version du
+  panel). À la publication suivante, l'ancienne branche perd son suffixe : `AstraPanel-version.X.Y.Z`.
+- Les panels installés suivent automatiquement la branche `-latest` : la bannière de mise à jour apparaît dès qu'une
+  nouvelle version est publiée, et un clic dans **Paramètres → Mises à jour** l'installe.
+- Pour publier une version : `./scripts/nouvelle-version.sh X.Y.Z`.
 
 ## Fonctionnement
 
 ```
-          Internet                                     Internet
-             │ HTTPS                                      │ ports 80 / 443
-   ┌─────────▼─────────┐                        ┌─────────▼─────────┐
-   │ Cloudflare (edge) │◄── tunnel sortant ──┐  │  Caddy (option)   │
-   └───────────────────┘                     │  └─────────┬─────────┘
-                                             │            │
-   ┌─────────────────────────────────────────┴────────────▼──────────────┐
-   │ Raspberry Pi                                                        │
-   │   AstraPanel :8080 ── supervise ──► cloudflared, site :4000,        │
-   │   (interface + API)                  site :4001, bot Discord…       │
+                Internet (HTTPS, votre nom de domaine)
+                                │
+                     ┌──────────▼──────────┐
+                     │  Cloudflare (edge)  │
+                     └──────────▲──────────┘
+                                │ tunnel sortant (aucun port ouvert sur la box)
+   ┌────────────────────────────┴────────────────────────────────────────┐
+   │ Raspberry Pi                                                         │
+   │   AstraPanel :8080 ── supervise ──► cloudflared, site :4000,         │
+   │   (interface + API)                  site :4001, bot Discord…        │
    │   astrapanel-update (root, à la demande) : mise à jour depuis GitHub │
-   └─────────────────────────────────────────────────────────────────────┘
+   └──────────────────────────────────────────────────────────────────────┘
 ```
 
 - Chaque application est un processus lancé par le panel dans son propre groupe de processus (arrêt propre de tout
   l'arbre, `npm start` compris), avec redémarrage automatique et backoff en cas de plantage.
-- Les sites reçoivent leur port dans `PORT`. Le tunnel Cloudflare (ou Caddy) redirige chaque domaine vers le bon port.
+- Les sites reçoivent leur port dans `PORT`. Le tunnel Cloudflare, lancé en même temps que le panel, redirige chaque
+  domaine vers le bon port.
 - Le panel tourne sans privilèges. Pour se mettre à jour, il crée `data/update-request` : une unité systemd `.path`
   lance alors `astrapanel-update` en root, qui télécharge la branche suivie et relance `install.sh`.
 - Les données sont dans `/opt/astrapanel/data` : `db.json` (configuration), `apps/<id>/` (fichiers des applis),
@@ -99,7 +109,7 @@ npm run dev
 ```
 
 Le panel démarre sur `http://localhost:8080` avec ses données dans `./data` ; le jeton de première connexion
-s'affiche dans le terminal. Variables utiles : `ASTRA_PORT`, `ASTRA_DATA_DIR`, `ASTRA_HOST`, `ASTRA_CADDY_DIR`.
+s'affiche dans le terminal. Variables utiles : `ASTRA_PORT`, `ASTRA_DATA_DIR`, `ASTRA_HOST`.
 
 ```bash
 npm test
@@ -109,7 +119,7 @@ npm test
 src/
   server.js          serveur HTTP, routes, arrêt propre
   auth.js            comptes et grades (scrypt), sessions signées, limitation des tentatives
-  caddy.js           génération de la configuration Caddy et rechargement
+  domains.js         validation des noms de domaine
   tunnel.js          tunnel Cloudflare : cloudflared, API (tunnel, ingress, DNS)
   update.js          détection des nouvelles versions sur GitHub, demande de mise à jour
   metrics.js         historique CPU / température / RAM (1 h, 24 h, 15 j, 30 j)
@@ -123,6 +133,7 @@ public/              interface web (JavaScript natif, sans build)
 runtime/             serveur de fichiers statiques utilisé par les sites statiques
 templates/           modèles de départ (bot Discord, site Node.js, site statique)
 deploy/              services systemd et script de mise à jour (update.sh)
+scripts/             publication d'une nouvelle version (nouvelle-version.sh)
 install.sh           installation / mise à jour sur le Pi
 ```
 
@@ -141,5 +152,5 @@ install.sh           installation / mise à jour sur le Pi
   la demande du panel ne peut choisir que la branche.
 - **Toutes les applications tournent sous le même utilisateur** : une application peut lire les fichiers des
   autres et la configuration du panel. N'hébergez que du code en lequel vous avez confiance.
-- N'ouvrez jamais le port 8080 sur votre box : pour administrer à distance, utilisez le domaine du panel (HTTPS via
-  Caddy), un tunnel Cloudflare ou un VPN.
+- N'ouvrez jamais le port 8080 sur votre box : pour administrer à distance, utilisez le domaine du panel via le
+  tunnel Cloudflare, ou un VPN.

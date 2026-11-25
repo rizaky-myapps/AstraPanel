@@ -44,7 +44,7 @@ function renderBanner() {
     box,
     html`<div class="update-banner">
       ${icon('arrowUpCircle')}
-      <div><b>Une mise à jour d'AstraPanel est disponible</b>${count ? ` (${count} nouveauté${count > 1 ? 's' : ''})` : ''}.</div>
+      <div><b>Une mise à jour d'AstraPanel est disponible</b>${update.latestVersion ? ` : version ${update.latestVersion}` : ''}${count ? ` (${count} nouveauté${count > 1 ? 's' : ''})` : ''}.</div>
       <span class="spacer"></span>
       <a class="btn btn-sm btn-primary" href="#/settings/mises-a-jour">Voir la mise à jour</a>
       <button class="btn btn-sm btn-ghost" data-later>Plus tard</button>

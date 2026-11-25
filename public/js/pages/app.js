@@ -12,7 +12,7 @@ import {
   formatDate,
   formatDuration,
   formatPercent,
-  formatTime,
+  formatLogTime,
   html,
   icon,
   localUrl,
@@ -189,7 +189,7 @@ function consoleTab(el, page, app) {
       row.className = `l ${line.s}`;
       const ts = document.createElement('span');
       ts.className = 'ts';
-      ts.textContent = line.t ? formatTime(line.t) : '';
+      ts.textContent = line.t ? formatLogTime(line.t) : '';
       const msg = document.createElement('span');
       msg.className = 'm';
       msg.textContent = line.m;
@@ -438,11 +438,12 @@ function settingsTab(el, page, app) {
                 <div class="field">
                   <label>Nom(s) de domaine</label>
                   <input type="text" name="domains" class="mono" value="${app.domains.join(', ')}" placeholder="monsite.fr, www.monsite.fr" spellcheck="false" />
-                  <span class="hint">Publiés par le tunnel Cloudflare ou par Caddy (voir Paramètres). Préfixez par <code>http://</code> pour un domaine local sans HTTPS.</span>
+                  <span class="hint">Publiés en HTTPS par le tunnel Cloudflare (Paramètres → Tunnel Cloudflare).</span>
                 </div>`
             : ''}
           <div class="full">
-            <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage</span></label>
+            <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage<small>Relance l'application si elle s'arrête de façon inattendue.</small></span></label>
+            <label class="check">${toggle('startOnBoot', app.startOnBoot !== false)}<span>Démarrer avec le Raspberry Pi<small>Lance l'application à chaque démarrage du Raspberry Pi. Désactivé : elle reste arrêtée jusqu'à ce que vous cliquiez sur « Démarrer ». Un simple redémarrage du panel (mise à jour) remet toujours l'application dans son état précédent.</small></span></label>
           </div>
           <div class="full hint">Dossier sur le Raspberry Pi : <code>${app.dir}</code></div>
         </div>
@@ -478,6 +479,7 @@ function settingsTab(el, page, app) {
       installCommand: values.installCommand,
       buildCommand: values.buildCommand,
       autoRestart: form.autoRestart.checked,
+      startOnBoot: form.startOnBoot.checked,
     };
     if (!isStatic) body.startCommand = values.startCommand;
     if (isStatic) Object.assign(body, { staticDir: values.staticDir, spa: form.spa.checked });
