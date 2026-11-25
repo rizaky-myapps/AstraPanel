@@ -13,7 +13,7 @@ import { LogBuffer } from './apps/logs.js';
 import { baseEnv, killGroup, pipeOutput } from './apps/process.js';
 
 const execFileAsync = promisify(execFile);
-const API = process.env.ASTRA_CLOUDFLARE_API || 'https://api.cloudflare.com/client/v4';
+const apiBase = () => process.env.ASTRA_CLOUDFLARE_API || 'https://api.cloudflare.com/client/v4';
 const DOWNLOAD = process.env.ASTRA_CLOUDFLARED_URL || 'https://github.com/cloudflare/cloudflared/releases/latest/download';
 const BINARIES = { arm64: 'cloudflared-linux-arm64', x64: 'cloudflared-linux-amd64', arm: 'cloudflared-linux-arm' };
 const DNS_COMMENT = 'Géré par AstraPanel';
@@ -252,7 +252,7 @@ export class Tunnel {
     if (!apiToken) throw new HttpError(400, 'Aucun jeton d’API Cloudflare enregistré');
     let res;
     try {
-      res = await fetch(`${API}${pathname}`, {
+      res = await fetch(`${apiBase()}${pathname}`, {
         method,
         headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -269,17 +269,43 @@ export class Tunnel {
     return data.result;
   }
 
-  async connect(apiToken) {
-    if (typeof apiToken !== 'string' || apiToken.trim().length < 20) throw new HttpError(400, 'Jeton d’API invalide');
-    const accounts = await this.api('GET', '/accounts?per_page=50', undefined, apiToken.trim());
-    if (!accounts?.length) throw new HttpError(400, 'Ce jeton n’a accès à aucun compte Cloudflare');
-    this.save({ api: { ...this.settings.api, apiToken: apiToken.trim() } });
-    return accounts.map((a) => ({ id: a.id, name: a.name }));
+  /**
+   * Comptes accessibles avec le jeton. La liste /accounts n'est remplie que si le jeton a la permission
+   * « Account Settings », qu'on ne demande pas : on retrouve donc aussi le compte à partir des domaines
+   * (zones), que le jeton peut lire grâce à « Zone Read ».
+   */
+  async accounts(apiToken = this.settings.api.apiToken) {
+    const found = new Map();
+    let firstError = null;
+    try {
+      for (const a of (await this.api('GET', '/accounts?per_page=50', undefined, apiToken)) || []) found.set(a.id, { id: a.id, name: a.name });
+    } catch (err) {
+      firstError = err;
+    }
+    if (!found.size) {
+      let zones;
+      try {
+        zones = await this.api('GET', '/zones?per_page=50', undefined, apiToken);
+      } catch (err) {
+        throw firstError || err;
+      }
+      for (const z of zones || []) if (z.account?.id) found.set(z.account.id, { id: z.account.id, name: z.account.name || z.account.id });
+    }
+    return [...found.values()];
   }
 
-  async accounts() {
-    const accounts = await this.api('GET', '/accounts?per_page=50');
-    return accounts.map((a) => ({ id: a.id, name: a.name }));
+  async connect(apiToken) {
+    if (typeof apiToken !== 'string' || apiToken.trim().length < 20) throw new HttpError(400, 'Jeton d’API invalide');
+    const token = apiToken.trim();
+    const accounts = await this.accounts(token);
+    if (!accounts.length) {
+      throw new HttpError(
+        400,
+        'Aucun compte trouvé avec ce jeton. Vérifiez ses permissions (Cloudflare Tunnel : Modifier, DNS : Modifier, Zone : Lire, sur toutes les zones) et que votre domaine est bien ajouté à Cloudflare.',
+      );
+    }
+    this.save({ api: { ...this.settings.api, apiToken: token } });
+    return accounts;
   }
 
   async zones(accountId = this.settings.api.accountId) {

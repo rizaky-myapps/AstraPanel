@@ -237,3 +237,67 @@ test('rendu des tutoriels (Markdown) dans la page Aide', async () => {
     for (const [, anchor] of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.has(anchor), `${file} : ancre #${anchor} introuvable`);
   }
 });
+
+test('tunnel géré depuis le panel : compte retrouvé via les domaines, création du tunnel et DNS', async (t) => {
+  const http = await import('node:http');
+  const { copyFileSync, mkdirSync } = await import('node:fs');
+  const ACC = 'a'.repeat(32);
+  const records = [];
+  const calls = [];
+  // Fausse API Cloudflare : comme pour un vrai jeton sans « Account Settings », /accounts renvoie une liste vide.
+  const cf = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => (body += d)).on('end', () => {
+      const url = new URL(req.url, 'http://x');
+      calls.push(`${req.method} ${url.pathname}`);
+      const send = (result, status = 200) => {
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(status === 200 ? { success: true, errors: [], result } : { success: false, errors: [{ message: result }] }));
+      };
+      if (req.headers.authorization !== 'Bearer jeton-valide-0123456789abcdef') return send('Invalid API Token', 401);
+      const p = url.pathname;
+      if (p === '/accounts') return send([]);
+      if (p === '/zones') return send([{ id: 'z1', name: 'monsite.fr', status: 'active', account: { id: ACC, name: "moi@exemple.fr's Account" } }]);
+      if (p === `/accounts/${ACC}/cfd_tunnel`) return req.method === 'GET' ? send([]) : send({ id: 'tunnel-1', name: JSON.parse(body).name });
+      if (p === `/accounts/${ACC}/cfd_tunnel/tunnel-1/token`) return send(Buffer.from(JSON.stringify({ a: ACC, t: 'tunnel-1', s: 'c2VjcmV0' })).toString('base64'));
+      if (p === `/accounts/${ACC}/cfd_tunnel/tunnel-1/configurations`) return send({});
+      if (p === '/zones/z1/dns_records' && req.method === 'POST') {
+        const r = { id: `r${records.length + 1}`, ...JSON.parse(body) };
+        records.push(r);
+        return send(r);
+      }
+      if (p === '/zones/z1/dns_records') return send(records.filter((r) => !url.searchParams.get('name') || r.name === url.searchParams.get('name')));
+      return send(`route inconnue ${p}`, 404);
+    });
+  });
+  await new Promise((r) => cf.listen(0, '127.0.0.1', r));
+  process.env.ASTRA_CLOUDFLARE_API = `http://127.0.0.1:${cf.address().port}`;
+  const ctx = await startTestPanel();
+  t.after(async () => {
+    delete process.env.ASTRA_CLOUDFLARE_API;
+    await ctx.close();
+    cf.close();
+  });
+  await ctx.setupAdmin();
+  const { tunnel } = ctx.panel;
+  mkdirSync(path.dirname(tunnel.localBinary), { recursive: true });
+  copyFileSync(new URL('./fixtures/fake-cloudflared.js', import.meta.url), tunnel.localBinary);
+
+  let res = await ctx.request('POST', '/api/tunnel/api/connect', { body: { apiToken: 'mauvais-jeton-0123456789abcdef' } });
+  assert.equal(res.status, 400);
+  assert.match(res.data.error, /Invalid API Token/);
+
+  res = await ctx.request('POST', '/api/tunnel/api/connect', { body: { apiToken: 'jeton-valide-0123456789abcdef' } });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.deepEqual(res.data.accounts, [{ id: ACC, name: "moi@exemple.fr's Account" }]);
+
+  res = await ctx.request('POST', '/api/tunnel/api/setup', { body: { accountId: ACC, name: 'astrapanel-test' } });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.equal(res.data.status.api.tunnelId, 'tunnel-1');
+  assert.equal(res.data.status.running, true);
+
+  const { data } = await ctx.request('POST', '/api/apps', { body: { name: 'Site', type: 'static', source: 'empty', domains: 'monsite.fr' } });
+  assert.equal(data.tunnel.ok, true, JSON.stringify(data.tunnel));
+  assert.deepEqual(records.map((r) => [r.type, r.name, r.content, r.proxied]), [['CNAME', 'monsite.fr', 'tunnel-1.cfargotunnel.com', true]]);
+  assert.ok(calls.includes(`PUT /accounts/${ACC}/cfd_tunnel/tunnel-1/configurations`));
+});

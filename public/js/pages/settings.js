@@ -512,33 +512,30 @@ async function tunnelTab(el, page) {
           <div class="stepper-title">Créer un jeton d'API Cloudflare ${a.connected ? html`<span class="badge st-running">Fait</span>` : ''}</div>
           <p class="hint">
             Ce jeton autorise le panel à créer le tunnel et les enregistrements DNS de vos sites, et rien d'autre.
-            Les boutons du site de Cloudflare sont écrits ici comme à l'écran (en anglais), avec leur traduction.
+            Les boutons du site de Cloudflare sont écrits ici comme à l'écran.
           </p>
           <details ${a.connected ? '' : 'open'}>
             <summary>${a.connected ? 'Revoir comment créer un jeton' : 'Comment créer le jeton (2 minutes)'}</summary>
             <ol class="guide">
-              <li>Ouvrez la page <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com/profile/api-tokens</a> (connectez-vous si besoin).</li>
-              <li>Cliquez sur le bouton ${ui('Create Token', 'créer un jeton')}.</li>
-              <li>Tout en bas de la liste des modèles, dans ${ui('Custom token', 'jeton personnalisé')}, cliquez sur ${ui('Get started', 'commencer')}.</li>
-              <li>Dans ${ui('Token name', 'nom du jeton')}, écrivez par exemple <code>AstraPanel</code>.</li>
-              <li>
-                Dans ${ui('Permissions')}, réglez les trois listes déroulantes de la première ligne, puis cliquez sur
-                ${ui('+ Add more', 'ajouter une ligne')} pour les suivantes :
-                <div class="perm-wrap">
-                  <table class="table compact">
-                    <thead><tr><th>1re liste</th><th>2e liste</th><th>3e liste</th><th class="hide-sm">À quoi ça sert</th></tr></thead>
-                    <tbody>
-                      <tr><td><b>Account</b></td><td><b>Cloudflare Tunnel</b></td><td><b>Edit</b></td><td class="hide-sm">créer et configurer le tunnel</td></tr>
-                      <tr><td><b>Zone</b></td><td><b>DNS</b></td><td><b>Edit</b></td><td class="hide-sm">créer les adresses de vos sites</td></tr>
-                      <tr><td><b>Zone</b></td><td><b>Zone</b></td><td><b>Read</b></td><td class="hide-sm">lister vos noms de domaine</td></tr>
-                    </tbody>
-                  </table>
-                </div>
+              <li>Ouvrez <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com/profile/api-tokens</a> (menu ${ui('Paramètres utilisateur')} → ${ui('Identifiants API')} → ${ui('Jetons API')}), puis cliquez sur ${ui('Créer un jeton')}.</li>
+              <li>Dans ${ui('Nom du jeton')}, écrivez <code>AstraPanel</code>.</li>
+              <li>Dans ${ui('Politiques')}, cliquez sur ${ui('Commencer de zéro')} (la ligne marquée <i>Custom</i>). Une politique <b>Zone</b> s'ouvre :
+                <ul>
+                  <li>laissez ${ui('Inclure')} et ${ui('Toutes les zones')} ;</li>
+                  <li>dépliez la catégorie ${ui('DNS & Zones')} et cochez <b>DNS</b> avec le niveau <b>Modifier</b>, et <b>Zone</b> avec le niveau <b>Lire</b>.</li>
+                </ul>
               </li>
-              <li>Dans ${ui('Account Resources', 'comptes concernés')} : ${ui('Include')} puis votre compte.</li>
-              <li>Dans ${ui('Zone Resources', 'domaines concernés')} : ${ui('Include')} puis ${ui('All zones', 'tous les domaines')}.</li>
-              <li>Cliquez sur ${ui('Continue to summary', 'voir le résumé')}, puis sur ${ui('Create Token', 'créer le jeton')}.</li>
-              <li>Cliquez sur ${ui('Copy', 'copier')} à côté du jeton affiché. <b>Il ne sera plus jamais affiché</b> : collez-le tout de suite ci-dessous.</li>
+              <li>Cliquez sur ${ui('Ajouter une nouvelle politique')} et choisissez le type <b>Compte</b> :
+                <ul>
+                  <li>laissez ${ui('Inclure')} et choisissez votre compte ;</li>
+                  <li>dans ${ui('Rechercher des groupes d’autorisations…')}, tapez <code>Tunnel</code> et cochez <b>Cloudflare Tunnel</b> avec le niveau <b>Modifier</b>.</li>
+                </ul>
+              </li>
+              <li>Vérifiez les deux politiques : <b>Politique Zone</b> « DNS Write, Zone Read » et <b>Politique Compte</b> « Cloudflare Tunnel Write ».</li>
+              <li>${ui('Expiration du jeton')} : choisissez ${ui('Pas d’expiration')} (sinon le panel ne pourra plus publier de domaines à l'échéance). Laissez ${ui('Filtrage des adresses IP client')} vide.</li>
+              <li>Cliquez sur ${ui('Continuer vers le résumé')}, validez la création, puis <b>copiez le jeton</b> : il ne sera plus jamais affiché. Collez-le ci-dessous.</li>
+            </ol>
+            <p class="hint">Tableau de bord Cloudflare en anglais ? Les mêmes boutons s'appellent <i>Create Token</i>, <i>Custom token</i>, <i>Add more</i>, <i>Continue to summary</i>, et les niveaux <i>Edit</i> / <i>Read</i>.</p>
             </ol>
           </details>
           <form id="api-form" class="input-group">

@@ -117,24 +117,32 @@ le programme officiel de Cloudflare pour le Raspberry Pi. Aucune commande à tap
 ### 5.1 Créer un jeton d'API Cloudflare
 
 Le jeton d'API permet au panel de créer le tunnel et les enregistrements DNS à votre place, **uniquement** avec les
-droits que vous lui donnez.
+droits que vous lui donnez. Les libellés ci-dessous sont ceux du tableau de bord **en français** (l'équivalent anglais
+est indiqué entre parenthèses).
 
 1. Ouvrez [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)
-   (ou : icône de profil en haut à droite → **My Profile** → **API Tokens**).
-2. Cliquez sur **Create Token** (créer un jeton).
-3. Tout en bas, dans **Custom token**, cliquez sur **Get started** (créer un jeton personnalisé).
-4. **Token name** : donnez un nom, par exemple `AstraPanel Raspberry Pi`.
-5. **Permissions** : créez ces trois lignes (bouton **+ Add more** pour ajouter une ligne) :
+   (menu **Paramètres utilisateur** → **Identifiants API** → **Jetons API**), puis cliquez sur **Créer un jeton**
+   (*Create Token*).
+2. **Nom du jeton** : écrivez par exemple `AstraPanel`.
+3. **Politiques** : cliquez sur **Commencer de zéro** (la ligne marquée *Custom*). Une politique **Zone** s'ouvre :
+   - laissez **Inclure** et **Toutes les zones** ;
+   - dépliez la catégorie **DNS & Zones** et cochez **DNS** avec le niveau **Modifier** (*Edit*), puis **Zone** avec le
+     niveau **Lire** (*Read*).
+4. Cliquez sur **Ajouter une nouvelle politique** et choisissez le type **Compte** :
+   - laissez **Inclure** et choisissez votre compte ;
+   - dans **Rechercher des groupes d'autorisations…**, tapez `Tunnel` et cochez **Cloudflare Tunnel** avec le niveau
+     **Modifier**.
+5. Vérifiez le récapitulatif des politiques :
 
-   | 1re liste | 2e liste | 3e liste | Pourquoi |
-   | --- | --- | --- | --- |
-   | **Account** | **Cloudflare Tunnel** | **Edit** | créer et configurer le tunnel |
-   | **Zone** | **DNS** | **Edit** | créer les enregistrements DNS de vos sites |
-   | **Zone** | **Zone** | **Read** | lister vos domaines |
+   | Politique | Portée | Permissions affichées |
+   | --- | --- | --- |
+   | **Politique Zone** | Inclure toutes les zones | DNS Write, Zone Read |
+   | **Politique Compte** | Inclure votre compte | Cloudflare Tunnel Write |
 
-6. **Account Resources** : **Include** → votre compte.
-7. **Zone Resources** : **Include** → **All zones** (tous vos domaines), ou **Specific zone** → votre domaine.
-8. Laissez le reste par défaut, cliquez sur **Continue to summary**, puis sur **Create Token**.
+6. **Expiration du jeton** : choisissez **Pas d'expiration**. Avec une durée limitée, le tunnel continue de tourner à
+   l'échéance, mais le panel ne peut plus publier ni retirer de domaines (il faut alors créer un nouveau jeton).
+7. **Filtrage des adresses IP client** : laissez vide (l'adresse IP de votre box peut changer).
+8. Cliquez sur **Continuer vers le résumé** (*Continue to summary*), vérifiez, puis validez la création du jeton.
 9. **Copiez le jeton affiché** : Cloudflare ne le montrera qu'une seule fois. Ne le partagez avec personne.
 
 ### 5.2 Connecter le panel à Cloudflare
@@ -237,6 +245,11 @@ Vous pouvez aussi rendre le panel lui-même accessible, par exemple sur `https:/
 
 **« Cloudflare : Invalid API Token » ou « Authentication error » en connectant le jeton.**
 Le jeton est mal copié ou n'a pas les bonnes permissions. Recréez-le en suivant exactement l'étape 5.1.
+
+**« Aucun compte trouvé avec ce jeton ».**
+Le panel retrouve votre compte à partir de vos domaines : vérifiez que la **Politique Zone** inclut **toutes les zones**
+avec **Zone Read**, et que votre domaine est bien ajouté à Cloudflare (étape 3). Avant la version 1.2.1, le panel
+affichait « Ce jeton n'a accès à aucun compte » même avec un jeton correct : mettez le panel à jour.
 
 **Le domaine reste « Pending Nameserver Update » chez Cloudflare.**
 Vérifiez chez votre registrar que **seuls** les deux serveurs Cloudflare sont indiqués, recopiés sans faute, et que
