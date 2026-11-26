@@ -122,7 +122,9 @@ npm run dev
 ```
 
 Le panel démarre sur `http://localhost:8080` avec ses données dans `./data` ; le jeton de première connexion
-s'affiche dans le terminal. Variables utiles : `ASTRA_PORT`, `ASTRA_DATA_DIR`, `ASTRA_HOST`.
+s'affiche dans le terminal. Variables utiles : `ASTRA_PORT` (ou `PORT`), `ASTRA_DATA_DIR`, `ASTRA_HOST`. Le panel peut donc aussi tourner comme
+application d'un autre AstraPanel (pour tester une version) : il prend le port fourni dans `PORT` et garde ses données
+dans son propre dossier `data/`.
 
 ```bash
 npm test

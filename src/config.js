@@ -20,7 +20,9 @@ export const config = {
   dbFile: path.join(DATA_DIR, 'db.json'),
 
   host: process.env.ASTRA_HOST || '0.0.0.0',
-  port: Number(process.env.ASTRA_PORT || 8080),
+  // ASTRA_PORT (service systemd) ; sinon PORT, fourni à chaque application quand le panel tourne lui-même comme
+  // application d'un autre AstraPanel ; sinon 8080
+  port: Number(process.env.ASTRA_PORT || process.env.PORT || 8080),
 
   limits: {
     jsonBody: 2 * 1024 * 1024,

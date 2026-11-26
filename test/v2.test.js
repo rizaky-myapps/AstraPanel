@@ -301,6 +301,17 @@ test('mise à jour en cours : progression lisible par tous les comptes', async (
   assert.deepEqual([p.active, p.state, p.step], [false, null, null]);
 });
 
+test('port du panel : ASTRA_PORT, sinon PORT (panel hébergé dans un autre panel), sinon 8080', () => {
+  const portWith = (extra) => {
+    const env = { ...process.env, ...extra };
+    for (const key of ['ASTRA_PORT', 'PORT']) if (!(key in extra)) delete env[key];
+    return execFileSync(process.execPath, ['--input-type=module', '-e', "import('./src/config.js').then((m) => console.log(m.config.port))"], { env, encoding: 'utf8' }).trim();
+  };
+  assert.equal(portWith({}), '8080');
+  assert.equal(portWith({ PORT: '8999' }), '8999');
+  assert.equal(portWith({ ASTRA_PORT: '8080', PORT: '8999' }), '8080'); // le service systemd fixe toujours ASTRA_PORT
+});
+
 test('analyse des URL GitHub', () => {
   assert.deepEqual(parseGithub('https://github.com/moi/AstraPanel.git'), { owner: 'moi', repo: 'AstraPanel', token: null });
   assert.deepEqual(parseGithub('https://ghp_x@github.com/moi/AstraPanel'), { owner: 'moi', repo: 'AstraPanel', token: 'ghp_x' });
