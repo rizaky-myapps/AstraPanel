@@ -185,19 +185,27 @@ Le script, qui prend quelques minutes :
 3. Choisissez votre nom d'utilisateur et un mot de passe solide (8 caractères minimum). Ce premier compte est
    **administrateur** (voir l'étape 12 pour ajouter d'autres personnes).
 
-Vous arrivez sur le **tableau de bord** :
+Vous arrivez sur le **tableau de bord**, présenté comme le bureau d'un système d'exploitation :
 
-- en haut, l'état actuel de la machine : processeur, température (et vitesse du ventilateur quand la machine la
-  fournit), mémoire, stockage, durée de fonctionnement. Si le panel affiche « Sous-tension détectée », l'alimentation
-  de la machine est insuffisante : remplacez-la ;
+- en haut, l'**horloge** et la date, votre **compte** (nom, grade, boutons **Mon compte** et **Déconnexion**) et une
+  rangée d'indicateurs : nom et adresse IP de la machine, durée depuis son démarrage et, pour les administrateurs,
+  l'état du tunnel Cloudflare et des mises à jour (un clic ouvre le réglage correspondant) ;
+- le bloc **Système** : quatre jauges pour le processeur, la mémoire, le stockage et la température (avec la vitesse
+  du ventilateur quand la machine la fournit). Une jauge passe à l'orange puis au rouge quand la valeur devient
+  élevée. Si le panel affiche « Sous-tension détectée », l'alimentation de la machine est insuffisante : remplacez-la ;
+- le bloc **Applications** : une tuile par application, avec son état (en ligne, arrêtée, plantée…) et sa mémoire ;
+  un clic l'ouvre. La tuile **Ajouter** crée une nouvelle application ;
 - en dessous, les **graphiques** du processeur, de la température et de la mémoire, avec le choix de la période :
   **1 h, 24 h, 15 j ou 30 j**. Survolez une courbe pour lire la valeur à un instant donné ; « Voir les données »
   affiche les mesures sous forme de tableau. L'historique se remplit au fil du temps (il est conservé 30 jours) ;
-- un clic sur la carte **Stockage** ouvre l'explorateur de stockage : la liste des disques de la machine (disque
-  interne, SSD, clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus léger**. Cliquez sur un dossier
-  pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les journaux, une vieille archive…).
+- un clic sur la jauge **Stockage** (administrateurs) ouvre l'explorateur de stockage : la liste des disques de la
+  machine (disque interne, SSD, clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus
+  léger**. Cliquez sur un dossier pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les
+  journaux, une vieille archive…).
 
-Vos applications sont listées dans la barre latérale, avec le bouton **Nouvelle application**. Chaque application a
+Vos applications sont aussi listées dans le **panneau latéral**, avec le bouton **Nouvelle application**. Le bouton
+en haut du panneau, à droite du logo, le **cache sur la gauche** pour laisser toute la place au contenu ; le bouton
+qui apparaît alors en haut à gauche de l'écran le fait revenir (le panel retient votre choix). Chaque application a
 ses onglets (Console, Fichiers, Variables, Déploiement, Paramètres, Utilisateurs) ; quand vous passez d'une
 application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
 

@@ -134,13 +134,40 @@ function setActiveNav(nav, appId) {
 
 const brand = () => html`<a class="brand" href="#/">${icon('logo')}<span>Astra<b>Panel</b></span></a>`;
 
+// Panneau latéral masquable (écrans larges) : le choix est retenu dans ce navigateur.
+const SIDEBAR_KEY = 'astra.sidebar';
+function sidebarHidden() {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === 'hidden';
+  } catch {
+    return false;
+  }
+}
+function setSidebarHidden(hidden) {
+  const shell = $('.shell');
+  if (!shell) return;
+  shell.classList.toggle('side-hidden', hidden);
+  $('.sidebar').toggleAttribute('inert', hidden && window.matchMedia('(min-width: 901px)').matches);
+  try {
+    localStorage.setItem(SIDEBAR_KEY, hidden ? 'hidden' : 'shown');
+  } catch {
+    // stockage indisponible : le choix vaut pour cette page seulement
+  }
+  // les graphiques se redessinent à la nouvelle largeur
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
+}
+
 function renderShell() {
   const name = state.user.username;
   setHTML(
     $('#app'),
-    html`<div class="shell">
+    html`<div class="shell ${sidebarHidden() ? 'side-hidden' : ''}">
+      <button class="side-reveal btn btn-icon" id="side-show" title="Afficher le panneau latéral" aria-label="Afficher le panneau latéral">${icon('panelOpen')}</button>
       <aside class="sidebar">
-        ${brand()}
+        <div class="side-head">
+          ${brand()}
+          <button class="btn btn-ghost btn-icon btn-sm side-hide" id="side-hide" title="Masquer le panneau latéral" aria-label="Masquer le panneau latéral">${icon('panelClose')}</button>
+        </div>
         <nav class="nav">
           <a href="#/" data-nav="dashboard">${icon('grid')} Tableau de bord</a>
           <a href="#/new" data-nav="new">${icon('plus')} Nouvelle application</a>
@@ -173,6 +200,9 @@ function renderShell() {
     endSession();
   });
   $('#menu-btn').addEventListener('click', () => $('.shell').classList.add('menu-open'));
+  $('#side-hide').addEventListener('click', () => setSidebarHidden(true));
+  $('#side-show').addEventListener('click', () => setSidebarHidden(false));
+  if (sidebarHidden()) $('.sidebar').toggleAttribute('inert', window.matchMedia('(min-width: 901px)').matches);
   $('.shell').addEventListener('click', (e) => {
     if (e.target === $('.shell')) $('.shell').classList.remove('menu-open');
   });

@@ -30,8 +30,10 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
   français dans le panel
 - **Tutoriels intégrés** : les tutoriels (installation, tunnel Cloudflare) lisibles directement dans le panel, depuis
   les pages qui y renvoient (bouton « Tutoriel » du tunnel Cloudflare)
-- **Tableau de bord** : graphiques du processeur, de la température et de la RAM sur 1 h, 24 h, 15 jours et 30 jours,
-  alerte de sous-tension sur les cartes qui la signalent
+- **Tableau de bord façon bureau** : horloge, compte connecté, indicateurs (machine, IP, tunnel, mises à jour),
+  jauges du processeur, de la mémoire, du stockage et de la température, lanceur d'applications, et graphiques sur
+  1 h, 24 h, 15 jours et 30 jours ; alerte de sous-tension sur les cartes qui la signalent
+- **Panneau latéral masquable** : il se cache sur la gauche pour laisser toute la place au contenu
 - **Explorateur de stockage** : les disques de la machine et leur contenu trié par taille, pour trouver ce qui prend de la place
 - **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
   aux administrateurs par un bandeau vert ; un clic suffit pour mettre à jour, sans SSH. Pendant la mise à jour, le
