@@ -2898,3 +2898,51 @@ h3 .info-tip {
 .env-toolbar {
   margin-bottom: 12px;
 }
+
+/* ---- Webhook : derniers appels ---- */
+.hook-log-head {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.hook-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.hook-log li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+.hook-log li + li {
+  border-top: 1px solid var(--border);
+}
+.hook-log-detail {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.hook-log-error {
+  display: block;
+  margin-top: 2px;
+  color: var(--err);
+  font-size: 12.5px;
+}
+.hook-log-date {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.hook-log-empty {
+  margin: 0;
+  font-size: 13px;
+}
+#hook-history .alert {
+  margin-top: 14px;
+}

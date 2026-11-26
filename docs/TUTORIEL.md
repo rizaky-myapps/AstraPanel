@@ -370,9 +370,33 @@ Pour qu'un `git push` mette automatiquement le site ou le bot à jour :
    - *Content type* : `application/json`
    - *Which events* : **Just the push event**
 
-À chaque push sur la branche suivie, AstraPanel récupère le code, réinstalle les dépendances, lance le build et
-redémarre l'application. Vous suivez le tout dans la console. Le bouton **Déployer maintenant** fait la même chose
-à la demande.
+À chaque push sur la branche suivie (celle indiquée dans **Dépôt Git**, ou à défaut la branche par défaut du dépôt),
+AstraPanel récupère le code, réinstalle les dépendances, lance le build et redémarre l'application. Vous suivez le
+tout dans la console. Le bouton **Déployer maintenant** fait la même chose à la demande.
+
+**Vérifier que ça marche.** Dès la création du webhook, GitHub envoie un appel de test : dans l'onglet
+**Déploiement**, la liste **Derniers appels reçus** doit afficher « Adresse testée ». Ensuite, chaque push y ajoute
+une ligne :
+
+- **Déployé** : le code a été récupéré et l'application redémarrée ;
+- **Ignoré**, avec la raison : push sur une autre branche que celle suivie, tag, événement autre qu'un push… ;
+- **En attente** : un déploiement était déjà en cours, celui-ci suit automatiquement (plusieurs push rapprochés
+  sont regroupés en un seul déploiement) ;
+- **Échec du déploiement**, avec la cause : par exemple un dépôt privé sans jeton dans l'URL (voir plus bas).
+  Le détail complet est dans la console.
+
+**Rien n'apparaît dans la liste après un push ?** L'appel de GitHub n'atteint pas le panel. Sur GitHub, ouvrez
+**Settings → Webhooks →** votre webhook **→ Recent Deliveries**, cliquez sur le dernier envoi et lisez l'onglet
+**Response** :
+
+| Réponse | Cause et solution |
+| --- | --- |
+| `200` | L'appel est arrivé : la liste de l'onglet Déploiement indique ce que le panel en a fait. |
+| `404` « Webhook inconnu » | L'adresse n'est pas la bonne (copie incomplète, ou adresse régénérée depuis) : recopiez celle de l'onglet **Déploiement**. Le panel affiche aussi « Appel refusé » dans cet onglet. |
+| `403` avec une page Cloudflare (« Just a moment… ») | Cloudflare prend GitHub pour un robot et le bloque : dans le tableau de bord Cloudflare, **Security → Bots**, désactivez **Bot Fight Mode**. |
+| `502`, `530`, ou « We couldn't deliver this payload » | Le panel n'est pas joignable à ce domaine : vérifiez que le **domaine du panel** est publié (**Paramètres → Tunnel Cloudflare**) et que le panel tourne. |
+
+Le bouton **Redeliver** de GitHub renvoie le même appel : pratique pour tester sans refaire de push.
 
 **Dépôts privés**, deux possibilités :
 
@@ -650,6 +674,11 @@ Les messages du service sont aussi visibles avec :
 ```bash
 sudo journalctl -u astrapanel-update -n 50
 ```
+
+**Un `git push` ne redéploie pas l'application.** Ouvrez l'onglet **Déploiement** : la liste **Derniers appels
+reçus** indique si GitHub a appelé le panel et ce qui s'est passé (voir l'[étape 11](#11-déploiement-automatique-depuis-github)).
+L'erreur « git fetch a échoué : dépôt privé » signifie que le panel n'a pas le droit de lire le dépôt : ajoutez un
+jeton dans l'URL ou une clé de déploiement SSH.
 
 **Le site ne s'ouvre pas depuis Internet.** Consultez la partie dépannage du [tutoriel Cloudflare](CLOUDFLARE.md#9-dépannage).
 

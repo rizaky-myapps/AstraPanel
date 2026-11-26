@@ -294,6 +294,54 @@ function envTab(el, page, app) {
 }
 
 // ---- Déploiement -------------------------------------------------------------
+const HOOK_KINDS = {
+  deploy: { label: 'Déploiement lancé', cls: 'st-busy' },
+  queued: { label: 'En attente', cls: 'st-busy' },
+  ping: { label: 'Adresse testée', cls: 'st-running' },
+  ignored: { label: 'Ignoré', cls: '' },
+  error: { label: 'Erreur', cls: 'st-crashed' },
+};
+// résultat du déploiement, ajouté une fois terminé
+const HOOK_OUTCOMES = {
+  ok: { label: 'Déployé', cls: 'st-running' },
+  failed: { label: 'Échec du déploiement', cls: 'st-crashed' },
+  merged: { label: 'Regroupé', cls: '' },
+};
+
+// Derniers appels du webhook : on voit si GitHub joint le panel, et pourquoi un push n'a pas été déployé.
+function hookHistory(app) {
+  const list = app.webhookLog || [];
+  const rejectedAt = app.runtime?.webhookRejectedAt;
+  return html`${rejectedAt && (!list[0] || rejectedAt > list[0].at)
+      ? html`<div class="alert warn">${icon('alert')}<div><b>Appel refusé le ${formatDate(rejectedAt)}</b> : l'adresse utilisée n'est pas la bonne
+          (ancienne adresse ou copie incomplète). Recopiez l'adresse ci-dessus dans le webhook.</div></div>`
+      : ''}
+    <div class="hook-log-head">Derniers appels reçus ${tip(
+      html`Chaque appel du webhook est noté ici, avec la raison quand un push n'est pas déployé.<br /><br />
+        Rien n'apparaît après un push ? L'appel n'atteint pas le panel : sur GitHub, ouvrez Settings → Webhooks → votre webhook →
+        <b>Recent Deliveries</b> pour lire la réponse reçue (voir le tutoriel, étape 11).`,
+    )}</div>
+    ${list.length
+      ? html`<ul class="hook-log">
+          ${list.map((e) => {
+            const kind = HOOK_OUTCOMES[e.outcome] || HOOK_KINDS[e.kind] || HOOK_KINDS.ignored;
+            const detail = e.outcome === 'ok' || e.outcome === 'failed'
+              ? e.detail.replace(/ : déploiement (lancé|en attente de la tâche en cours)$/, '')
+              : e.outcome === 'merged'
+                ? e.detail.replace(/ : déploiement en attente de la tâche en cours$/, ' : compris dans le déploiement suivant')
+                : e.detail;
+            return html`<li>
+              <span class="badge ${kind.cls || 'plain'}">${kind.label}</span>
+              <span class="hook-log-detail">${detail}${e.outcome === 'failed'
+                ? html`<span class="hook-log-error">✖ ${e.error || 'erreur'} : détails dans la console</span>`
+                : ''}</span>
+              <span class="faint hook-log-date">${formatDate(e.at)}${e.provider ? ` · ${e.provider}` : ''}</span>
+            </li>`;
+          })}
+        </ul>`
+      : html`<p class="muted hook-log-empty">Aucun appel reçu pour l'instant.</p>`}`;
+}
+
 function deployTab(el, page, app) {
   const hookUrl = (token) => `${location.origin}/hooks/deploy/${app.id}/${token}`;
   setHTML(
@@ -358,10 +406,24 @@ function deployTab(el, page, app) {
                 <button class="btn" data-copy-hook>${icon('copy')} Copier</button>
                 <button class="btn btn-ghost" data-regen-hook title="Générer une nouvelle adresse">${icon('refresh')}</button>
               </div>
+              <div id="hook-history">${hookHistory(app)}</div>
             </div>
           </div>`
         : ''}
     </div>`,
+  );
+
+  // historique mis à jour en direct (la liste des applications est rafraîchie toutes les 3 s)
+  const historyKey = (a) => `${(a?.webhookLog || []).map((e) => `${e.at}:${e.outcome || ''}`).join(',')}|${a?.runtime?.webhookRejectedAt || 0}`;
+  let shownKey = historyKey(app);
+  page.onCleanup(
+    onAppsChange(() => {
+      const current = findApp(app.id);
+      const box = $('#hook-history', el);
+      if (!current || !box || historyKey(current) === shownKey) return;
+      shownKey = historyKey(current);
+      setHTML(box, hookHistory(current));
+    }),
   );
 
   el.addEventListener('click', (e) => {

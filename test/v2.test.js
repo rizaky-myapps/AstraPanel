@@ -875,3 +875,137 @@ test('capteurs et modèle lus sur tout type de machine (hwmon, zones thermiques,
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('webhook GitHub : déploiement au push, appels ignorés expliqués, push en attente, historique', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const { apps } = ctx.panel;
+
+  // dépôt « GitHub » : branche main, plus une branche dev
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'astra-hook-'));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const remote = path.join(tmp, 'site.git');
+  const work = path.join(tmp, 'work');
+  gitIn(tmp, 'init', '-q', '--bare', '-b', 'main', remote);
+  gitIn(tmp, 'clone', '-q', remote, work);
+  gitIn(work, 'checkout', '-q', '-b', 'main');
+  const push = (text, branch = 'main') => {
+    writeFileSync(path.join(work, 'index.html'), text);
+    gitIn(work, 'add', 'index.html');
+    gitIn(work, 'commit', '-qm', `Texte : ${text}`);
+    gitIn(work, 'push', '-q', 'origin', `HEAD:${branch}`);
+    return gitIn(work, 'rev-parse', 'HEAD');
+  };
+  push('v1');
+
+  // (le panel n'accepte que des URL https:// ou git@ : le dépôt local est branché directement)
+  const app = (await ctx.request('POST', '/api/apps', { body: { name: 'Site Git', type: 'static', source: 'empty' } })).data.app;
+  apps.get(app.id).git = { url: remote, branch: '' };
+  const idle = () => waitFor(() => !apps.rt(app.id).busy && !apps.rt(app.id).deployAfterTask, { timeout: 20_000 });
+  const file = () => readFileSync(path.join(apps.dir(apps.get(app.id)), 'index.html'), 'utf8');
+  apps.runTask(app.id, 'deploy');
+  await idle();
+  assert.equal(file(), 'v1');
+
+  const hook = (payload, event = 'push', headers = {}) =>
+    ctx.request('POST', `/hooks/deploy/${app.id}/${app.webhookToken}`, { raw: JSON.stringify(payload), headers: { 'X-GitHub-Event': event, 'Content-Type': 'application/json', ...headers } });
+  const pushPayload = (sha, branch, message) => ({
+    ref: `refs/heads/${branch}`,
+    after: sha,
+    deleted: false,
+    head_commit: { id: sha, message: `${message}\n\nDétails` },
+    pusher: { name: 'rizaky' },
+    repository: { default_branch: 'main' },
+  });
+
+  // test de l'adresse à la création du webhook
+  let res = await hook({ zen: 'Keep it logically awesome.', hook_id: 1 }, 'ping');
+  assert.equal(res.status, 200);
+  assert.match(res.data.message, /GitHub joint bien le panel/);
+
+  // push sur une autre branche : ignoré, avec la raison dans la réponse et dans la console
+  let sha = push('dev', 'dev');
+  res = await hook(pushPayload(sha, 'dev', 'Essai'));
+  assert.match(res.data.skipped, /branche dev ignoré : la branche suivie est main \(branche par défaut du dépôt\)/);
+  assert.equal(file(), 'v1');
+
+  // push sur main : déploiement
+  sha = push('v2');
+  res = await hook(pushPayload(sha, 'main', 'Texte : v2'));
+  assert.equal(res.data.started, true);
+  await idle();
+  assert.equal(file(), 'v2');
+
+  // deux push rapprochés : le second attend la fin du premier déploiement au lieu d'être refusé
+  sha = push('v3');
+  res = await hook(pushPayload(sha, 'main', 'Texte : v3'));
+  assert.equal(res.data.started, true);
+  sha = push('v4');
+  res = await hook(pushPayload(sha, 'main', 'Texte : v4'));
+  assert.equal(res.status, 200);
+  assert.equal(res.data.queued, true);
+  await idle();
+  assert.equal(file(), 'v4');
+
+  // autres événements, tags : ignorés
+  res = await hook({ action: 'opened' }, 'pull_request');
+  assert.match(res.data.skipped, /« pull_request » ignoré/);
+  res = await hook({ ref: 'refs/tags/v1.0.0', after: sha });
+  assert.match(res.data.skipped, /Tag v1\.0\.0 ignoré/);
+
+  // format « application/x-www-form-urlencoded » de GitHub
+  sha = push('v5');
+  res = await ctx.request('POST', `/hooks/deploy/${app.id}/${app.webhookToken}`, {
+    raw: `payload=${encodeURIComponent(JSON.stringify(pushPayload(sha, 'main', 'Texte : v5')))}`,
+    headers: { 'X-GitHub-Event': 'push', 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  assert.equal(res.data.started, true);
+  await idle();
+  assert.equal(file(), 'v5');
+
+  // mauvaise adresse : 404 expliqué, signalé dans l'onglet Déploiement
+  res = await ctx.request('POST', `/hooks/deploy/${app.id}/ancienne-adresse`, { raw: '{}', headers: { 'X-GitHub-Event': 'push' } });
+  assert.equal(res.status, 404);
+  assert.match(res.data.error, /adresse incorrecte/);
+
+  // historique (le plus récent d'abord) et console
+  const { data: seen } = await ctx.request('GET', `/api/apps/${app.id}`);
+  assert.ok(seen.runtime.webhookRejectedAt > 0);
+  const kinds = seen.webhookLog.map((e) => e.kind);
+  assert.deepEqual(kinds, ['deploy', 'ignored', 'ignored', 'queued', 'deploy', 'deploy', 'ignored', 'ping']);
+  // résultat de chaque déploiement (le push mis en attente compris)
+  assert.deepEqual(seen.webhookLog.map((e) => e.outcome || null), ['ok', null, null, 'ok', 'ok', 'ok', null, null]);
+  assert.equal(seen.webhookLog[0].branch, 'main');
+  assert.equal(seen.webhookLog[0].commit, sha.slice(0, 7));
+  assert.equal(seen.webhookLog[0].message, 'Texte : v5');
+  assert.equal(seen.webhookLog[0].author, 'rizaky');
+  const logs = apps.logsFor(app.id).lines.map((l) => l.m).join('\n');
+  assert.match(logs, /Webhook relié : GitHub joint bien le panel/);
+  assert.match(logs, /Push sur la branche dev ignoré/);
+  assert.match(logs, /Déploiement déclenché par webhook \(GitHub\) : Push sur main · [0-9a-f]{7} « Texte : v2 » · par rizaky/);
+  assert.match(logs, /Déploiement en attente \(webhook\) : lancement/);
+
+  // dépôt injoignable (dépôt privé sans jeton, URL fausse…) : l'échec est noté dans l'historique
+  apps.get(app.id).git = { url: path.join(tmp, 'introuvable.git'), branch: '' };
+  res = await hook(pushPayload(sha, 'main', 'Texte : v6'));
+  assert.equal(res.data.started, true);
+  await idle();
+  const failed = (await ctx.request('GET', `/api/apps/${app.id}`)).data.webhookLog[0];
+  assert.equal(failed.outcome, 'failed');
+  assert.match(failed.error, /git fetch a échoué/);
+
+  // explications des erreurs Git courantes
+  const { gitHint } = await import('../src/apps/manager.js');
+  const https = { git: { url: 'https://github.com/moi/prive.git', branch: '' } };
+  assert.match(gitHint("fatal: could not read Username for 'https://github.com': terminal prompts disabled", https), /dépôt privé.*jeton/);
+  assert.match(gitHint('git@github.com: Permission denied (publickey).', { git: { url: 'git@github.com:moi/p.git' } }), /Deploy keys/);
+  assert.match(gitHint("fatal: couldn't find remote ref prod", { git: { url: 'https://x/y.git', branch: 'prod' } }), /branche « prod » n’existe pas/);
+  assert.equal(gitHint('autre chose', https), null);
+
+  // application sans dépôt Git : erreur claire (400) au lieu d'un déploiement qui ne récupère rien
+  const sans = (await ctx.request('POST', '/api/apps', { body: { name: 'Sans Git', type: 'static', source: 'empty' } })).data.app;
+  res = await ctx.request('POST', `/hooks/deploy/${sans.id}/${sans.webhookToken}`, { raw: JSON.stringify(pushPayload(sha, 'main', 'x')), headers: { 'X-GitHub-Event': 'push' } });
+  assert.equal(res.status, 400);
+  assert.match(res.data.error, /liée à aucun dépôt Git/);
+});

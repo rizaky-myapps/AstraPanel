@@ -76,7 +76,8 @@ test('parcours complet : installation, connexion, site statique, fichiers, webho
   res = await request('POST', `/hooks/deploy/${app.id}/mauvais-jeton`, { raw: '{}' });
   assert.equal(res.status, 404);
   res = await request('POST', `/hooks/deploy/${app.id}/${app.webhookToken}`, { raw: '{}', headers: { 'X-GitHub-Event': 'ping' } });
-  assert.equal(res.data.message, 'pong');
+  assert.equal(res.data.ok, true);
+  assert.match(res.data.message, /GitHub joint bien le panel/);
 
   // --- Suppression -------------------------------------------------------------
   res = await request('DELETE', `/api/apps/${app.id}`);

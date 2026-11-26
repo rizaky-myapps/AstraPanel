@@ -50,6 +50,27 @@ function cleanEnv(env) {
   return out;
 }
 
+// Explication des erreurs de récupération Git les plus courantes (sortie de git → conseil en français)
+export function gitHint(output, app) {
+  const text = String(output || '');
+  const https = /^https?:\/\//i.test(app?.git?.url || '');
+  if (/could not read (Username|Password)|Authentication failed|terminal prompts disabled|Invalid username or password|Repository not found/i.test(text)) {
+    return https
+      ? 'dépôt privé (ou URL incorrecte) : ajoutez un jeton GitHub dans l’URL, https://<jeton>@github.com/moi/projet.git, ou utilisez une clé de déploiement SSH'
+      : 'dépôt introuvable ou accès refusé : vérifiez l’URL et les droits de la clé de déploiement';
+  }
+  if (/Permission denied \(publickey\)|Host key verification failed|Could not read from remote repository/i.test(text)) {
+    return 'accès SSH refusé : ajoutez la clé publique du panel dans GitHub (dépôt → Settings → Deploy keys)';
+  }
+  if (/couldn't find remote ref|Remote branch .* not found|invalid refspec/i.test(text)) {
+    return `la branche « ${app?.git?.branch || 'par défaut'} » n’existe pas sur le dépôt : corrigez-la dans l’onglet Déploiement`;
+  }
+  if (/Could not resolve host|unable to access|Connection timed out|Network is unreachable/i.test(text)) {
+    return 'dépôt injoignable : vérifiez la connexion Internet de la machine et l’URL du dépôt';
+  }
+  return null;
+}
+
 function cleanGit(git) {
   if (!git || !git.url) return null;
   const url = str(git.url, 1000, 'URL Git');
@@ -169,6 +190,8 @@ export class AppManager {
         cpu: rt.cpu,
         memory: rt.memory,
         busy: rt.busy,
+        deployQueued: Boolean(rt.deployAfterTask),
+        webhookRejectedAt: rt.webhookRejectedAt || null,
       },
     };
   }
@@ -771,8 +794,124 @@ export class AppManager {
     return a.length === b.length && crypto.timingSafeEqual(a, b) ? app : null;
   }
 
+  // Appel avec une mauvaise adresse (ancienne adresse après « nouvelle adresse », copie incomplète…) : signalé dans
+  // l'onglet Déploiement, sans rien écrire dans la console (n'importe qui peut appeler cette adresse).
+  noteRejectedWebhook(id) {
+    if (this.find(id)) this.rt(id).webhookRejectedAt = Date.now();
+  }
+
+  // Les 10 derniers appels reçus, affichés dans l'onglet Déploiement.
+  noteWebhook(app, entry) {
+    const saved = { at: Date.now(), ...entry };
+    app.webhookLog = [saved, ...(app.webhookLog || [])].slice(0, 10);
+    this.store.save();
+    return saved;
+  }
+
+  // Résultat du déploiement lancé par un appel, ajouté à sa ligne de l'historique
+  webhookOutcome(entry) {
+    return (err) => {
+      entry.outcome = err ? 'failed' : 'ok';
+      if (err) entry.error = String(err.message || err).split('\n')[0].slice(0, 200);
+      entry.doneAt = Date.now();
+      this.store.save();
+    };
+  }
+
+  /**
+   * Appel du webhook de déploiement (adresse déjà vérifiée). `provider` : GitHub, GitLab, Gitea… (d'après les
+   * en-têtes) ; `event` : type d'événement ; `payload` : corps JSON. Chaque appel est noté et expliqué dans la
+   * console : on voit tout de suite si un push a été ignoré, et pourquoi.
+   */
+  handleWebhook(id, { provider = null, event = null, payload = null } = {}) {
+    const app = this.get(id);
+    const rt = this.rt(id);
+    const log = this.logsFor(id);
+    const from = provider || 'Le dépôt';
+    const note = (kind, detail, extra = {}) => this.noteWebhook(app, { kind, provider, event, detail, ...extra }).detail;
+    const p = payload && typeof payload === 'object' ? payload : {};
+
+    // Test de l'adresse envoyé à la création du webhook (GitHub : « ping »)
+    if (event === 'ping' || (p.zen && p.hook_id)) {
+      log.system(`🔗 Webhook relié : ${from} joint bien le panel`);
+      return { ok: true, message: note('ping', `${from} joint bien le panel (test de l'adresse)`) };
+    }
+    if (event && !/push/i.test(event)) {
+      return { ok: true, skipped: note('ignored', `Événement « ${event} » ignoré : seuls les push déclenchent un déploiement`) };
+    }
+
+    const ref = typeof p.ref === 'string' ? p.ref : null;
+    const branch = ref?.startsWith('refs/heads/') ? ref.slice(11) : null;
+    const sha = p.after || p.checkout_sha || p.head_commit?.id || null;
+    const commits = Array.isArray(p.commits) ? p.commits : [];
+    const commit = p.head_commit || commits.find((c) => c?.id === sha) || commits.at(-1) || null;
+    const info = {
+      branch,
+      commit: typeof sha === 'string' && !/^0+$/.test(sha) ? sha.slice(0, 7) : null,
+      message: typeof commit?.message === 'string' ? commit.message.split('\n')[0].slice(0, 120) : null,
+      author: p.pusher?.name || p.sender?.login || p.user_username || p.user_name || null,
+    };
+
+    if (ref?.startsWith('refs/tags/')) {
+      return { ok: true, skipped: note('ignored', `Tag ${ref.slice(10)} ignoré : seuls les push sur une branche déclenchent un déploiement`, info) };
+    }
+    if (p.deleted === true) {
+      return { ok: true, skipped: note('ignored', `Suppression de la branche ${branch || ref} ignorée`, info) };
+    }
+    if (!app.git) {
+      const detail = note('error', 'Cette application n’est liée à aucun dépôt Git : renseignez-le dans l’onglet Déploiement', info);
+      log.system(`✖ Webhook : ${detail}`);
+      throw new HttpError(400, detail);
+    }
+    // branche suivie : celle réglée dans le panel, sinon la branche par défaut du dépôt (indiquée dans l'appel)
+    const tracked = app.git.branch || p.repository?.default_branch || p.project?.default_branch || null;
+    if (branch && tracked && branch !== tracked) {
+      const detail = note('ignored', `Push sur la branche ${branch} ignoré : la branche suivie est ${tracked}${app.git.branch ? '' : ' (branche par défaut du dépôt)'}`, info);
+      log.system(`Webhook : ${detail}`);
+      return { ok: true, skipped: detail };
+    }
+
+    const what = [
+      branch ? `Push sur ${branch}` : 'Appel',
+      info.commit ? `${info.commit}${info.message ? ` « ${info.message} »` : ''}` : '',
+      info.author ? `par ${info.author}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    // une tâche est en cours (autre déploiement, installation…) : le déploiement suivra, pour ne perdre aucun push
+    if (rt.busy) {
+      // plusieurs push pendant la tâche : un seul déploiement suivra (il récupère le dernier commit)
+      if (rt.deployAfterTask) rt.deployAfterTask.outcome = 'merged'; // compris dans le déploiement qui suivra
+      const entry = this.noteWebhook(app, { kind: 'queued', provider, event, detail: `${what} : déploiement en attente de la tâche en cours`, ...info });
+      rt.deployAfterTask = entry;
+      log.system(`Webhook (${from}) : ${entry.detail}`);
+      return { ok: true, queued: true, message: entry.detail };
+    }
+    log.system(`Déploiement déclenché par webhook (${from}) : ${what}`);
+    const entry = this.noteWebhook(app, { kind: 'deploy', provider, event, detail: `${what} : déploiement lancé`, ...info });
+    this.runTask(id, 'deploy', { onDone: this.webhookOutcome(entry) });
+    return { ok: true, started: true };
+  }
+
+  // Fin d'une tâche : lance le déploiement demandé par un webhook pendant qu'elle tournait.
+  runQueuedDeploy(id) {
+    const rt = this.rt(id);
+    if (!rt.deployAfterTask || rt.busy || !this.find(id)) return;
+    const entry = rt.deployAfterTask;
+    rt.deployAfterTask = null;
+    const done = this.webhookOutcome(entry);
+    const log = this.logsFor(id);
+    log.system('Déploiement en attente (webhook) : lancement');
+    try {
+      this.runTask(id, 'deploy', { onDone: done });
+    } catch (err) {
+      log.system(`✖ ${err.message}`);
+      done?.(err);
+    }
+  }
+
   // Tâches longues (déploiement, npm install, build) : lancées en arrière-plan, sortie dans la console.
-  runTask(id, task, { start = false } = {}) {
+  runTask(id, task, { start = false, onDone = null } = {}) {
     const app = this.get(id);
     const rt = this.rt(id);
     if (!TASKS[task]) throw new HttpError(400, 'Tâche inconnue');
@@ -789,15 +928,18 @@ export class AppManager {
         if (task === 'deploy' || task === 'install') await this.install(app, log, task === 'install');
         if (task === 'deploy' || task === 'build') await this.build(app, log, task === 'build');
         log.system(`✔ ${label} terminé en ${((Date.now() - begin) / 1000).toFixed(1)} s`);
+        onDone?.(null);
         if (task === 'deploy' && this.find(id) && (start || rt.child || app.desired === 'running')) {
           rt.busy = null;
           await this.restart(id);
         }
       } catch (err) {
         if (this.find(id) && !err.logged) log.system(`✖ ${err.message}`);
+        onDone?.(err);
       } finally {
         rt.busy = null;
         rt.taskChild = null;
+        setImmediate(() => this.runQueuedDeploy(id));
       }
     })();
     return this.serialize(app);
@@ -841,7 +983,15 @@ export class AppManager {
       await git(['remote', 'set-url', 'origin', app.git.url], 'git remote');
     }
     log.system(`Récupération de ${maskUrl(app.git.url)}${app.git.branch ? ` (branche ${app.git.branch})` : ''}…`);
-    await git(['fetch', '-q', '--depth', '1', 'origin', app.git.branch || 'HEAD'], 'git fetch');
+    const from = log.lines.length;
+    try {
+      await git(['fetch', '-q', '--depth', '1', 'origin', app.git.branch || 'HEAD'], 'git fetch');
+    } catch (err) {
+      // cause la plus probable, d'après les messages de git
+      const hint = gitHint(log.lines.slice(from).map((l) => l.m).join('\n'), app);
+      if (hint) err.message = `${err.message} : ${hint}`;
+      throw err;
+    }
     await git(['reset', '-q', '--hard', 'FETCH_HEAD'], 'git reset');
     await git(['log', '-1', '--format=Commit %h : %s (%an, %cr)'], 'git log');
   }
@@ -911,6 +1061,7 @@ export class AppManager {
     } finally {
       rt.busy = null;
       await rm(out, { recursive: true, force: true });
+      setImmediate(() => this.runQueuedDeploy(id));
     }
   }
 

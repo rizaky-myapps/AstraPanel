@@ -87,23 +87,31 @@ export function appRoutes(router, { apps, config }) {
     '/hooks/deploy/:id/:token',
     async (ctx) => {
       const app = apps.checkWebhook(ctx.params.id, ctx.params.token);
-      if (!app) throw new HttpError(404, 'Webhook inconnu');
-      if (ctx.req.headers['x-github-event'] === 'ping') return { ok: true, message: 'pong' };
+      if (!app) {
+        apps.noteRejectedWebhook(ctx.params.id);
+        throw new HttpError(404, 'Webhook inconnu : adresse incorrecte. Recopiez l’adresse affichée dans l’onglet Déploiement de l’application (elle change quand on la régénère).');
+      }
+      // Gitea et Forgejo envoient aussi X-GitHub-Event : on les reconnaît d'abord
+      const h = ctx.req.headers;
+      const [provider, event] =
+        [
+          ['Forgejo', h['x-forgejo-event']],
+          ['Gitea', h['x-gitea-event']],
+          ['Gogs', h['x-gogs-event']],
+          ['GitLab', h['x-gitlab-event']],
+          ['GitHub', h['x-github-event']],
+          ['Bitbucket', h['x-event-key']],
+        ].find(([, value]) => value) || [null, null];
 
-      let ref = null;
+      let payload = null;
       const body = (await readBody(ctx.req, 5 * 1024 * 1024)).toString('utf8');
       try {
         const json = body.startsWith('payload=') ? decodeURIComponent(body.slice(8).replace(/\+/g, ' ')) : body;
-        ref = JSON.parse(json).ref ?? null;
+        payload = JSON.parse(json);
       } catch {
         // corps vide ou non JSON : on déploie quand même
       }
-      if (ref && app.git?.branch && ref !== `refs/heads/${app.git.branch}`) {
-        return { ok: true, skipped: `push sur ${ref} ignoré (branche suivie : ${app.git.branch})` };
-      }
-      apps.logsFor(app.id).system('Déploiement déclenché par webhook');
-      apps.runTask(app.id, 'deploy');
-      return { ok: true, started: true };
+      return apps.handleWebhook(app.id, { provider, event, payload });
     },
     { auth: false },
   );
