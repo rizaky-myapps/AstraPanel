@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import net from 'node:net';
+import { execFileSync, spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { startTestPanel } from './helpers.js';
+import { startTestPanel, waitFor } from './helpers.js';
 import { Metrics } from '../src/metrics.js';
 import { Store } from '../src/store.js';
 import { parseTunnelToken, hostnameOf } from '../src/tunnel.js';
@@ -310,6 +311,63 @@ test('port du panel : ASTRA_PORT, sinon PORT (panel hébergé dans un autre pane
   assert.equal(portWith({}), '8080');
   assert.equal(portWith({ PORT: '8999' }), '8999');
   assert.equal(portWith({ ASTRA_PORT: '8080', PORT: '8999' }), '8080'); // le service systemd fixe toujours ASTRA_PORT
+});
+
+test('ports occupés : le panel dit qui occupe le port et arrête un ancien processus de la même appli', async (t) => {
+  const ctx = await startTestPanel();
+  const holders = [];
+  t.after(async () => {
+    for (const h of holders) {
+      try {
+        process.kill(-h.pid, 'SIGKILL');
+      } catch {
+        // déjà arrêté
+      }
+    }
+    await ctx.close();
+  });
+  await ctx.setupAdmin();
+  // un serveur « extérieur » qui occupe un port, lancé depuis le dossier voulu
+  const occupy = (port, cwd) =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, ['-e', `require('net').createServer().listen(${port}, () => console.log('pret'))`], { cwd, detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      holders.push(child);
+      child.stdout.once('data', () => resolve(child));
+    });
+  const listen = (port) => `node -e "require('http').createServer((q, r) => r.end('ok')).listen(${port})"`;
+  const logText = async (id) => ctx.panel.apps.logsFor(id).lines.map((l) => l.m).join('\n');
+  const isFree = (port) => new Promise((r) => { const s = net.createServer(); s.once('error', () => r(false)); s.listen(port, () => s.close(() => r(true))); });
+  const freePort = () => new Promise((r) => { const s = net.createServer(); s.listen(0, () => { const { port } = s.address(); s.close(() => r(port)); }); });
+
+  const { app } = (await ctx.request('POST', '/api/apps', { body: { name: 'Site', type: 'node', source: 'empty', startCommand: listen('process.env.PORT') } })).data;
+  const port = app.port;
+
+  // 1. un autre programme occupe le port : refus clair, l'appli ne démarre pas
+  const outsider = await occupy(port, os.tmpdir());
+  let res = await ctx.request('POST', `/api/apps/${app.id}/start`);
+  assert.equal(res.status, 409);
+  assert.match(res.data.error, new RegExp(`Le port ${port} est déjà utilisé par un autre programme \\(PID ${outsider.pid} : .*node -e`));
+  process.kill(-outsider.pid, 'SIGKILL');
+  await waitFor(() => isFree(port));
+
+  // 2. un ancien processus de la même appli (lancé depuis son dossier) : arrêté, puis l'appli démarre
+  const leftover = await occupy(port, path.join(ctx.cfg.appsDir, app.id));
+  res = await ctx.request('POST', `/api/apps/${app.id}/start`);
+  assert.equal(res.status, 200);
+  assert.match(await logText(app.id), new RegExp(`ancienne instance de l’application occupe encore le port ${port} \\(PID ${leftover.pid}\\)`));
+  await waitFor(async () => (await ctx.request('GET', `/api/apps/${app.id}`)).data.runtime.status === 'running');
+  assert.throws(() => process.kill(leftover.pid, 0)); // l'ancien processus a bien été arrêté
+  await ctx.request('POST', `/api/apps/${app.id}/stop`);
+
+  // 3. code qui écoute sur un port en dur (déjà pris) au lieu de PORT : le plantage est expliqué
+  const busyPort = await freePort();
+  const busy = { port: busyPort, child: await occupy(busyPort, os.tmpdir()) };
+  const { app: bad } = (await ctx.request('POST', '/api/apps', { body: { name: 'Port en dur', type: 'node', source: 'empty', startCommand: listen(busy.port), autoRestart: false } })).data;
+  await ctx.request('POST', `/api/apps/${bad.id}/start`);
+  await waitFor(async () => /Votre code écoute sur le port/.test(await logText(bad.id)));
+  const text = await logText(bad.id);
+  assert.match(text, new RegExp(`Le port ${busy.port} est déjà utilisé par un autre programme \\(PID ${busy.child.pid}`));
+  assert.match(text, new RegExp(`Votre code écoute sur le port ${busy.port}, alors que le panel lui a attribué le port ${bad.port}`));
 });
 
 test('analyse des URL GitHub', () => {

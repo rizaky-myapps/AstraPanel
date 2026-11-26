@@ -602,6 +602,16 @@ cd ~/AstraPanel && sudo ./install.sh
 
 Les mises à jour suivantes se feront depuis le panel.
 
+**« Le port X est déjà utilisé par … » (ou `EADDRINUSE` dans la console).** Avant de démarrer un site, le panel
+vérifie que son port est libre et indique dans la console qui l'occupe :
+
+- **un ancien processus de la même application** resté en marche (après une coupure, par exemple) : le panel l'arrête
+  tout seul puis démarre l'application ;
+- **une autre application** du panel, ou **un autre programme** (avec son numéro de processus) : choisissez un autre
+  port dans l'onglet **Paramètres** de l'application, ou arrêtez ce programme ;
+- si la console indique « Votre code écoute sur le port X, alors que le panel lui a attribué le port Y » : votre code
+  utilise un port écrit en dur. Remplacez-le par `process.env.PORT`.
+
 **La mise à jour depuis le panel échoue.** Le journal de la mise à jour s'affiche dans **Paramètres → Mises à jour**.
 Si le dépôt GitHub est privé, il doit avoir été cloné avec un jeton dans l'URL pour que le Pi puisse le télécharger.
 Les messages du service sont aussi visibles avec :

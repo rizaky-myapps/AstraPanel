@@ -9,6 +9,7 @@ import { assertDomainsFree, normalizeDomains } from '../domains.js';
 import { LogBuffer } from './logs.js';
 import { baseEnv, killGroup, pipeOutput, runCommand, runShell } from './process.js';
 import { CLK_TCK, sampleProcessGroups } from './stats.js';
+import { addrInUsePort, portOwner } from '../ports.js';
 
 export const TYPES = ['bot', 'node', 'static'];
 const SOURCES = ['empty', 'template', 'git', 'archive'];
@@ -304,7 +305,7 @@ export class AppManager {
     }
     if ('port' in input && needsPort(app.type)) {
       const port = cleanPort(input.port);
-      if (port === this.config.port) throw new HttpError(409, 'Ce port est utilisé par le panel');
+      if (port === this.config.port) throw new HttpError(409, `Le port ${port} est celui du panel AstraPanel lui-même : choisissez-en un autre`);
       const other = port && this.apps.find((a) => a.id !== app.id && a.port === port);
       if (other) throw new HttpError(409, `Le port ${port} est déjà utilisé par « ${other.name} »`);
       app.port = port;
@@ -401,6 +402,92 @@ export class AppManager {
     return env;
   }
 
+  // --- Ports -----------------------------------------------------------------
+  // Qui occupe ce port ? Une appli du panel, un ancien processus d'une appli resté en marche, ou autre chose.
+  async describePort(port) {
+    if (port === this.config.port) return { text: `le panel AstraPanel lui-même (port ${port})` };
+    const owner = await portOwner(port);
+    if (!owner) return { text: 'un autre programme' };
+    if (!owner.pid) return { text: 'un programme d’un autre compte du système (par exemple un service installé à part)' };
+    if (owner.pid === process.pid) return { text: 'le panel AstraPanel lui-même' };
+    const cmd = owner.command.length > 100 ? `${owner.command.slice(0, 99)}…` : owner.command || '?';
+    const running = this.apps.find((a) => {
+      const pid = this.runtime.get(a.id)?.pid;
+      return pid && (pid === owner.pid || pid === owner.pgid);
+    });
+    if (running) return { text: `l'application « ${running.name} » (PID ${owner.pid} : ${cmd})`, app: running.id };
+    // processus lancé depuis le dossier d'une appli mais qui n'est plus suivi par le panel (orphelin)
+    const rel = owner.cwd ? path.relative(this.config.appsDir, owner.cwd) : '..';
+    const leftover = !rel.startsWith('..') && !path.isAbsolute(rel) && this.find(rel.split(path.sep)[0]);
+    if (leftover) {
+      return {
+        text: `un ancien processus de l'application « ${leftover.name} » resté en marche (PID ${owner.pid} : ${cmd})`,
+        leftoverOf: leftover.id,
+        pid: owner.pid,
+        pgid: owner.pgid,
+      };
+    }
+    return { text: `un autre programme (PID ${owner.pid} : ${cmd})` };
+  }
+
+  // Arrête un ancien processus orphelin d'une appli (et son groupe), en attendant sa fin.
+  async killLeftover({ pid, pgid }) {
+    const group = pgid && pgid !== process.pid ? pgid : null;
+    const signal = (sig) => (group ? killGroup(group, sig) : (() => { try { process.kill(pid, sig); return true; } catch { return false; } })());
+    const alive = () => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    signal('SIGTERM');
+    for (let i = 0; i < 50 && alive(); i++) await new Promise((r) => setTimeout(r, 100));
+    if (alive()) signal('SIGKILL');
+    for (let i = 0; i < 20 && alive(); i++) await new Promise((r) => setTimeout(r, 100));
+  }
+
+  // Démarre l'appli après avoir vérifié que son port est libre. Un ancien processus de la même appli resté en marche
+  // est arrêté ; sinon l'appli n'est pas lancée et la console explique qui occupe le port.
+  async launch(app, { userAction = false } = {}) {
+    const rt = this.rt(app.id);
+    if (rt.child) return;
+    if (app.port && needsPort(app.type) && !(await isPortFree(app.port))) {
+      const log = this.logsFor(app.id);
+      let who = await this.describePort(app.port);
+      if (who.leftoverOf === app.id) {
+        log.system(`Une ancienne instance de l’application occupe encore le port ${app.port} (PID ${who.pid}) : arrêt…`);
+        await this.killLeftover(who);
+        who = (await isPortFree(app.port)) ? null : await this.describePort(app.port);
+      }
+      if (who) {
+        const message = `Le port ${app.port} est déjà utilisé par ${who.text}`;
+        log.system(`✖ ${message} : l’application ne peut pas démarrer. Choisissez un autre port (onglet Paramètres) ou arrêtez ce programme.`);
+        rt.status = 'crashed';
+        if (userAction) {
+          const err = new HttpError(409, message);
+          err.logged = true; // déjà expliqué dans la console
+          throw err;
+        }
+        return;
+      }
+    }
+    if (!rt.child && app.desired === 'running' && this.find(app.id)) this.spawnApp(app);
+  }
+
+  // Après un plantage « EADDRINUSE » : qui occupe le port, et le code écoute-t-il bien sur PORT ?
+  async explainAddrInUse(app, port) {
+    const log = this.logsFor(app.id);
+    const who = await this.describePort(port);
+    log.system(`Le port ${port} est déjà utilisé par ${who.text}.`);
+    if (app.port && port !== app.port) {
+      log.system(`Votre code écoute sur le port ${port}, alors que le panel lui a attribué le port ${app.port} (variable PORT) : utilisez process.env.PORT dans votre code.`);
+    } else if (!app.port) {
+      log.system('Un bot n’a pas de port attribué : si votre code ouvre un serveur web, créez plutôt un « Site Node.js ».');
+    }
+  }
+
   spawnApp(app) {
     const rt = this.rt(app.id);
     if (rt.child) return;
@@ -480,6 +567,9 @@ export class AppManager {
     waiters.forEach((fn) => fn());
     log.system(`✖ Le processus s’est arrêté de façon inattendue (${how})`);
     rt.status = 'crashed';
+    const busyPort = addrInUsePort(log.lines.filter((l) => l.t >= rt.startedAt - 1000).map((l) => l.m).join('\n'));
+    const crashed = this.find(id);
+    if (busyPort && crashed) this.explainAddrInUse(crashed, busyPort).catch(() => {});
     if (uptime > 60000) rt.crashCount = 0;
     rt.crashCount += 1;
 
@@ -495,7 +585,7 @@ export class AppManager {
     rt.restartTimer = setTimeout(() => {
       rt.restartTimer = null;
       const current = this.find(id);
-      if (current?.desired === 'running' && !this.shuttingDown) this.spawnApp(current);
+      if (current?.desired === 'running' && !this.shuttingDown) this.launch(current).catch(() => {});
     }, delay);
   }
 
@@ -532,7 +622,7 @@ export class AppManager {
     rt.crashCount = 0;
     clearTimeout(rt.restartTimer);
     rt.restartTimer = null;
-    this.spawnApp(app);
+    await this.launch(app, { userAction: true });
     return this.serialize(app);
   }
 
@@ -562,7 +652,7 @@ export class AppManager {
       await this.terminate(app);
     }
     // « Arrêter » a pu être demandé pendant l'arrêt : on ne relance pas dans ce cas.
-    if (app.desired === 'running' && this.find(id)) this.spawnApp(app);
+    if (app.desired === 'running' && this.find(id)) await this.launch(app, { userAction: true });
     return this.serialize(app);
   }
 
@@ -629,7 +719,7 @@ export class AppManager {
           await this.restart(id);
         }
       } catch (err) {
-        if (this.find(id)) log.system(`✖ ${err.message}`);
+        if (this.find(id) && !err.logged) log.system(`✖ ${err.message}`);
       } finally {
         rt.busy = null;
         rt.taskChild = null;
@@ -785,7 +875,7 @@ export class AppManager {
       }
       if (!start) continue;
       this.logsFor(app.id).system(systemBoot ? 'Démarrage automatique avec le Raspberry Pi' : 'Démarrage automatique avec le panel');
-      this.spawnApp(app);
+      await this.launch(app).catch(() => {});
       await new Promise((r) => setTimeout(r, 500));
     }
   }
