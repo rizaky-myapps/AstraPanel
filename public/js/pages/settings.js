@@ -225,7 +225,7 @@ async function updateTab(el, page) {
           <div class="card-body">
             ${!inst ? html`<div class="alert warn">${icon('alert')}<div>Ce panel n'a pas été installé depuis un clone Git : la mise à jour automatique est indisponible. Réinstallez-le avec <code>install.sh</code>.</div></div>` : ''}
             ${inst && !info.updater
-              ? html`<div class="alert warn">${icon('alert')}<div>Le service de mise à jour n'est pas encore installé sur le Pi. Faites une dernière mise à jour en SSH, en réinstallant la dernière version (tutoriel, étape 5 : <code>git clone</code> puis <code>sudo ./install.sh</code>) : les suivantes se feront d'ici.</div></div>`
+              ? html`<div class="alert warn">${icon('alert')}<div>Le service de mise à jour n'est pas encore installé sur la machine. Faites une dernière mise à jour en SSH, en réinstallant la dernière version (tutoriel, étape 5 : <code>git clone</code> puis <code>sudo ./install.sh</code>) : les suivantes se feront d'ici.</div></div>`
               : ''}
             ${info.error ? html`<div class="alert err">${icon('alert')}<div>${info.error}</div></div>` : ''}
             ${inst
@@ -423,7 +423,7 @@ async function tunnelTab(el, page) {
           <div class="card-header">
             <h2>${icon('sliders')} Mode de gestion ${tip(
               html`Le <b>tunnel Cloudflare</b> met vos sites en ligne sur votre nom de domaine, en HTTPS, <b>sans ouvrir de port sur votre box</b>
-                (il fonctionne même sans IPv4 publique) : le Raspberry Pi garde une connexion sortante vers Cloudflare, qui lui transmet les visites.<br /><br />
+                (il fonctionne même sans IPv4 publique) : la machine garde une connexion sortante vers Cloudflare, qui lui transmet les visites.<br /><br />
                 Avant de commencer, votre nom de domaine doit être ajouté à votre compte Cloudflare (offre gratuite) et marqué « Active » :
                 <a href="${helpHref('cloudflare', '3-ajouter-votre-nom-de-domaine-à-cloudflare')}">étape 3 du tutoriel</a>.`,
             )}</h2>
@@ -494,14 +494,14 @@ async function tunnelTab(el, page) {
               <ol class="guide">
                 <li>Ouvrez <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">dash.cloudflare.com</a> et connectez-vous.</li>
                 <li>Dans le menu de gauche, cliquez sur ${ui('Networking', 'Réseau')}, puis sur ${ui('Tunnels')}.</li>
-                <li>Cliquez sur ${ui('Create a tunnel', 'créer un tunnel')}, donnez-lui un nom (par exemple <code>raspberry-pi</code>), puis cliquez sur ${ui('Create Tunnel')}.</li>
+                <li>Cliquez sur ${ui('Create a tunnel', 'créer un tunnel')}, donnez-lui un nom (par exemple <code>mon-serveur</code>), puis cliquez sur ${ui('Create Tunnel')}.</li>
               </ol>
             </li>
             <li>
               <div class="stepper-title">Donner le jeton du tunnel au panel</div>
               <ol class="guide">
                 <li>Cloudflare affiche une page d'installation : choisissez le système ${ui('Debian')}.</li>
-                <li>Copiez la commande affichée. Elle ressemble à <code>sudo cloudflared service install eyJhIjoi…</code>. <b>Ne la lancez pas sur le Raspberry Pi</b> : le panel s'en occupe.</li>
+                <li>Copiez la commande affichée. Elle ressemble à <code>sudo cloudflared service install eyJhIjoi…</code>. <b>Ne la lancez pas sur la machine</b> : le panel s'en occupe.</li>
                 <li>Collez-la dans le champ en bas de cette page, puis cliquez sur <b>Enregistrer et démarrer</b>. L'état en haut de la page passe à « Connecté ».</li>
                 <li>Revenez sur Cloudflare : le connecteur apparaît comme connecté. Cliquez sur ${ui('Continue', 'continuer')}.</li>
               </ol>
@@ -578,7 +578,7 @@ async function tunnelTab(el, page) {
         <div class="field">
           <label for="tunnel-name">Nom du tunnel</label>
           <div class="input-group">
-            <input type="text" id="tunnel-name" name="name" class="mono" value="${a.tunnelName || `astrapanel-${location.hostname.split('.')[0] || 'pi'}`}" ${a.connected ? '' : 'disabled'} />
+            <input type="text" id="tunnel-name" name="name" class="mono" value="${a.tunnelName || `astrapanel-${location.hostname.split('.')[0] || 'serveur'}`}" ${a.connected ? '' : 'disabled'} />
             <button class="btn btn-primary" type="submit" ${a.connected ? '' : 'disabled'}>${a.tunnelId ? 'Relier à nouveau' : 'Créer le tunnel'}</button>
           </div>
         </div>
@@ -924,7 +924,6 @@ async function hardwareTab(el, page) {
 
   const power = () => {
     const t = info.throttling;
-    if (!t) return html`<span class="muted">Non disponible (vcgencmd absent)</span>`;
     if (t.underVoltage) return html`<span class="badge st-crashed">Sous-tension en ce moment</span>`;
     if (t.throttled) return html`<span class="badge st-restarting">Processeur ralenti</span>`;
     if (t.underVoltageOccurred) return html`<span class="badge st-restarting">Sous-tension depuis le démarrage</span>`;
@@ -944,8 +943,8 @@ async function hardwareTab(el, page) {
               <tr><td class="muted">Processeur</td><td>${[info.cpuModel, `${info.cpus} cœurs`, info.cpuMaxMHz ? `${(info.cpuMaxMHz / 1000).toLocaleString('fr-FR')} GHz max.` : ''].filter(Boolean).join(' · ')}</td></tr>
               <tr><td class="muted">Mémoire vive</td><td>${formatBytes(info.memory?.total)} <span class="muted">· ${formatBytes(info.memory?.available)} disponibles</span></td></tr>
               <tr><td class="muted">Stockage du panel</td><td>${info.disk ? html`${formatBytes(info.disk.total)} <span class="muted">· ${formatBytes(info.disk.free)} libres</span>` : '—'}</td></tr>
-              <tr><td class="muted">Température</td><td>${info.temperature != null ? `${info.temperature.toFixed(1).replace('.', ',')} °C` : html`<span class="muted">Capteur indisponible</span>`}</td></tr>
-              <tr><td class="muted">Alimentation</td><td>${power()}</td></tr>
+              <tr><td class="muted">Température</td><td>${info.temperature != null ? `${info.temperature.toFixed(1).replace('.', ',')} °C` : html`<span class="muted">Capteur indisponible</span>`}${info.fan != null ? html` <span class="muted">· ventilateur ${info.fan.toLocaleString('fr-FR')} tr/min</span>` : ''}</td></tr>
+              ${info.throttling ? html`<tr><td class="muted">Alimentation</td><td>${power()}</td></tr>` : ''}
               <tr><td class="muted">Système</td><td>${info.os} <span class="muted">· noyau ${info.kernel} · ${info.arch}</span></td></tr>
               <tr><td class="muted">Adresse IP</td><td>${info.addresses?.length ? info.addresses.map((a) => a.address).join(', ') : '—'}</td></tr>
               <tr><td class="muted">Allumée depuis</td><td>${formatDuration(info.uptime * 1000)} <span class="muted">· démarrée le ${formatDate(info.bootedAt)}</span></td></tr>
@@ -955,8 +954,8 @@ async function hardwareTab(el, page) {
 
         <div class="card danger-card" id="reboot-card">
           <div class="card-header danger-head">
-            <h2>${icon('restart')} Redémarrer la machine ${tip(html`Redémarre le Raspberry Pi. Le panel et le tunnel Cloudflare repartent tout seuls, ainsi que les applications dont l'option
-              <b>Démarrer avec le Raspberry Pi</b> est activée. Comptez une à deux minutes pendant lesquelles vos sites et bots sont hors ligne.`)}</h2>
+            <h2>${icon('restart')} Redémarrer la machine ${tip(html`Redémarre la machine. Le panel et le tunnel Cloudflare repartent tout seuls, ainsi que les applications dont l'option
+              <b>Démarrer avec la machine</b> est activée. Comptez une à deux minutes pendant lesquelles vos sites et bots sont hors ligne.`)}</h2>
           </div>
           ${r.available
             ? ''

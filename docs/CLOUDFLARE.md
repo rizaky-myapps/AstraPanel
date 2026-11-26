@@ -1,9 +1,9 @@
 # Tutoriel : mettre vos sites en ligne avec le tunnel Cloudflare
 
-Ce guide explique, étape par étape, comment rendre les sites hébergés sur votre Raspberry Pi accessibles depuis
+Ce guide explique, étape par étape, comment rendre les sites hébergés sur votre machine accessibles depuis
 Internet, en **HTTPS**, avec **votre nom de domaine**, grâce au tunnel Cloudflare intégré à AstraPanel.
 
-**Pourquoi un tunnel ?** Le Raspberry Pi ouvre lui-même une connexion sortante vers Cloudflare, qui lui transmet
+**Pourquoi un tunnel ?** La machine ouvre elle-même une connexion sortante vers Cloudflare, qui lui transmet
 ensuite les visites. Résultat :
 
 - aucun port à ouvrir sur votre box, et votre adresse IP personnelle n'est jamais exposée ;
@@ -35,9 +35,9 @@ ensuite les visites. Résultat :
 
 ## 1. Ce qu'il vous faut
 
-- AstraPanel installé et accessible sur votre réseau local (`http://astrapanel.local:8080`), avec un compte
+- AstraPanel installé et accessible sur votre réseau local (`http://<ip-de-la-machine>:8080`), avec un compte
   **administrateur** ;
-- au moins un site qui fonctionne en local (par exemple `http://astrapanel.local:4000`) ;
+- au moins un site qui fonctionne en local (par exemple `http://<ip-de-la-machine>:4000`) ;
 - un **nom de domaine** à vous (par exemple `monsite.fr`), acheté chez un registrar : OVHcloud, Gandi, Infomaniak,
   IONOS… ou directement chez Cloudflare (voir l'étape 3). Comptez environ 10 € par an.
 
@@ -110,7 +110,7 @@ Dans AstraPanel, ouvrez **Paramètres** → **Tunnel Cloudflare**. Deux modes so
 | Ce qu'il faut fournir au panel | un jeton d'API Cloudflare | le jeton du tunnel |
 
 Dans les deux cas, commencez par cliquer sur **Installer cloudflared** dans la carte **État** : le panel télécharge
-le programme officiel de Cloudflare pour le Raspberry Pi. Aucune commande à taper en SSH.
+le programme officiel de Cloudflare pour votre machine. Aucune commande à taper en SSH.
 
 Ensuite, le panel vérifie lui-même sur GitHub (au démarrage puis toutes les 12 heures) s'il existe une version plus
 récente de cloudflared. Le bouton de la carte **État** affiche alors **Mettre à jour vers la X** ; sinon, il affiche
@@ -157,7 +157,7 @@ est indiqué entre parenthèses).
 3. Étape **2. Tunnel** : choisissez votre compte Cloudflare dans la liste, gardez le nom proposé
    (`astrapanel-…`) ou changez-le, puis cliquez sur **Créer le tunnel**.
 4. En quelques secondes, l'état en haut de la page passe à **Connecté · 4 liaison(s)**. L'interrupteur
-   **Tunnel actif** est sur **ON** : le tunnel redémarrera tout seul avec le Raspberry Pi.
+   **Tunnel actif** est sur **ON** : le tunnel redémarrera tout seul avec la machine.
 
 ### 5.3 Mettre un site en ligne
 
@@ -185,13 +185,13 @@ l'enregistrement DNS sont supprimés.
 ## 6. Mode B : tunnel géré depuis le site Cloudflare
 
 Dans ce mode, vous créez le tunnel et ses routes vous-même sur le site de Cloudflare ; le panel se contente de faire
-tourner le tunnel sur le Raspberry Pi.
+tourner le tunnel sur la machine.
 
 ### 6.1 Créer le tunnel sur Cloudflare
 
 1. Dans le [tableau de bord Cloudflare](https://dash.cloudflare.com), ouvrez **Networking** → **Tunnels**.
 2. Cliquez sur **Create a tunnel**.
-3. Donnez-lui un nom (par exemple `raspberry-pi`), puis cliquez sur **Create Tunnel**.
+3. Donnez-lui un nom (par exemple `mon-serveur`), puis cliquez sur **Create Tunnel**.
 4. Cloudflare propose d'installer le connecteur : choisissez le système **Debian** (Linux). Une commande s'affiche, du
    type :
 
@@ -199,7 +199,7 @@ tourner le tunnel sur le Raspberry Pi.
    sudo cloudflared service install eyJhIjoiNjc4…
    ```
 
-   **Ne la lancez pas sur le Raspberry Pi** : copiez-la entièrement.
+   **Ne la lancez pas sur la machine** : copiez-la entièrement.
 
 ### 6.2 Donner le jeton au panel
 
@@ -231,7 +231,7 @@ Vous pouvez aussi rendre le panel lui-même accessible, par exemple sur `https:/
   **Enregistrer**.
 - **Mode B** : ajoutez une route `panel.monsite.fr` vers `http://localhost:8080` (étape 6.3).
 
-> Le panel permet de contrôler tout le Raspberry Pi : utilisez des mots de passe solides pour tous les comptes.
+> Le panel permet de contrôler toute la machine : utilisez des mots de passe solides pour tous les comptes.
 > Pour encore plus de sécurité, vous pouvez protéger cette adresse avec **Cloudflare Access** (connexion par e-mail
 > avant d'arriver sur le panel), disponible dans **Zero Trust** → **Access**.
 
@@ -242,7 +242,7 @@ Vous pouvez aussi rendre le panel lui-même accessible, par exemple sur `https:/
 2. Sur Cloudflare → **Networking** → **Tunnels** : le tunnel est marqué **Healthy** (en bonne santé).
 3. Depuis votre téléphone **en 4G/5G (Wi-Fi coupé)**, ouvrez `https://monsite.fr` : le site s'affiche avec le
    cadenas.
-4. Redémarrez le Raspberry Pi (`sudo reboot`) : une fois le panel relancé, le tunnel se reconnecte tout seul, en
+4. Redémarrez la machine (`sudo reboot`) : une fois le panel relancé, le tunnel se reconnecte tout seul, en
    même temps que le panel, sans aucune action de votre part.
 
 ## 9. Dépannage
@@ -260,7 +260,7 @@ Vérifiez chez votre registrar que **seuls** les deux serveurs Cloudflare sont i
 DNSSEC est désactivé. Le changement peut prendre jusqu'à 24 heures.
 
 **L'état du tunnel reste sur « Connexion… ».**
-Vérifiez que le Raspberry Pi a accès à Internet, puis lisez le **journal du tunnel** en bas de la page. Après 5
+Vérifiez que la machine a accès à Internet, puis lisez le **journal du tunnel** en bas de la page. Après 5
 minutes sans connexion, le panel relance le tunnel automatiquement ; vous pouvez aussi cliquer sur **Redémarrer**.
 
 **Le site affiche une page d'erreur Cloudflare « Bad gateway » (502).**

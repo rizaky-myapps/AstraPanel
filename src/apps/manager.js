@@ -936,7 +936,7 @@ export class AppManager {
   // Au démarrage du panel : relance les apps qui tournaient avant (en les espaçant un peu).
   /**
    * Lancement des applications au démarrage du panel.
-   * - démarrage du Raspberry Pi : on lance les apps dont l'option « Démarrer avec le Raspberry Pi » est active ;
+   * - démarrage de la machine : on lance les apps dont l'option « Démarrer avec la machine » est active ;
    * - simple redémarrage du panel (mise à jour…) : on remet chaque app dans l'état où elle était.
    */
   async bootstrap({ systemBoot = false } = {}) {
@@ -952,7 +952,7 @@ export class AppManager {
         await this.reapStrays(app).catch(() => {});
         continue;
       }
-      this.logsFor(app.id).system(systemBoot ? 'Démarrage automatique avec le Raspberry Pi' : 'Démarrage automatique avec le panel');
+      this.logsFor(app.id).system(systemBoot ? 'Démarrage automatique avec la machine' : 'Démarrage automatique avec le panel');
       await this.launch(app).catch(() => {});
       await new Promise((r) => setTimeout(r, 500));
     }

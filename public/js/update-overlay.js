@@ -60,7 +60,7 @@ function renderUpdate() {
     : !u.reachable
       ? 'Le panel redémarre avec la nouvelle version : il est indisponible quelques secondes.'
       : phase.index === 0
-        ? 'En attente du service de mise à jour du Raspberry Pi…'
+        ? 'En attente du service de mise à jour de la machine…'
         : done
           ? 'Mise à jour terminée : rechargement de la page…'
           : u.step || u.message || 'Mise à jour en cours…';
@@ -71,7 +71,7 @@ function renderUpdate() {
     percent: phase.percent,
     detail,
     steps: stepsAt(UPDATE_STEPS, failed ? u.lastIndex : phase.index, { done, failed }),
-    hint: done ? '' : elapsedHint(u.screen, 'La mise à jour continue sur le Raspberry Pi même si vous fermez cette page.'),
+    hint: done ? '' : elapsedHint(u.screen, 'La mise à jour continue sur la machine même si vous fermez cette page.'),
     actions: failed
       ? [
           ...(isAdmin() ? [{ label: 'Voir le journal', icon: 'terminal', href: '#/settings/mises-a-jour', onClick: closeCurrent }] : []),
@@ -122,7 +122,7 @@ export function openUpdateOverlay({ target = null, current: version = null, prog
 }
 
 // ---- Redémarrage de la machine ------------------------------------------------------------------
-const REBOOT_STEPS = ['Demande envoyée', 'Arrêt de la machine', 'Redémarrage du Raspberry Pi', 'Panel de nouveau en ligne'];
+const REBOOT_STEPS = ['Demande envoyée', 'Arrêt de la machine', 'Redémarrage du système', 'Panel de nouveau en ligne'];
 const REBOOT_NOT_STARTED = 90_000;
 const REBOOT_GIVE_UP = 10 * 60_000;
 
@@ -137,7 +137,7 @@ function renderReboot() {
   } else if (r.finished) {
     [index, percent, detail] = [r.wentDown ? 2 : 1, 100, r.message];
   } else if (r.wentDown) {
-    [index, percent, detail] = [2, Math.min(90, 45 + age / 3000), 'Le Raspberry Pi redémarre : le panel, vos sites et vos bots sont indisponibles une à deux minutes.'];
+    [index, percent, detail] = [2, Math.min(90, 45 + age / 3000), 'La machine redémarre : le panel, vos sites et vos bots sont indisponibles une à deux minutes.'];
   } else if (age < 3000) {
     [index, percent, detail] = [0, 8, 'Demande envoyée : la machine va redémarrer dans quelques secondes…'];
   } else {
@@ -166,12 +166,12 @@ function applyReboot(p, reachable) {
   if (!r.finished && !r.wentDown && age > REBOOT_NOT_STARTED) {
     r.finished = 'not-started';
     r.message = isAdmin()
-      ? 'La machine n’a pas commencé à redémarrer. Sur le Raspberry Pi, vérifiez que le service est actif : systemctl status astrapanel-reboot.path'
+      ? 'La machine n’a pas commencé à redémarrer. Sur la machine, vérifiez que le service est actif : systemctl status astrapanel-reboot.path'
       : 'La machine n’a pas commencé à redémarrer : prévenez un administrateur.';
   }
   if (!r.finished && age > REBOOT_GIVE_UP) {
     r.finished = 'timeout';
-    r.message = 'Le panel ne répond toujours pas après 10 minutes : vérifiez que le Raspberry Pi est bien allumé et branché au réseau.';
+    r.message = 'Le panel ne répond toujours pas après 10 minutes : vérifiez que la machine est bien allumée et reliée au réseau.';
   }
   renderReboot();
   if (r.finished === 'done') setTimeout(() => location.reload(), 1500);

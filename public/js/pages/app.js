@@ -294,7 +294,7 @@ function deployTab(el, page, app) {
       </div>
 
       <div class="card">
-        <div class="card-header"><h2>${icon('git')} Dépôt Git ${tip('Attention : un déploiement Git écrase les fichiers suivis par Git modifiés sur le Pi (vos fichiers .env, node_modules… sont conservés).')}</h2></div>
+        <div class="card-header"><h2>${icon('git')} Dépôt Git ${tip('Attention : un déploiement Git écrase les fichiers suivis par Git modifiés sur la machine (vos fichiers .env, node_modules… sont conservés).')}</h2></div>
         <form class="card-body form-grid" id="git-form">
           <div class="field">
             <label>URL du dépôt ${tip(html`Dépôt privé : <code>https://&lt;jeton&gt;@github.com/moi/projet.git</code> ou une clé SSH de déploiement.`)}</label>
@@ -405,7 +405,7 @@ function settingsTab(el, page, app) {
     el,
     html`<div class="stack">
       <form class="card" id="settings-form">
-        <div class="card-header"><h2>${icon('sliders')} Configuration ${tip(html`Les changements de commande ou de port s'appliquent au prochain redémarrage.<br />Dossier sur le Raspberry Pi : <code>${app.dir}</code>`)}</h2></div>
+        <div class="card-header"><h2>${icon('sliders')} Configuration ${tip(html`Les changements de commande ou de port s'appliquent au prochain redémarrage.<br />Dossier sur la machine : <code>${app.dir}</code>`)}</h2></div>
         <div class="card-body form-grid">
           <div class="field full"><label>Nom</label><input type="text" name="name" value="${app.name}" maxlength="60" /></div>
           ${isStatic
@@ -444,7 +444,7 @@ function settingsTab(el, page, app) {
             : ''}
           <div class="full">
             <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage ${tip('Relance l’application si elle s’arrête de façon inattendue.')}</span></label>
-            <label class="check">${toggle('startOnBoot', app.startOnBoot !== false)}<span>Démarrer avec le Raspberry Pi ${tip('Lance l’application à chaque démarrage du Raspberry Pi. Désactivé : elle reste arrêtée jusqu’à ce que vous cliquiez sur « Démarrer ». Un simple redémarrage du panel (mise à jour) remet toujours l’application dans son état précédent.')}</span></label>
+            <label class="check">${toggle('startOnBoot', app.startOnBoot !== false)}<span>Démarrer avec la machine ${tip('Lance l’application à chaque démarrage de la machine. Désactivé : elle reste arrêtée jusqu’à ce que vous cliquiez sur « Démarrer ». Un simple redémarrage du panel (mise à jour) remet toujours l’application dans son état précédent.')}</span></label>
           </div>
         </div>
         <div class="card-foot">

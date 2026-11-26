@@ -100,7 +100,7 @@ export function renderNewApp(view) {
       html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
         <div class="page-header">
           <div>
-            <h1>Nouvelle application ${tip('Hébergez un bot Discord ou un site web (Node.js ou statique) sur votre Raspberry Pi.')}</h1>
+            <h1>Nouvelle application ${tip('Hébergez un bot Discord ou un site web (Node.js ou statique) sur votre machine.')}</h1>
           </div>
         </div>
         <form id="new-app" class="stack" novalidate>
@@ -143,7 +143,7 @@ export function renderNewApp(view) {
               ${isStatic
                 ? ''
                 : html`<div class="field full">
-                    <label>Commande de démarrage ${tip(html`Par exemple <code>node index.js</code>, plus léger que <code>npm start</code> sur un Raspberry Pi.`)}</label>
+                    <label>Commande de démarrage ${tip(html`Par exemple <code>node index.js</code>, plus léger que <code>npm start</code> (un seul processus au lieu de deux).`)}</label>
                     <input type="text" name="startCommand" class="mono" value="${f.startCommand}" spellcheck="false" />
                   </div>`}
               <div class="field">
@@ -185,7 +185,7 @@ export function renderNewApp(view) {
           <div class="card">
             <div class="card-body">
               <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique ${tip('Relance l’application si elle plante.')}</span></label>
-              <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec le Raspberry Pi ${tip('Lance l’application à chaque démarrage du Raspberry Pi.')}</span></label>
+              <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec la machine ${tip('Lance l’application à chaque démarrage de la machine.')}</span></label>
               ${f.source === 'empty'
                 ? ''
                 : html`<label class="check">${toggle('start', f.start)}<span>Démarrer après la création ${tip('Installe les dépendances, lance le build éventuel puis démarre l’application.')}</span></label>`}

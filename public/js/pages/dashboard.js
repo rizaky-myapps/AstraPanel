@@ -105,12 +105,12 @@ function renderAlerts(sys) {
   if (!t) return '';
   const out = [];
   if (t.underVoltage) {
-    out.push(html`<div class="alert err">${icon('zap')}<div><b>Sous-tension détectée.</b> Utilisez l'alimentation officielle 27 W (5 V / 5 A) du Raspberry Pi 5, sinon le Pi ralentit et peut planter.</div></div>`);
+    out.push(html`<div class="alert err">${icon('zap')}<div><b>Sous-tension détectée.</b> L'alimentation de la machine est insuffisante : elle ralentit et peut planter. Utilisez l'alimentation recommandée par le fabricant.</div></div>`);
   } else if (t.underVoltageOccurred) {
-    out.push(html`<div class="alert warn">${icon('zap')}<div>Une sous-tension a eu lieu depuis le démarrage. Vérifiez l'alimentation et le câble USB-C.</div></div>`);
+    out.push(html`<div class="alert warn">${icon('zap')}<div>Une sous-tension a eu lieu depuis le démarrage. Vérifiez l'alimentation et son câble.</div></div>`);
   }
   if (t.throttled || t.softTempLimit) {
-    out.push(html`<div class="alert warn">${icon('thermo')}<div>Le processeur est bridé à cause de la chaleur. Un dissipateur ou l'Active Cooler est recommandé.</div></div>`);
+    out.push(html`<div class="alert warn">${icon('thermo')}<div>Le processeur est bridé à cause de la chaleur. Améliorez le refroidissement de la machine (ventilateur, dissipateur, aération).</div></div>`);
   }
   return out;
 }

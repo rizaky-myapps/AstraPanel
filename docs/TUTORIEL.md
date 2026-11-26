@@ -1,14 +1,17 @@
-# Tutoriel : héberger vos sites et bots Discord sur un Raspberry Pi 5 avec AstraPanel
+# Tutoriel : héberger vos sites et bots Discord sur votre propre machine avec AstraPanel
 
-Ce guide part de zéro : vous préparez la carte SD, installez AstraPanel, lancez votre premier bot Discord et votre
-premier site, puis mettez le tout en ligne avec votre nom de domaine en HTTPS. Comptez environ une heure.
+Ce guide part de zéro : vous préparez une machine Linux, installez AstraPanel, lancez votre premier bot Discord et
+votre premier site, puis mettez le tout en ligne avec votre nom de domaine en HTTPS. Comptez environ une heure.
+
+AstraPanel fonctionne sur **n'importe quelle machine Linux** : ancien ordinateur, mini-PC, serveur à la maison, carte
+ARM ou serveur loué (VPS) chez un hébergeur.
 
 ## Sommaire
 
 1. [Ce dont vous avez besoin](#1-ce-dont-vous-avez-besoin)
-2. [Installer Raspberry Pi OS](#2-installer-raspberry-pi-os)
-3. [Se connecter au Pi en SSH](#3-se-connecter-au-pi-en-ssh)
-4. [Donner une adresse IP fixe au Pi](#4-donner-une-adresse-ip-fixe-au-pi)
+2. [Préparer la machine](#2-préparer-la-machine)
+3. [Se connecter en SSH](#3-se-connecter-en-ssh)
+4. [Donner une adresse IP fixe à la machine](#4-donner-une-adresse-ip-fixe-à-la-machine)
 5. [Installer AstraPanel](#5-installer-astrapanel)
 6. [Première connexion et tableau de bord](#6-première-connexion-et-tableau-de-bord)
 7. [Héberger un bot Discord](#7-héberger-un-bot-discord)
@@ -17,7 +20,7 @@ premier site, puis mettez le tout en ligne avec votre nom de domaine en HTTPS. C
 10. [Mettre vos sites en ligne sur Internet](#10-mettre-vos-sites-en-ligne-sur-internet)
 11. [Déploiement automatique depuis GitHub](#11-déploiement-automatique-depuis-github)
 12. [Utilisateurs et grades](#12-utilisateurs-et-grades)
-13. [Sécuriser le Raspberry Pi](#13-sécuriser-le-raspberry-pi)
+13. [Sécuriser la machine](#13-sécuriser-la-machine)
 14. [Entretien : mises à jour, sauvegardes, journaux](#14-entretien--mises-à-jour-sauvegardes-journaux)
 15. [Dépannage](#15-dépannage)
 
@@ -27,48 +30,51 @@ premier site, puis mettez le tout en ligne avec votre nom de domaine en HTTPS. C
 
 | Élément | Recommandation |
 | --- | --- |
-| Raspberry Pi 5 | 4 Go de RAM conviennent très bien pour plusieurs bots et sites. 2 Go suffisent pour quelques bots, 8 Go si vous hébergez beaucoup de sites. |
-| Alimentation | **L'alimentation officielle 27 W USB-C (5 V / 5 A).** Avec un chargeur de téléphone, le Pi 5 se met en sous-tension, ralentit et peut planter. |
-| Refroidissement | L'**Active Cooler** officiel (ou un boîtier ventilé) : le Pi tourne 24 h/24. |
-| Stockage | Une carte microSD **A2** de 32 Go minimum, ou mieux un **SSD NVMe** avec le M.2 HAT+ (plus rapide et plus fiable pour un serveur). |
-| Réseau | Un câble Ethernet relié à votre box (plus stable que le Wi-Fi). |
-| Un ordinateur | Pour préparer la carte SD et vous connecter au Pi. |
+| Une machine | Ordinateur, mini-PC, serveur, carte ARM 64 bits ou VPS. Processeur **x86-64 ou ARM 64 bits**. |
+| Système | Une distribution Linux avec **apt** et **systemd** : **Debian 12+**, **Ubuntu 22.04+** ou une dérivée (Linux Mint, Armbian…). Une version serveur, sans bureau, laisse plus de mémoire à vos applications. |
+| Mémoire | 2 Go de RAM pour quelques bots, 4 Go pour plusieurs bots et sites, davantage si vous hébergez beaucoup de sites. |
+| Stockage | 16 Go libres minimum ; un **SSD** est plus rapide et plus fiable pour une machine allumée en permanence. |
+| Réseau | Un câble Ethernet relié à votre box (plus stable que le Wi-Fi), ou la connexion de votre VPS. |
+| Un ordinateur | Pour vous connecter à la machine en SSH et utiliser le panel depuis votre navigateur. |
 
 Pour la mise en ligne (étape 10), il vous faudra aussi un **nom de domaine** (une dizaine d'euros par an chez
 OVHcloud, Gandi, Infomaniak, Cloudflare…). Les sous-domaines gratuits de type DuckDNS ne conviennent pas.
 
-## 2. Installer Raspberry Pi OS
+## 2. Préparer la machine
 
-1. Téléchargez et installez **Raspberry Pi Imager** depuis [raspberrypi.com/software](https://www.raspberrypi.com/software/).
-2. Insérez la carte microSD (ou le SSD dans un adaptateur USB) dans votre ordinateur et lancez Imager.
-3. Choisissez :
-   - **Appareil** : Raspberry Pi 5
-   - **Système d'exploitation** : *Raspberry Pi OS (other)* → **Raspberry Pi OS Lite (64-bit)**
-     (la version Lite, sans bureau, laisse plus de RAM à vos applications ; la version Desktop fonctionne aussi)
-   - **Stockage** : votre carte SD
-4. Quand Imager propose de **personnaliser** l'image, renseignez :
-   - **Nom d'hôte** : `astrapanel` (le Pi sera joignable à l'adresse `astrapanel.local`)
-   - **Nom d'utilisateur et mot de passe** : par exemple `pi` et un mot de passe solide
-   - **Wi-Fi** : seulement si vous n'utilisez pas de câble Ethernet
-   - **Fuseau horaire** : `Europe/Paris`, **clavier** : `fr`
-   - **SSH** : activez-le (authentification par mot de passe, ou par clé publique si vous en avez une)
-5. Lancez l'écriture, puis insérez la carte dans le Pi, branchez le câble Ethernet et l'alimentation.
+**Machine à la maison.** Installez **Debian** ([debian.org](https://www.debian.org/)) ou **Ubuntu Server**
+([ubuntu.com/download/server](https://ubuntu.com/download/server)) depuis une clé USB d'installation. Pendant
+l'installation :
 
-Le premier démarrage prend une à deux minutes.
+- **Nom de la machine** : par exemple `astrapanel` ;
+- **Compte utilisateur** : un nom (par exemple `admin`) et un mot de passe solide ; ce compte doit pouvoir utiliser
+  `sudo` ;
+- **Logiciels** : cochez **serveur SSH** (« OpenSSH server » sous Ubuntu) ; l'environnement de bureau est facultatif.
 
-## 3. Se connecter au Pi en SSH
+Si la machine a déjà un système Linux compatible (voir le tableau ci-dessus), gardez-le : il suffit que SSH soit
+activé. Pour une carte ARM, utilisez l'image officielle 64 bits de son fabricant.
+
+**Serveur loué (VPS).** Choisissez **Debian 12** ou **Ubuntu 24.04** à la commande : l'hébergeur vous donne
+l'adresse IP du serveur et un accès SSH.
+
+Laissez la machine branchée sur le réseau et allumée : elle hébergera vos sites et vos bots 24 h/24.
+
+## 3. Se connecter en SSH
 
 Depuis votre ordinateur, ouvrez un terminal (sous Windows : **Terminal** ou **PowerShell**, la commande `ssh` est
 incluse) :
 
 ```bash
-ssh pi@astrapanel.local
+ssh admin@192.168.1.50
 ```
 
-Remplacez `pi` par le nom d'utilisateur choisi. Acceptez l'empreinte de sécurité (`yes`) puis tapez votre mot de passe.
+Remplacez `admin` par votre nom d'utilisateur et `192.168.1.50` par l'adresse IP de la machine. Acceptez l'empreinte
+de sécurité (`yes`) puis tapez votre mot de passe.
 
-> Si `astrapanel.local` ne répond pas, trouvez l'adresse IP du Pi dans l'interface de votre box (liste des
-> appareils connectés) et utilisez `ssh pi@192.168.1.XX`.
+> L'adresse IP d'une machine à la maison se trouve dans l'interface de votre box (liste des appareils connectés), ou
+> sur la machine elle-même avec la commande `hostname -I`.
+
+Dans la suite du guide, **`<ip-de-la-machine>`** désigne cette adresse.
 
 Mettez le système à jour puis redémarrez :
 
@@ -82,16 +88,18 @@ sudo reboot
 
 Attendez une minute et reconnectez-vous en SSH.
 
-## 4. Donner une adresse IP fixe au Pi
+## 4. Donner une adresse IP fixe à la machine
 
-Votre box doit toujours attribuer la même adresse au Pi : vous retrouverez ainsi toujours le panel et vos sites à la
-même adresse sur votre réseau local, et la connexion SSH ne changera pas.
+Une machine à la maison doit toujours recevoir la même adresse de votre box : vous retrouverez ainsi toujours le
+panel et vos sites à la même adresse sur votre réseau local, et la connexion SSH ne changera pas. *(Sur un VPS,
+l'adresse est déjà fixe : passez à l'étape 5.)*
 
 **Méthode conseillée : un bail DHCP statique dans votre box.** Dans l'interface de votre box (Freebox, Livebox,
 Bbox, Box SFR…), cherchez la rubrique **DHCP** puis **baux statiques** (ou « attribution d'adresse IP fixe ») et
-associez une adresse au Pi (repérable par son nom `astrapanel`).
+associez une adresse à la machine (repérable par son nom, par exemple `astrapanel`).
 
-**Autre méthode : configurer l'IP sur le Pi** (Raspberry Pi OS utilise NetworkManager). Repérez le nom de la connexion :
+**Autre méthode : configurer l'IP sur la machine.** Si votre système utilise NetworkManager (c'est le cas d'Ubuntu
+avec bureau et de beaucoup de distributions), repérez le nom de la connexion :
 
 ```bash
 nmcli connection show
@@ -107,12 +115,15 @@ sudo nmcli connection modify "Wired connection 1" ipv4.method manual ipv4.addres
 sudo nmcli connection up "Wired connection 1"
 ```
 
+Sans NetworkManager, la configuration se fait dans `/etc/network/interfaces` (Debian) ou dans `/etc/netplan/`
+(Ubuntu Server) : le bail statique dans la box reste le plus simple.
+
 Choisissez une adresse hors de la plage distribuée automatiquement par votre box. Votre session SSH sera coupée :
 reconnectez-vous avec la nouvelle adresse.
 
 ## 5. Installer AstraPanel
 
-Toujours en SSH sur le Pi :
+Toujours en SSH sur la machine :
 
 ```bash
 sudo apt install -y git
@@ -142,7 +153,7 @@ Le script, qui prend quelques minutes :
 - installe git, zip/unzip et les outils de compilation (nécessaires à certains modules npm de bots, comme ceux pour la voix) ;
 - installe **Node.js 24 LTS** si aucune version récente n'est présente ;
 - crée l'utilisateur système `astrapanel`, qui fera tourner le panel et vos applications sans droits administrateur ;
-- copie le panel dans `/opt/astrapanel` et crée le service `astrapanel` qui démarre avec le Pi ;
+- copie le panel dans `/opt/astrapanel` et crée le service `astrapanel` qui démarre avec la machine ;
 - installe le petit service `astrapanel-update`, qui permettra de **mettre le panel à jour depuis son interface**
   (plus besoin de SSH, voir l'étape 14).
 
@@ -152,18 +163,20 @@ Le script, qui prend quelques minutes :
 ✔ AstraPanel est installé et démarré !
 
   Adresse du panel : http://192.168.1.50:8080
-                     http://astrapanel.local:8080
 
   Jeton d'installation (à saisir à la première connexion) : Xy3k9QpL2mWa
 ```
 
+> Si la machine annonce son nom sur le réseau (service avahi), une deuxième adresse en `.local` s'affiche aussi,
+> par exemple `http://astrapanel.local:8080`.
+>
 > Option du script : `--port=9000` change le port du panel (8080 par défaut).
 > Vous pouvez relancer le script à tout moment : vos applications sont conservées.
 
 ## 6. Première connexion et tableau de bord
 
-1. Sur votre ordinateur (ou votre téléphone, connecté au même réseau), ouvrez **http://astrapanel.local:8080**.
-2. Saisissez le **jeton d'installation**. Si vous l'avez perdu, affichez-le sur le Pi :
+1. Sur votre ordinateur (ou votre téléphone, connecté au même réseau), ouvrez **http://<ip-de-la-machine>:8080** (l'adresse affichée par le script).
+2. Saisissez le **jeton d'installation**. Si vous l'avez perdu, affichez-le sur la machine :
 
    ```bash
    sudo cat /opt/astrapanel/data/setup-token
@@ -174,13 +187,14 @@ Le script, qui prend quelques minutes :
 
 Vous arrivez sur le **tableau de bord** :
 
-- en haut, l'état actuel du Pi : processeur, température (et vitesse du ventilateur), mémoire, stockage, durée de
-  fonctionnement. Si le panel affiche « Sous-tension détectée », changez d'alimentation (voir l'étape 1) ;
+- en haut, l'état actuel de la machine : processeur, température (et vitesse du ventilateur quand la machine la
+  fournit), mémoire, stockage, durée de fonctionnement. Si le panel affiche « Sous-tension détectée », l'alimentation
+  de la machine est insuffisante : remplacez-la ;
 - en dessous, les **graphiques** du processeur, de la température et de la mémoire, avec le choix de la période :
   **1 h, 24 h, 15 j ou 30 j**. Survolez une courbe pour lire la valeur à un instant donné ; « Voir les données »
   affiche les mesures sous forme de tableau. L'historique se remplit au fil du temps (il est conservé 30 jours) ;
-- un clic sur la carte **Stockage** ouvre l'explorateur de stockage : la liste des disques du Pi (carte SD, SSD,
-  clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus léger**. Cliquez sur un dossier
+- un clic sur la carte **Stockage** ouvre l'explorateur de stockage : la liste des disques de la machine (disque
+  interne, SSD, clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus léger**. Cliquez sur un dossier
   pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les journaux, une vieille archive…).
 
 Vos applications sont listées dans la barre latérale, avec le bouton **Nouvelle application**.
@@ -210,7 +224,7 @@ Vos applications sont listées dans la barre latérale, avec le bouton **Nouvell
    Un écran d'attente s'affiche pendant la création, puis l'application s'ouvre toute seule : son installation se
    poursuit dans l'onglet **Console**.
 
-La console s'ouvre : le panel installe discord.js (`npm install`, environ une minute sur le Pi) puis démarre le bot.
+La console s'ouvre : le panel installe discord.js (`npm install`, environ une minute) puis démarre le bot.
 Vous devez voir :
 
 ```
@@ -231,7 +245,7 @@ actuel, et l'option `salon` permet d'en choisir un autre. Écrivez `\n` pour all
 Dans l'onglet **Paramètres** de chaque application, deux interrupteurs règlent son lancement :
 
 - **Redémarrage automatique en cas de plantage** : relance l'application si elle s'arrête de façon inattendue ;
-- **Démarrer avec le Raspberry Pi** : lance l'application à chaque démarrage du Pi. Sur **OFF**, elle reste arrêtée
+- **Démarrer avec la machine** : lance l'application à chaque démarrage de la machine. Sur **OFF**, elle reste arrêtée
   jusqu'à ce que vous cliquiez sur **Démarrer** (un simple redémarrage du panel, lors d'une mise à jour par exemple,
   remet toujours chaque application dans l'état où elle était).
 
@@ -255,7 +269,7 @@ Dans les deux cas :
   son contenu en « Mode texte (.env) » : les variables définies dans le panel sont prioritaires.
 - Le panel lance `npm install` puis démarre le bot. Les dépendances sont réinstallées à chaque déploiement.
 
-**Bot musical / vocal** : installez ffmpeg sur le Pi, puis redéployez le bot :
+**Bot musical / vocal** : installez ffmpeg sur la machine, puis redéployez le bot :
 
 ```bash
 sudo apt install -y ffmpeg
@@ -264,7 +278,7 @@ sudo apt install -y ffmpeg
 ## 8. Héberger un site web
 
 AstraPanel attribue un **port** à chaque site (4000, 4001…) et le transmet dans la variable d'environnement `PORT`.
-Sur votre réseau local, le site est accessible à l'adresse `http://astrapanel.local:<port>` : le bouton **Ouvrir**
+Sur votre réseau local, le site est accessible à l'adresse `http://<ip-de-la-machine>:<port>` : le bouton **Ouvrir**
 de la fiche de l'application vous y emmène.
 
 ### 8.1 Site Node.js (Express, Fastify, Next.js…)
@@ -275,7 +289,7 @@ Votre serveur **doit écouter sur le port fourni par le panel** :
 import express from 'express';
 
 const app = express();
-app.get('/', (req, res) => res.send('Bonjour depuis mon Raspberry Pi !'));
+app.get('/', (req, res) => res.send('Bonjour depuis ma machine !'));
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Site en ligne sur le port ${port}`));
@@ -320,7 +334,7 @@ L'onglet **Fichiers** de chaque application est un gestionnaire de fichiers comp
 
 ## 10. Mettre vos sites en ligne sur Internet
 
-AstraPanel publie vos sites sur Internet grâce au **tunnel Cloudflare** intégré : le Raspberry Pi ouvre lui-même une
+AstraPanel publie vos sites sur Internet grâce au **tunnel Cloudflare** intégré : la machine ouvre elle-même une
 connexion sortante vers Cloudflare, qui lui transmet les visites. **Aucun port à ouvrir sur votre box**, votre adresse
 IP reste privée, ça marche même sans IPv4 publique, et le HTTPS est automatique. Il vous faut seulement un nom de
 domaine géré par Cloudflare (offre gratuite).
@@ -340,7 +354,7 @@ En résumé, avec le mode recommandé (« Géré depuis le panel ») :
 4. dans les **Paramètres** d'une application, indiquez son domaine (`monsite.fr`) et enregistrez : le site est en ligne
    en HTTPS en moins d'une minute.
 
-Le tunnel démarre automatiquement en même temps que le panel, à chaque démarrage du Raspberry Pi.
+Le tunnel démarre automatiquement en même temps que le panel, à chaque démarrage de la machine.
 
 ## 11. Déploiement automatique depuis GitHub
 
@@ -362,7 +376,7 @@ redémarre l'application. Vous suivez le tout dans la console. Le bouton **Dépl
 
 - un *fine-grained personal access token* GitHub limité au dépôt, avec la permission **Contents : Read-only**,
   placé dans l'URL : `https://<token>@github.com/moi/mon-bot.git` ;
-- ou une **clé de déploiement SSH**. Créez-la sur le Pi :
+- ou une **clé de déploiement SSH**. Créez-la sur la machine :
 
   ```bash
   sudo -u astrapanel mkdir -p -m 700 /opt/astrapanel/data/.ssh
@@ -409,7 +423,7 @@ voir et tout faire dessus (console, fichiers, variables, déploiement…).
 - Un utilisateur ne voit ni les applications des autres, ni leur nom, tant qu'on ne lui a pas donné accès.
 - Les applications créées avant la version 1.2.4 ont pour créateur le premier administrateur.
 
-> Les utilisateurs peuvent modifier le code des applications : ils peuvent donc exécuter du code sur le Pi. Ne donnez
+> Les utilisateurs peuvent modifier le code des applications : ils peuvent donc exécuter du code sur la machine. Ne donnez
 > un compte qu'à des personnes de confiance. La liste d'une application limite ce que chacun voit et fait **dans le
 > panel**, mais toutes les applications tournent sous le même compte système : le code d'une application peut lire
 > les fichiers des autres.
@@ -424,14 +438,16 @@ par type d'action, ou cherchez un nom de fichier, un domaine, une IP. L'icône h
 Les mots de passe, les jetons et les valeurs des variables d'environnement ne sont jamais enregistrés (seulement les
 noms des variables modifiées). Les 10 000 dernières actions sont conservées dans `/opt/astrapanel/data/audit.log`.
 
-## 13. Sécuriser le Raspberry Pi
+## 13. Sécuriser la machine
 
-- **Panel** : mots de passe solides, et **jamais de redirection du port 8080** sur la box. Pour administrer à
-  distance : domaine du panel en HTTPS via le tunnel Cloudflare, ou un VPN comme Tailscale ou WireGuard.
+- **Panel** : mots de passe solides, et **jamais de redirection du port 8080** sur la box (sur un VPS : port 8080
+  fermé au public, voir le pare-feu ci-dessous). Pour administrer à distance : domaine du panel en HTTPS via le
+  tunnel Cloudflare, ou un VPN comme Tailscale ou WireGuard.
 - **Code hébergé** : toutes les applications tournent sous le même utilisateur `astrapanel`. Une application peut donc
   lire les fichiers des autres, y compris leurs tokens. N'hébergez que du code en lequel vous avez confiance.
 - **Pare-feu** : `ufw` n'autorise que le nécessaire. Le tunnel Cloudflare n'a besoin d'aucun port ouvert. Adaptez
-  `192.168.1.0/24` à votre réseau local :
+  `192.168.1.0/24` à votre réseau local (sur un VPS, mettez l'adresse IP de votre connexion, ou n'ouvrez pas ces
+  ports et passez par le tunnel Cloudflare) :
 
   ```bash
   sudo apt install -y ufw
@@ -459,7 +475,7 @@ noms des variables modifiées). Les 10 000 dernières actions sont conservées d
   sudo apt install -y unattended-upgrades
   ```
 
-- **SSH** : préférez une connexion par clé (`ssh-copy-id pi@astrapanel.local` depuis un ordinateur Linux ou macOS), puis
+- **SSH** : préférez une connexion par clé (`ssh-copy-id admin@<ip-de-la-machine>` depuis un ordinateur Linux ou macOS), puis
   désactivez l'authentification par mot de passe dans `/etc/ssh/sshd_config` (`PasswordAuthentication no`).
 
 ## 14. Entretien : mises à jour, sauvegardes, journaux
@@ -475,8 +491,9 @@ Dans **Paramètres → Mises à jour** :
   panel est flouté et un écran de chargement indique où elle en est : demande envoyée, téléchargement, installation
   (avec le détail : paquets système, copie du panel…), redémarrage du panel, terminé. À la fin (une à trois minutes),
   la page **vide le cache du navigateur** et se recharge toute seule : pas de mélange entre l'ancienne et la nouvelle
-  interface. Une page restée ouverte pendant une mise à jour faite ailleurs (autre onglet, SSH) fait de même. Cet écran s'affiche pour tous les comptes connectés, même quand la mise à jour a été
-  lancée par un autre administrateur ou en SSH ; le journal complet reste dans **Paramètres → Mises à jour**.
+  interface. Une page restée ouverte pendant une mise à jour faite ailleurs (autre onglet, SSH) fait de même. Cet
+  écran s'affiche pour tous les comptes connectés, même quand la mise à jour a été lancée par un autre
+  administrateur ou en SSH ; le journal complet reste dans **Paramètres → Mises à jour**.
 
 > Si votre panel a été installé avant l'arrivée de cette fonction, faites une dernière mise à jour en SSH en
 > réinstallant depuis la dernière version (étape 5, dans un nouveau dossier) : les suivantes se feront depuis le panel.
@@ -505,13 +522,14 @@ sudo journalctl -u astrapanel -f
 Les journaux de chaque application sont dans la console du panel (bouton **Télécharger** pour le fichier complet) et
 dans `/opt/astrapanel/data/logs/`. Le journal de la dernière mise à jour est dans `/var/log/astrapanel-update.log`.
 
-**Redémarrer le Raspberry Pi sans SSH.** **Paramètres → Hardware** (administrateurs) affiche la machine : modèle,
-processeur, mémoire, stockage, température, alimentation, système, adresse IP et durée depuis le dernier démarrage.
-Le bouton **Redémarrer la machine…** demande une validation, puis redémarre le Pi quelques secondes plus tard. Comme
+**Redémarrer la machine sans SSH.** **Paramètres → Hardware** (administrateurs) affiche la machine : modèle,
+processeur, mémoire, stockage, température (avec le ventilateur et l'alimentation quand la machine les signale),
+système, adresse IP et durée depuis le dernier démarrage.
+Le bouton **Redémarrer la machine…** demande une validation, puis redémarre la machine quelques secondes plus tard. Comme
 pendant une mise à jour, tout le panel est flouté avec un écran d'attente (demande envoyée, arrêt de la machine,
 redémarrage, panel de nouveau en ligne), affiché à tous les comptes connectés ; la page se recharge toute seule quand
 le panel est de nouveau en ligne (une à deux minutes). Le panel, le tunnel Cloudflare et les
-applications réglées sur **Démarrer avec le Raspberry Pi** repartent automatiquement.
+applications réglées sur **Démarrer avec la machine** repartent automatiquement.
 
 > Comme pour les mises à jour, le panel n'a pas lui-même le droit de redémarrer la machine : il dépose une demande que
 > le petit service `astrapanel-reboot` (installé par `install.sh`) exécute en root. Une demande ne vaut que pour le
@@ -523,8 +541,8 @@ applications réglées sur **Démarrer avec le Raspberry Pi** repartent automati
 sudo tar czf ~/astrapanel-$(date +%F).tar.gz -C /opt/astrapanel data
 ```
 
-Copiez ensuite l'archive ailleurs que sur le Pi (`scp pi@astrapanel.local:astrapanel-*.tar.gz .` depuis votre
-ordinateur). Pour **restaurer** sur un Pi où AstraPanel est installé :
+Copiez ensuite l'archive ailleurs que sur la machine (`scp admin@<ip-de-la-machine>:astrapanel-*.tar.gz .` depuis
+votre ordinateur). Pour **restaurer** sur une machine où AstraPanel est installé :
 
 ```bash
 sudo systemctl stop astrapanel
@@ -562,7 +580,7 @@ sudo systemctl status astrapanel
 sudo journalctl -u astrapanel -n 50
 ```
 
-Vérifiez aussi l'adresse (`hostname -I` sur le Pi donne son IP) et, si vous avez activé `ufw`, la règle du port 8080.
+Vérifiez aussi l'adresse (`hostname -I` sur la machine donne son IP) et, si vous avez activé `ufw`, la règle du port 8080.
 
 **Mon site affiche « 502 Bad Gateway ».** L'application est arrêtée, plantée, ou n'écoute pas sur le bon port.
 Regardez la console : votre code doit utiliser `process.env.PORT`.
@@ -584,7 +602,7 @@ membres, présences) : activez-le dans l'onglet **Bot** du portail développeur.
 `applications.commands`, puis redémarrez Discord.
 
 **« Trop de plantages d'affilée ».** Après 10 plantages rapprochés, le panel arrête de relancer l'application pour ne
-pas surcharger le Pi. Corrigez l'erreur visible dans la console puis cliquez sur **Démarrer**.
+pas surcharger la machine. Corrigez l'erreur visible dans la console puis cliquez sur **Démarrer**.
 
 **Tunnel Cloudflare : « Cloudflare : … » lors de la connexion.** Le jeton d'API n'a pas les bonnes permissions
 (revoyez l'[étape 5.1 du tutoriel Cloudflare](CLOUDFLARE.md#51-créer-un-jeton-dapi-cloudflare)) ou a expiré. Si le tunnel reste sur « Connexion… », lisez son journal en bas de la page
@@ -624,7 +642,7 @@ vérifie que son port est libre et indique dans la console qui l'occupe :
   utilise un port écrit en dur. Remplacez-le par `process.env.PORT`.
 
 **La mise à jour depuis le panel échoue.** Le journal de la mise à jour s'affiche dans **Paramètres → Mises à jour**.
-Si le dépôt GitHub est privé, il doit avoir été cloné avec un jeton dans l'URL pour que le Pi puisse le télécharger.
+Si le dépôt GitHub est privé, il doit avoir été cloné avec un jeton dans l'URL pour que la machine puisse le télécharger.
 Les messages du service sont aussi visibles avec :
 
 ```bash
@@ -633,8 +651,9 @@ sudo journalctl -u astrapanel-update -n 50
 
 **Le site ne s'ouvre pas depuis Internet.** Consultez la partie dépannage du [tutoriel Cloudflare](CLOUDFLARE.md#9-dépannage).
 
-**« Sous-tension détectée » ou Pi qui redémarre tout seul.** Utilisez l'alimentation officielle 27 W et un câble
-USB-C de qualité.
+**« Sous-tension détectée » ou machine qui redémarre toute seule.** L'alimentation est insuffisante ou défaillante :
+utilisez celle recommandée par le fabricant et un câble de qualité. Vérifiez aussi la température dans
+**Paramètres → Hardware** : une machine qui surchauffe peut s'éteindre d'elle-même.
 
 **Où sont les fichiers ?**
 

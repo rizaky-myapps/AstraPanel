@@ -16,7 +16,7 @@ const FIELDS = {
   staticDir: 'dossier publié',
   spa: 'mode SPA',
   autoRestart: 'redémarrage automatique',
-  startOnBoot: 'démarrage avec le Raspberry Pi',
+  startOnBoot: 'démarrage avec la machine',
   git: 'dépôt Git',
   port: 'port',
 };

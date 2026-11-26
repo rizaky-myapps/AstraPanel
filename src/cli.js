@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Outils en ligne de commande d'AstraPanel.
-// Sur le Pi, passez par le raccourci installé : sudo astrapanel-cli <commande>
+// Sur la machine, passez par le raccourci installé : sudo astrapanel-cli <commande>
 import { createInterface } from 'node:readline/promises';
 import { config } from './config.js';
 import { Store } from './store.js';

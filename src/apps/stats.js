@@ -9,7 +9,7 @@ function getconf(name, fallback) {
   }
 }
 
-// Le noyau du Raspberry Pi 5 utilise des pages de 16 Ko : on ne suppose rien.
+// Certains noyaux (ARM notamment) utilisent des pages de 16 Ko : on ne suppose rien.
 export const PAGE_SIZE = getconf('PAGESIZE', 4096);
 export const CLK_TCK = getconf('CLK_TCK', 100);
 

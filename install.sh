@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installateur / mise à jour d'AstraPanel
-# Testé pour Raspberry Pi OS 64 bits (Bookworm / Trixie). Fonctionne aussi sur Debian et Ubuntu.
+# Pour Linux 64 bits avec apt et systemd : Debian, Ubuntu et leurs dérivés (ordinateur, mini-PC, serveur, VPS…).
 #
 #   sudo ./install.sh                 installe ou met à jour le panel
 #   sudo ./install.sh --port=9000     change le port du panel (8080 par défaut)
@@ -42,7 +42,7 @@ PANEL_PORT="${PANEL_PORT:-8080}"
 
 case "$(uname -m)" in
   aarch64 | arm64 | x86_64) ;;
-  armv7l | armv6l) warn "Système 32 bits détecté : Raspberry Pi OS 64 bits est fortement recommandé." ;;
+  armv7l | armv6l) warn "Système 32 bits détecté : un système 64 bits est fortement recommandé." ;;
   *) warn "Architecture $(uname -m) non testée." ;;
 esac
 
@@ -73,7 +73,7 @@ if ! id "$PANEL_USER" >/dev/null 2>&1; then
   info "Création de l'utilisateur système « $PANEL_USER »…"
   useradd --system --home-dir "$DATA_DIR" --no-create-home --shell /usr/sbin/nologin "$PANEL_USER"
 fi
-# groupe video : permet à vcgencmd de signaler une sous-tension ou une surchauffe
+# groupe video : permet de lire l'état de l'alimentation et de la température (vcgencmd), sur les cartes qui le proposent
 if getent group video >/dev/null; then usermod -aG video "$PANEL_USER"; fi
 
 # --- Code du panel -----------------------------------------------------------
@@ -163,8 +163,11 @@ sleep 1
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 printf '\033[1;32m✔ AstraPanel est installé et démarré !\033[0m\n\n'
-echo "  Adresse du panel : http://${IP:-<ip-du-pi>}:$PANEL_PORT"
-echo "                     http://$(hostname).local:$PANEL_PORT"
+echo "  Adresse du panel : http://${IP:-<ip-de-la-machine>}:$PANEL_PORT"
+# nom en .local : seulement si la machine l'annonce sur le réseau (mDNS, avahi)
+if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
+  echo "                     http://$(hostname).local:$PANEL_PORT"
+fi
 if [ -f "$DATA_DIR/setup-token" ]; then
   echo
   echo "  Jeton d'installation (à saisir à la première connexion) : $(cat "$DATA_DIR/setup-token")"

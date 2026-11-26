@@ -10,7 +10,7 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
         ${setupRequired ? html`<p class="lead">Bienvenue ! Créez le compte administrateur du panel.</p>` : ''}
         ${setupRequired
           ? html`<div class="field">
-              <label for="token">Jeton d'installation ${tip(html`Affiché à la fin de l'installation. Pour le retrouver, sur le Raspberry Pi : <code>sudo cat /opt/astrapanel/data/setup-token</code>`)}</label>
+              <label for="token">Jeton d'installation ${tip(html`Affiché à la fin de l'installation. Pour le retrouver, sur la machine : <code>sudo cat /opt/astrapanel/data/setup-token</code>`)}</label>
               <input id="token" name="token" type="text" class="mono" autocomplete="off" spellcheck="false" />
             </div>`
           : ''}

@@ -15,7 +15,7 @@ const round = (v, d = 1) => (v === null || v === undefined ? null : Math.round(v
 /**
  * Historique CPU / température / RAM. Chaque palier agrège les mesures (moyenne) par intervalle.
  * Un point = [début de l'intervalle (ms), CPU %, température °C, RAM utilisée (Mo)].
- * Sauvegardé sur disque toutes les 10 minutes (pas le palier 1h, pour épargner la carte SD).
+ * Sauvegardé sur disque toutes les 10 minutes (pas le palier 1h, pour épargner le disque).
  */
 export class Metrics {
   constructor(file) {

@@ -30,7 +30,7 @@ test('historique : agrégation par palier et conservation limitée', () => {
   m.save();
   const reloaded = new Metrics(m.file);
   assert.ok(reloaded.query('24h').points.length >= 1);
-  assert.equal(reloaded.query('1h').points.length, 0); // le palier 1h n'est pas écrit sur la carte SD
+  assert.equal(reloaded.query('1h').points.length, 0); // le palier 1h n'est pas écrit sur le disque
 });
 
 test('graduations rondes', () => {
@@ -665,7 +665,7 @@ test('le tunnel Cloudflare démarre avec le panel, et réessaie si cloudflared m
   assert.ok(Date.now() - begin < 3000, 'le tunnel doit être connecté en moins de 3 s');
 });
 
-test('démarrage avec le Raspberry Pi : option par application', async (t) => {
+test('démarrage avec la machine : option par application', async (t) => {
   const ctx = await startTestPanel();
   t.after(() => ctx.close());
   await ctx.setupAdmin();
@@ -681,7 +681,7 @@ test('démarrage avec le Raspberry Pi : option par application', async (t) => {
   apps.get(manuel.id).desired = 'running';
   apps.get(auto.id).desired = 'stopped';
 
-  // démarrage du Raspberry Pi : seule l'app avec l'option est lancée
+  // démarrage de la machine : seule l'app avec l'option est lancée
   await apps.bootstrap({ systemBoot: true });
   assert.equal(apps.rt(auto.id).status, 'running');
   assert.equal(apps.rt(manuel.id).status, 'stopped');
@@ -807,4 +807,71 @@ test('tunnel géré depuis le panel : compte retrouvé via les domaines, créati
   assert.equal(data.tunnel.ok, true, JSON.stringify(data.tunnel));
   assert.deepEqual(records.map((r) => [r.type, r.name, r.content, r.proxied]), [['CNAME', 'monsite.fr', 'tunnel-1.cfargotunnel.com', true]]);
   assert.ok(calls.includes(`PUT /accounts/${ACC}/cfd_tunnel/tunnel-1/configurations`));
+});
+
+test('capteurs et modèle lus sur tout type de machine (hwmon, zones thermiques, DMI)', async () => {
+  const { temperature, fanRpm } = await import('../src/system.js');
+  const root = mkdtempSync(path.join(os.tmpdir(), 'astra-sensors-'));
+  const put = (file, text) => {
+    mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    writeFileSync(path.join(root, file), `${text}\n`);
+  };
+  const env = { hwmon: process.env.ASTRA_HWMON_DIR, thermal: process.env.ASTRA_THERMAL_DIR };
+  try {
+    // PC : disque NVMe, processeur Intel (coretemp), carte mère avec un connecteur de ventilateur vide
+    put('pc/hwmon/hwmon0/name', 'nvme');
+    put('pc/hwmon/hwmon0/temp1_input', '38850');
+    put('pc/hwmon/hwmon1/name', 'coretemp');
+    put('pc/hwmon/hwmon1/temp1_input', '52000');
+    put('pc/hwmon/hwmon2/name', 'nct6775');
+    put('pc/hwmon/hwmon2/fan1_input', '0');
+    put('pc/hwmon/hwmon2/fan2_input', '1180');
+    put('pc/thermal/thermal_zone0/type', 'acpitz');
+    put('pc/thermal/thermal_zone0/temp', '27800');
+    process.env.ASTRA_HWMON_DIR = path.join(root, 'pc/hwmon');
+    process.env.ASTRA_THERMAL_DIR = path.join(root, 'pc/thermal');
+    assert.equal(await temperature(), 52);
+    assert.equal(await fanRpm(), 1180);
+
+    // serveur sans pilote hwmon : la zone thermique du processeur plutôt que la première ; pas de ventilateur
+    put('vps/thermal/thermal_zone0/type', 'acpitz');
+    put('vps/thermal/thermal_zone0/temp', '27800');
+    put('vps/thermal/thermal_zone1/type', 'x86_pkg_temp');
+    put('vps/thermal/thermal_zone1/temp', '61000');
+    process.env.ASTRA_HWMON_DIR = path.join(root, 'vps/hwmon');
+    process.env.ASTRA_THERMAL_DIR = path.join(root, 'vps/thermal');
+    assert.equal(await temperature(), 61);
+    assert.equal(await fanRpm(), null);
+
+    // modèle de la machine (DMI), sans les valeurs bidon laissées par certains fabricants
+    const { machineModel } = await import('../src/system.js');
+    if (!existsSync('/proc/device-tree/model')) {
+      const dmiBefore = process.env.ASTRA_DMI_DIR;
+      try {
+        put('dmi/sys_vendor', 'Dell Inc.');
+        put('dmi/product_name', 'OptiPlex 7050');
+        process.env.ASTRA_DMI_DIR = path.join(root, 'dmi');
+        assert.equal(await machineModel(), 'Dell Inc. OptiPlex 7050');
+        put('dmi/sys_vendor', 'To Be Filled By O.E.M.');
+        put('dmi/product_name', 'System Product Name');
+        put('dmi/board_name', 'B550M PRO');
+        assert.equal(await machineModel(), 'B550M PRO');
+      } finally {
+        if (dmiBefore === undefined) delete process.env.ASTRA_DMI_DIR;
+        else process.env.ASTRA_DMI_DIR = dmiBefore;
+      }
+    }
+
+    // aucun capteur (machine virtuelle) : rien d'affiché plutôt qu'une valeur inventée
+    process.env.ASTRA_HWMON_DIR = path.join(root, 'vide/hwmon');
+    process.env.ASTRA_THERMAL_DIR = path.join(root, 'vide/thermal');
+    assert.equal(await temperature(), null);
+    assert.equal(await fanRpm(), null);
+  } finally {
+    for (const [key, value] of [['ASTRA_HWMON_DIR', env.hwmon], ['ASTRA_THERMAL_DIR', env.thermal]]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
 });

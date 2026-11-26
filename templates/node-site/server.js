@@ -33,7 +33,7 @@ const page = (count) => `<!doctype html>
 const server = http.createServer((req, res) => {
   if (req.url === '/api/hello') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Bonjour depuis le Raspberry Pi !', time: new Date().toISOString() }));
+    res.end(JSON.stringify({ message: 'Bonjour depuis AstraPanel !', time: new Date().toISOString() }));
     return;
   }
   visits += 1;

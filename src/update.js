@@ -255,7 +255,7 @@ export class Updater {
   // Demande la mise à jour au service root « astrapanel-update » (déclenché par la présence du fichier).
   async request(user) {
     if (!existsSync(UPDATER_UNIT)) {
-      throw new HttpError(400, 'Le service de mise à jour n’est pas installé : relancez « sudo ./install.sh » une fois sur le Pi.');
+      throw new HttpError(400, 'Le service de mise à jour n’est pas installé : relancez « sudo ./install.sh » une fois sur la machine.');
     }
     const run = await this.runStatus();
     if (run?.state === 'running' && Date.now() - run.at < RUN_FRESH) throw new HttpError(409, 'Une mise à jour est déjà en cours');

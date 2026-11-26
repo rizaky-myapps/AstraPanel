@@ -30,7 +30,7 @@ setInterval(() => {
 
 export const currentCpu = () => cpuUsage;
 
-// Change à chaque démarrage du Raspberry Pi : permet de distinguer un démarrage du Pi d'un redémarrage du panel.
+// Change à chaque démarrage de la machine : permet de distinguer un démarrage de la machine d'un redémarrage du panel.
 export function bootId() {
   try {
     return readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
@@ -56,24 +56,71 @@ export async function memory() {
   return { total, used: total - available, available };
 }
 
+// ---- Capteurs (température du processeur, ventilateurs) -------------------------------------------
+// Lus dans /sys/class/hwmon (pilotes coretemp, k10temp, cpu_thermal…) ou, à défaut, dans les zones thermiques du
+// noyau : fonctionne sur les PC, les serveurs comme sur les cartes ARM. Les chemins trouvés sont gardés en mémoire ;
+// si rien n'est trouvé, on recherche de nouveau toutes les 5 minutes.
+const CPU_SENSORS = ['coretemp', 'k10temp', 'zenpower', 'cpu_thermal', 'cpu-thermal', 'soc_thermal', 'scpi_sensors'];
+const CPU_ZONE = /^(x86_pkg_temp|cpu|soc)/i;
+
+let sensors = null;
+let sensorsAt = 0;
+
+const listDir = (dir) => readdir(dir).catch(() => []);
+
+async function findSensors() {
+  // dossiers modifiables pour les tests
+  const HWMON = process.env.ASTRA_HWMON_DIR || '/sys/class/hwmon';
+  const THERMAL = process.env.ASTRA_THERMAL_DIR || '/sys/class/thermal';
+  const key = `${HWMON}|${THERMAL}`;
+  if (sensors?.key === key && (sensors.temp || Date.now() - sensorsAt < 300_000)) return sensors;
+  const found = { key, temp: null, fans: [] };
+  let best = Infinity;
+  for (const name of (await listDir(HWMON)).sort()) {
+    const dir = `${HWMON}/${name}`;
+    const rank = CPU_SENSORS.indexOf(await readText(`${dir}/name`));
+    if (rank !== -1 && rank < best && (await readText(`${dir}/temp1_input`)) !== null) {
+      best = rank;
+      found.temp = `${dir}/temp1_input`;
+    }
+    for (const file of await listDir(dir)) if (/^fan\d+_input$/.test(file)) found.fans.push(`${dir}/${file}`);
+  }
+  if (!found.temp) {
+    // zone thermique du processeur si on la reconnaît, sinon la première qui répond
+    const zones = (await listDir(THERMAL))
+      .filter((z) => /^thermal_zone\d+$/.test(z))
+      .sort((a, b) => Number(a.slice(12)) - Number(b.slice(12)));
+    let first = null;
+    for (const zone of zones) {
+      const file = `${THERMAL}/${zone}/temp`;
+      if ((await readText(file)) === null) continue;
+      first ||= file;
+      if (CPU_ZONE.test((await readText(`${THERMAL}/${zone}/type`)) || '')) {
+        found.temp = file;
+        break;
+      }
+    }
+    found.temp ||= first;
+  }
+  sensors = found;
+  sensorsAt = Date.now();
+  return found;
+}
+
 export async function temperature() {
-  const raw = await readText('/sys/class/thermal/thermal_zone0/temp');
+  const { temp } = await findSensors();
+  const raw = temp && (await readText(temp));
+  if (temp && raw === null) sensors = null; // capteur disparu : nouvelle recherche au prochain appel
   return raw ? Number(raw) / 1000 : null;
 }
 
-// Ventilateur de l'Active Cooler du Raspberry Pi 5
-async function fanRpm() {
-  const base = '/sys/devices/platform/cooling_fan/hwmon';
-  try {
-    const [hwmon] = await readdir(base);
-    const raw = hwmon && (await readText(`${base}/${hwmon}/fan1_input`));
-    return raw ? Number(raw) : null;
-  } catch {
-    return null;
-  }
+// Vitesse du ventilateur le plus rapide (tr/min), ou null si la machine n'en signale aucun
+export async function fanRpm() {
+  const { fans } = await findSensors();
+  const values = (await Promise.all(fans.map(readText))).filter((v) => v !== null && v !== '').map(Number);
+  return values.length ? Math.max(...values) : null;
 }
 
-// `vcgencmd get_throttled` : signale une alimentation insuffisante ou une surchauffe.
 let throttleCache = { at: 0, value: null };
 async function throttling() {
   if (Date.now() - throttleCache.at < 30000) return throttleCache.value;
@@ -92,7 +139,7 @@ async function throttling() {
       };
     }
   } catch {
-    // pas un Raspberry Pi, ou l'utilisateur n'est pas dans le groupe video
+    // outil absent sur cette machine, ou l'utilisateur n'est pas dans le groupe video
   }
   throttleCache = { at: Date.now(), value };
   return value;
@@ -119,9 +166,22 @@ function addresses() {
   return out;
 }
 
+// Modèle de la machine : arbre matériel des cartes ARM, sinon fabricant et modèle (DMI) des PC, serveurs et VPS
+const DMI_PLACEHOLDER = /^(to be filled by o\.?e\.?m\.?|system (product name|manufacturer)|default string|not (specified|applicable)|none|o\.?e\.?m\.?|unknown)$/i;
+export async function machineModel() {
+  const tree = await readText('/proc/device-tree/model');
+  if (tree) return tree;
+  const dmi = process.env.ASTRA_DMI_DIR || '/sys/class/dmi/id';
+  const clean = (value) => (value && !DMI_PLACEHOLDER.test(value) ? value : '');
+  const [vendor, product, board] = (await Promise.all(['sys_vendor', 'product_name', 'board_name'].map((f) => readText(`${dmi}/${f}`)))).map(clean);
+  const name = product || board;
+  if (name) return vendor && !name.toLowerCase().startsWith(vendor.toLowerCase()) ? `${vendor} ${name}` : name;
+  return `${os.type()} ${os.arch()}`;
+}
+
 let modelCache;
 export async function systemInfo(dataDir) {
-  modelCache ??= (await readText('/proc/device-tree/model')) || `${os.type()} ${os.arch()}`;
+  modelCache ??= await machineModel();
   const [mem, temp, fan, throttle, diskInfo] = await Promise.all([
     memory(),
     temperature(),

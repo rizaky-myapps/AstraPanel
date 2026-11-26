@@ -28,7 +28,7 @@ export async function renderStorage(view, page, encodedPath) {
     html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
       <div class="page-header">
         <div>
-          <h1>Stockage ${tip('Les emplacements de stockage du Raspberry Pi et ce qui y occupe de la place.')}</h1>
+          <h1>Stockage ${tip('Les emplacements de stockage de la machine et ce qui y occupe de la place.')}</h1>
         </div>
       </div>
       <div class="grid mounts" id="mounts"><div class="card stat"><div class="spinner sm"></div></div></div>
@@ -70,7 +70,7 @@ export async function renderStorage(view, page, encodedPath) {
     setHTML(
       box,
       html`<div class="card">
-        <div class="card-body row"><div class="spinner sm"></div><span class="muted">Analyse de <span class="mono">${current}</span>… (jusqu'à une minute sur une carte SD)</span></div>
+        <div class="card-body row"><div class="spinner sm"></div><span class="muted">Analyse de <span class="mono">${current}</span>… (jusqu'à une minute sur un disque lent)</span></div>
       </div>`,
     );
     let result;

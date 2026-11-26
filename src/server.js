@@ -126,7 +126,7 @@ async function main() {
   const panel = createPanel();
   const { server, store, auth, apps, metrics, tunnel, updater } = panel;
 
-  // Premier lancement depuis le démarrage du Pi ? (sans identifiant connu, on considère un simple redémarrage)
+  // Premier lancement depuis le démarrage de la machine ? (sans identifiant connu, on considère un simple redémarrage)
   const currentBoot = bootId();
   const systemBoot = Boolean(currentBoot && store.data.state.bootId && store.data.state.bootId !== currentBoot);
   if (currentBoot !== store.data.state.bootId) {
@@ -138,7 +138,7 @@ async function main() {
   tunnel.bootstrap();
 
   server.listen(config.port, config.host, async () => {
-    console.log(`AstraPanel ${config.version} — http://${config.host === '0.0.0.0' ? '<ip-du-pi>' : config.host}:${config.port}`);
+    console.log(`AstraPanel ${config.version} — http://${config.host === '0.0.0.0' ? '<ip-de-la-machine>' : config.host}:${config.port}`);
     console.log(`Données : ${config.dataDir}`);
     const token = auth.ensureSetupToken();
     if (token) {
