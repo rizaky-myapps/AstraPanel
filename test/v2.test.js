@@ -227,7 +227,11 @@ test('journal d’activité : qui a fait quoi, sans aucun secret', async (t) => 
 test('Hardware : redémarrage demandé au service root, avec validation', async (t) => {
   const unit = path.join(mkdtempSync(path.join(os.tmpdir(), 'astra-unit-')), 'astrapanel-reboot.path');
   process.env.ASTRA_REBOOT_UNIT = unit;
-  t.after(() => delete process.env.ASTRA_REBOOT_UNIT);
+  process.env.ASTRA_REBOOT_DELAY = '0'; // demande écrite tout de suite (8 s plus tard en temps normal)
+  t.after(() => {
+    delete process.env.ASTRA_REBOOT_UNIT;
+    delete process.env.ASTRA_REBOOT_DELAY;
+  });
   const ctx = await startTestPanel();
   t.after(() => ctx.close());
   await ctx.setupAdmin();
@@ -248,12 +252,17 @@ test('Hardware : redémarrage demandé au service root, avec validation', async 
   assert.equal(sent.bootId, readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()); // lu par deploy/reboot.sh
   assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: { confirm: true } })).status, 409);
   assert.equal((await ctx.request('GET', '/api/audit')).data.entries[0].label, 'Redémarrage de la machine');
+  // l'écran d'attente de tous les comptes voit le redémarrage demandé et le démarrage en cours (pour détecter le retour)
+  const progress = (await ctx.request('GET', '/api/update/progress')).data;
+  assert.equal(progress.reboot.by, 'admin');
+  assert.equal(progress.bootId, sent.bootId);
 
   await ctx.request('POST', '/api/users', { body: { username: 'bob', password: 'motdepasse123', role: 'user' } });
   ctx.setCookie('');
   await ctx.request('POST', '/api/auth/login', { body: { username: 'bob', password: 'motdepasse123' } });
   assert.equal((await ctx.request('GET', '/api/hardware')).status, 403);
   assert.equal((await ctx.request('POST', '/api/hardware/reboot', { body: { confirm: true } })).status, 403);
+  assert.equal((await ctx.request('GET', '/api/update/progress')).data.reboot.by, 'admin'); // un simple utilisateur le voit aussi
 });
 
 test('mise à jour en cours : progression lisible par tous les comptes', async (t) => {

@@ -1,7 +1,7 @@
 import { api, qs } from '../api.js';
 import { isAdmin, state } from '../state.js';
 import { helpHref } from './help.js';
-import { clearCacheAndReload, openUpdateOverlay } from '../update-overlay.js';
+import { clearCacheAndReload, openRebootOverlay, openUpdateOverlay } from '../update-overlay.js';
 import {
   $,
   ROLE_LABEL,
@@ -978,51 +978,11 @@ async function hardwareTab(el, page) {
     );
     if (!ok) return;
     await withBusy(e.target.closest('button'), async () => {
-      await api.post('/hardware/reboot', { confirm: true });
+      const { bootId } = await api.post('/hardware/reboot', { confirm: true });
       rebooting = true;
-      waitForReboot();
+      // même écran flouté que pour une mise à jour ; il se ferme et recharge la page au retour du panel
+      openRebootOverlay({ bootId: bootId || info.bootId, host: `${info.model} (${info.hostname})` });
     });
-  }
-
-  // Attend que le panel disparaisse puis revienne, et recharge la page.
-  function waitForReboot() {
-    const card = $('#reboot-card', el);
-    const show = (text, kind = 'busy') =>
-      setHTML(card, html`<div class="card-header danger-head"><h2>${icon('restart')} Redémarrer la machine</h2></div>
-        <div class="card-body"><div class="alert ${kind}">${kind === 'busy' ? html`<span class="spinner"></span>` : icon('alert')}<div>${text}</div></div></div>`);
-    show('Redémarrage demandé : la machine va s’éteindre puis se rallumer. Cette page se rechargera toute seule dès que le panel sera de nouveau en ligne.');
-    const started = Date.now();
-    let wentDown = false;
-    const poll = async () => {
-      if (!page.active) return;
-      let up = false;
-      try {
-        const res = await fetch('/api/auth/status', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-        up = res.ok;
-      } catch {
-        up = false;
-      }
-      if (!up && !wentDown) {
-        wentDown = true;
-        show('La machine redémarre… Cette page se rechargera toute seule dès que le panel sera de nouveau en ligne.');
-      }
-      if (up && wentDown) {
-        toast('La machine a redémarré');
-        setTimeout(() => location.reload(), 1500);
-        return;
-      }
-      const elapsed = Date.now() - started;
-      if (!wentDown && elapsed > 90_000) {
-        show(html`Le redémarrage n’a pas commencé. Vérifiez sur le Raspberry Pi que le service est actif : <code>systemctl status astrapanel-reboot.path</code>.`, 'warn');
-        return;
-      }
-      if (elapsed > 10 * 60_000) {
-        show('Le panel ne répond toujours pas après 10 minutes : vérifiez que le Raspberry Pi est bien allumé.', 'warn');
-        return;
-      }
-      setTimeout(poll, 3000);
-    };
-    setTimeout(poll, 3000);
   }
 
   draw();

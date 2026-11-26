@@ -1,6 +1,7 @@
 import { api, qs, upload } from '../api.js';
 import { refreshApps } from '../state.js';
 import { envEditor } from '../env-editor.js';
+import { openOverlay, stepsAt } from '../overlay.js';
 import { $, filePicker, html, icon, routingWarnings, setHTML, tip, toast, toggle } from '../ui.js';
 
 const TYPES = [
@@ -189,7 +190,6 @@ export function renderNewApp(view) {
                 ? ''
                 : html`<label class="check">${toggle('start', f.start)}<span>Démarrer après la création ${tip('Installe les dépendances, lance le build éventuel puis démarre l’application.')}</span></label>`}
               <div class="error-text"></div>
-              <div class="progress hidden" id="progress"><i></i></div>
             </div>
             <div class="card-foot">
               <a class="btn btn-ghost" href="#/">Annuler</a>
@@ -262,28 +262,38 @@ export function renderNewApp(view) {
     if (f.source === 'git') body.git = { url: f.gitUrl, branch: f.gitBranch };
 
     button.disabled = true;
+    // écran flouté pendant la création ; il disparaît une fois l'application ouverte
+    const labels = ['Création de l’application', ...(f.source === 'archive' ? ['Envoi de l’archive'] : []), 'Ouverture de l’application'];
+    const screen = openOverlay('Création de l’application');
+    const typeLabel = TYPES.find((t) => t.id === f.type)?.title || '';
+    const show = (index, percent, detail) =>
+      screen.render({ title: 'Création de l’application', subtitle: html`<b>${f.name.trim()}</b> · ${typeLabel}`, percent, detail, steps: stepsAt(labels, index) });
+    show(0, 15, 'Création du dossier et de la configuration…');
     try {
       const { app, ...routing } = await api.post('/apps', body);
       routingWarnings(routing);
       if (f.source === 'archive') {
-        const progress = $('#progress', form);
-        progress.classList.remove('hidden');
+        show(1, 30, `Envoi de l’archive « ${file.name} » : 0 %`);
         try {
           await upload(
             `/apps/${app.id}/archive?${qs({ filename: file.name, deploy: '1', start: f.start ? '1' : '0' })}`,
             file,
-            (ratio) => {
-              progress.firstElementChild.style.width = `${(ratio * 100).toFixed(0)}%`;
-            },
+            (ratio) => show(1, 30 + ratio * 55, `Envoi de l’archive « ${file.name} » : ${Math.round(ratio * 100)} %`),
           );
         } catch (err) {
           toast(`Application créée, mais l'import de l'archive a échoué : ${err.message}`, 'err');
         }
       }
-      toast(`« ${app.name} » a été créée`);
+      const deploying = f.source === 'git' || f.source === 'template' || f.source === 'archive';
+      show(labels.length - 1, 100, deploying ? 'Ouverture de l’application : l’installation se poursuit dans sa console…' : 'Ouverture de l’application…');
       await refreshApps();
+      // l'écran reste visible un court instant (pas de clignotement), puis l'application s'ouvre et l'écran disparaît
+      await new Promise((r) => setTimeout(r, Math.max(0, 700 - (Date.now() - screen.startedAt))));
       location.hash = `#/apps/${app.id}`;
+      toast(`« ${app.name} » a été créée`);
+      setTimeout(() => screen.close(), 250);
     } catch (err) {
+      screen.close();
       error.textContent = err.message;
       button.disabled = false;
     }

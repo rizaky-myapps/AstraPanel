@@ -207,6 +207,8 @@ Vos applications sont listées dans la barre latérale, avec le bouton **Nouvell
 2. Type : **Bot Discord**. Source : **Modèle de départ**.
 3. Donnez-lui un nom, puis dans **Variables d'environnement**, collez votre token comme valeur de `DISCORD_TOKEN`.
 4. Laissez cochés « Redémarrage automatique » et « Démarrer après la création », puis cliquez sur **Créer l'application**.
+   Un écran d'attente s'affiche pendant la création, puis l'application s'ouvre toute seule : son installation se
+   poursuit dans l'onglet **Console**.
 
 La console s'ouvre : le panel installe discord.js (`npm install`, environ une minute sur le Pi) puis démarre le bot.
 Vous devez voir :
@@ -505,8 +507,10 @@ dans `/opt/astrapanel/data/logs/`. Le journal de la dernière mise à jour est d
 
 **Redémarrer le Raspberry Pi sans SSH.** **Paramètres → Hardware** (administrateurs) affiche la machine : modèle,
 processeur, mémoire, stockage, température, alimentation, système, adresse IP et durée depuis le dernier démarrage.
-Le bouton **Redémarrer la machine…** demande une validation, puis redémarre le Pi : la page attend et se recharge
-toute seule quand le panel est de nouveau en ligne (une à deux minutes). Le panel, le tunnel Cloudflare et les
+Le bouton **Redémarrer la machine…** demande une validation, puis redémarre le Pi quelques secondes plus tard. Comme
+pendant une mise à jour, tout le panel est flouté avec un écran d'attente (demande envoyée, arrêt de la machine,
+redémarrage, panel de nouveau en ligne), affiché à tous les comptes connectés ; la page se recharge toute seule quand
+le panel est de nouveau en ligne (une à deux minutes). Le panel, le tunnel Cloudflare et les
 applications réglées sur **Démarrer avec le Raspberry Pi** repartent automatiquement.
 
 > Comme pour les mises à jour, le panel n'a pas lui-même le droit de redémarrer la machine : il dépose une demande que

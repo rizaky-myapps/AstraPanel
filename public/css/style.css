@@ -2639,6 +2639,10 @@ body.updating {
     opacity: 0;
   }
 }
+.update-overlay.closing {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
 .update-overlay-card {
   width: min(460px, 100%);
   max-height: calc(100vh - 32px);
