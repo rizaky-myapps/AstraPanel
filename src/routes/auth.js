@@ -1,7 +1,10 @@
+import { rmSync } from 'node:fs';
+import { avatarPath } from './account.js';
 import { HttpError } from '../http/util.js';
 import { publicUser } from '../auth.js';
 
-export function authRoutes(router, { auth, store, apps, audit }) {
+
+export function authRoutes(router, { auth, store, apps, audit, config }) {
   router.get(
     '/api/auth/status',
     (ctx) => ({ setupRequired: auth.setupRequired, user: publicUser(auth.userFromRequest(ctx.req)) }),
@@ -83,7 +86,8 @@ export function authRoutes(router, { auth, store, apps, audit }) {
     '/api/users/:id',
     async (ctx) => {
       const user = findUser(ctx.params.id);
-      const { role, password } = await ctx.json();
+      const { role, password, username } = await ctx.json();
+      if (username !== undefined && username !== user.username) await auth.renameUser(user, String(username).trim(), { checkPassword: false });
       await auth.updateUser(user, { role, password });
       // l'admin qui change son propre mot de passe reste connecté
       if (user.id === ctx.user.id) auth.setSessionCookie(ctx.req, ctx.res, user);
@@ -101,6 +105,7 @@ export function authRoutes(router, { auth, store, apps, audit }) {
       store.data.users.splice(store.data.users.indexOf(user), 1);
       store.save();
       apps.forgetUser(user.id);
+      rmSync(avatarPath(config.dataDir, user.id), { force: true });
       return { ok: true };
     },
     { admin: true },

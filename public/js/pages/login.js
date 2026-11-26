@@ -1,10 +1,17 @@
 import { api } from '../api.js';
 import { $, html, icon, setHTML, tip } from '../ui.js';
 
+const pad = (n) => String(n).padStart(2, '0');
+const DATE_FORMAT = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+
 export function renderLogin(root, { setupRequired, onSuccess }) {
   setHTML(
     root,
     html`<div class="auth">
+      <div class="lock-clock" aria-hidden="true">
+        <div class="desk-time" id="lock-time">--:--</div>
+        <div class="desk-date" id="lock-date"></div>
+      </div>
       <form class="auth-card" novalidate>
         <div class="brand">${icon('logo')}<span>Astra<b>Panel</b></span></div>
         ${setupRequired ? html`<p class="lead">Bienvenue ! Créez le compte administrateur du panel.</p>` : ''}
@@ -33,6 +40,19 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
       </form>
     </div>`,
   );
+
+  // Horloge de l'écran de connexion (s'arrête quand on quitte cet écran)
+  const time = $('#lock-time', root);
+  const date = $('#lock-date', root);
+  const tick = () => {
+    if (!time.isConnected) return;
+    const now = new Date();
+    time.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const d = DATE_FORMAT.format(now);
+    date.textContent = d.charAt(0).toUpperCase() + d.slice(1);
+    setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
+  };
+  tick();
 
   const form = $('form', root);
   const error = $('.error-text', form);

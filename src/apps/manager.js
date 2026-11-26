@@ -225,7 +225,7 @@ export class AppManager {
     const users = this.store.data.users;
     const byId = (uid) => users.find((u) => u.id === uid);
     const owner = byId(app.ownerId);
-    const view = (u) => ({ id: u.id, username: u.username, role: u.role });
+    const view = (u) => ({ id: u.id, username: u.username, role: u.role, avatar: u.avatar?.v || null });
     const members = app.members.map(byId).filter((u) => u && u.role !== 'admin' && u.id !== app.ownerId);
     const canManage = this.canManageMembers(user, app);
     return {

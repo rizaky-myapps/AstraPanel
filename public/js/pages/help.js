@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { renderMarkdown } from '../markdown.js';
-import { $, html, icon, setHTML, tip } from '../ui.js';
+import { $, html, icon, pageHero, setHTML } from '../ui.js';
 import { state } from '../state.js';
 
 // Libellé du bouton « Retour » d'après la page d'où l'on vient
@@ -28,7 +28,7 @@ export async function renderHelp(view, page, doc = 'tutoriel', section = '') {
   setHTML(
     root,
     html`<a class="back" href="${state.returnTo || '#/'}">${icon('back')} ${returnLabel(state.returnTo || '#/')}</a>
-      <div class="page-header"><div><h1>Aide ${tip('Les tutoriels d’AstraPanel, en français, pour la version installée.')}</h1></div></div>
+      ${pageHero({ icon: 'book', tone: 'cyan', title: 'Aide', info: 'Les tutoriels d’AstraPanel, en français, pour la version installée.' })}
       <nav class="tabs">${Object.entries(DOCS).map(([id, d]) => html`<a href="${helpHref(id)}" class="${id === doc ? 'active' : ''}">${icon(d.icon)} ${d.label}</a>`)}</nav>
       <article class="card doc" id="doc"><div class="card-body row"><div class="spinner sm"></div><span class="muted">Chargement…</span></div></article>`,
   );

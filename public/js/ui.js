@@ -44,6 +44,11 @@ const ICONS = {
   sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
   menu: '<line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  eyeOff: '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>',
+  devices: '<path d="M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8"/><path d="M10 19v-3.96"/><path d="M7 19h5"/><rect width="6" height="10" x="16" y="12" rx="2"/>',
+  atSign: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+  activity: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
   panelClose: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>',
   panelOpen: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/>',
   play: '<polygon points="6 3 20 12 6 21 6 3"/>',
@@ -249,6 +254,28 @@ export function routingWarnings(result = {}) {
 
 export const ROLE_LABEL = { admin: 'Administrateur', user: 'Utilisateur' };
 
+// Bandeau de titre d'une page, dans le style du tableau de bord : tuile d'icône en dégradé, titre, indicateurs.
+// tone : couleur de la tuile (violet, vert, bleu, cyan, ou le type d'une application : bot, node, static).
+export function pageHero({ icon: name, tone = 'violet', title, info = '', badge = '', meta = '', actions = '', cls = '' }) {
+  return html`<section class="page-hero ${cls}">
+    <span class="hero-icon tone-${tone}" aria-hidden="true">${icon(name)}</span>
+    <div class="hero-text">
+      <h1><span class="hero-title">${title}</span>${info ? tip(info) : ''}${badge}</h1>
+      ${meta ? html`<div class="hero-meta">${meta}</div>` : ''}
+    </div>
+    ${actions ? html`<div class="hero-actions">${actions}</div>` : ''}
+  </section>`;
+}
+
+// Avatar d'un compte : sa photo de profil, sinon l'initiale de son pseudo. cls : taille (sm, lg, xl…).
+export const avatarUrl = (user) => (user?.avatar ? `/api/users/${encodeURIComponent(user.id)}/avatar?v=${user.avatar}` : null);
+export function avatar(user, cls = '') {
+  const url = avatarUrl(user);
+  return url
+    ? html`<span class="avatar has-photo ${cls}"><img src="${url}" alt="" loading="lazy" decoding="async" /></span>`
+    : html`<span class="avatar ${cls}" aria-hidden="true">${(user?.username || '?').slice(0, 1).toUpperCase()}</span>`;
+}
+
 export const TYPE_INFO = {
   bot: { label: 'Bot Discord', icon: 'bot' },
   node: { label: 'Site Node.js', icon: 'globe' },
@@ -344,13 +371,14 @@ export function toast(message, type = 'ok') {
 }
 
 // ---- Fenêtres modales -----------------------------------------------------
-export function modal({ title, body = '', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false, onConfirm }) {
+// onOpen(form) : appelé une fois la fenêtre affichée (pour préparer un aperçu, un canevas…).
+export function modal({ title, body = '', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false, onConfirm, onOpen, cls = '' }) {
   return new Promise((resolve) => {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     setHTML(
       backdrop,
-      html`<form class="modal" novalidate>
+      html`<form class="modal ${cls}" novalidate>
         <div class="modal-head"><h2>${title}</h2></div>
         <div class="modal-body">${body}</div>
         <div class="error-text" style="padding: 0 20px"></div>
@@ -390,6 +418,12 @@ export function modal({ title, body = '', confirmLabel = 'Confirmer', cancelLabe
     });
     document.body.appendChild(backdrop);
     (form.querySelector('input, textarea, select') || form.querySelector('[type=submit]')).focus();
+    if (onOpen) {
+      Promise.resolve(onOpen(form)).catch((err) => {
+        form.querySelector('.error-text').textContent = err.message;
+        form.querySelector('[type=submit]').disabled = true;
+      });
+    }
   });
 }
 

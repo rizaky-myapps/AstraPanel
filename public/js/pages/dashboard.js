@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { isAdmin, onAppsChange, state } from '../state.js';
 import { formatWhen, renderLineChart } from '../chart.js';
-import { $, ROLE_LABEL, TYPE_INFO, formatBytes, formatDuration, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
+import { $, ROLE_LABEL, TYPE_INFO, avatar, formatBytes, formatDuration, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
 
 const RANGES = [
   { id: '1h', label: '1 h', refresh: 10_000 },
@@ -56,7 +56,7 @@ const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 function accountCard() {
   const { username, role } = state.user;
   return html`<div class="desk-account">
-    <div class="desk-avatar" aria-hidden="true">${username.slice(0, 1).toUpperCase()}</div>
+    <a href="#/settings/compte" class="desk-avatar-link" title="Mon compte">${avatar(state.user, 'desk-avatar')}</a>
     <div class="desk-account-text">
       <div class="desk-hello"><span id="desk-greeting">${greeting(new Date().getHours())}</span>, <b>${username}</b></div>
       <span class="badge ${role === 'admin' ? 'accent' : 'plain'}">${icon(role === 'admin' ? 'shield' : 'user')} ${ROLE_LABEL[role] || role}</span>

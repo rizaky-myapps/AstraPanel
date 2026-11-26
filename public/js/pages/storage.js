@@ -1,6 +1,6 @@
 import { api, qs } from '../api.js';
 import { isAdmin } from '../state.js';
-import { $, formatBytes, formatDate, html, icon, setHTML, tip } from '../ui.js';
+import { $, formatBytes, formatDate, html, icon, pageHero, setHTML, tip } from '../ui.js';
 
 function usageBar(ratio) {
   const pct = Math.max(0, Math.min(100, ratio * 100));
@@ -26,11 +26,7 @@ export async function renderStorage(view, page, encodedPath) {
   setHTML(
     root,
     html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
-      <div class="page-header">
-        <div>
-          <h1>Stockage ${tip('Les emplacements de stockage de la machine et ce qui y occupe de la place.')}</h1>
-        </div>
-      </div>
+      ${pageHero({ icon: 'disk', tone: 'blue', title: 'Stockage', info: 'Les emplacements de stockage de la machine et ce qui y occupe de la place.' })}
       <div class="grid mounts" id="mounts"><div class="card stat"><div class="spinner sm"></div></div></div>
       <div id="analysis"></div>`,
   );

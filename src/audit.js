@@ -82,10 +82,19 @@ const ACTIONS = {
   'POST /api/apps/:id/files/upload': (c) => ({ label: 'Fichier téléversé', detail: join(c.query.get('path'), c.query.get('name')) }),
   // --- Comptes
   'POST /api/auth/password': () => ({ label: 'Changement de son mot de passe' }),
+  'PATCH /api/account': (c) => ({ label: 'Pseudo modifié', detail: c.result?.previous ? `${c.result.previous} → ${c.result.user?.username}` : null }),
+  'PUT /api/account/avatar': () => ({ label: 'Photo de profil modifiée' }),
+  'DELETE /api/account/avatar': () => ({ label: 'Photo de profil retirée' }),
+  'POST /api/account/logout-others': () => ({ label: 'Déconnexion des autres appareils' }),
   'POST /api/users': (c) => ({ label: 'Création d’un compte', detail: `${c.body?.username} (${ROLE[c.body?.role] || ROLE.user})` }),
   'PATCH /api/users/:id': (c) => ({
     label: 'Modification d’un compte',
-    detail: list([c.names.user, c.body?.role && `grade : ${ROLE[c.body.role] || c.body.role}`, c.body?.password && 'nouveau mot de passe défini'].filter(Boolean)),
+    detail: list([
+      c.names.user,
+      c.body?.username && c.body.username !== c.names.user && `nouveau pseudo : ${c.body.username}`,
+      c.body?.role && `grade : ${ROLE[c.body.role] || c.body.role}`,
+      c.body?.password && 'nouveau mot de passe défini',
+    ].filter(Boolean)),
   }),
   'DELETE /api/users/:id': (c) => ({ label: 'Suppression d’un compte', detail: c.names.user }),
   // --- Panel
@@ -115,7 +124,7 @@ const ACTIONS = {
 const CATEGORY = [
   [/^\/api\/apps\/:id\/files/, 'fichiers'],
   [/^\/api\/apps/, 'application'],
-  [/^\/api\/(users|auth)/, 'compte'],
+  [/^\/api\/(users|auth|account)/, 'compte'],
   [/^\/api\/tunnel/, 'tunnel'],
   [/^\/api\/hardware/, 'machine'],
   [/^\/api\/(update|settings)/, 'panel'],
@@ -221,11 +230,17 @@ export class AuditLog {
       if (e.user) users.set(e.user.id, e.user.username);
       if (e.app) appsSeen.set(e.app.id, e.app.name);
     }
-    for (const u of this.store.data.users) users.set(u.id, u.username);
+    const photos = new Map();
+    for (const u of this.store.data.users) {
+      users.set(u.id, u.username);
+      if (u.avatar) photos.set(u.id, u.avatar.v);
+    }
     return {
       entries: out.slice(0, limit),
       more,
-      users: [...users].map(([id, username]) => ({ id, username })).sort((a, b) => a.username.localeCompare(b.username)),
+      users: [...users]
+        .map(([id, username]) => ({ id, username, avatar: photos.get(id) || null }))
+        .sort((a, b) => a.username.localeCompare(b.username)),
       apps: [...appsSeen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
     };
   }

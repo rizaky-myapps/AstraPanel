@@ -29,6 +29,20 @@ export const api = {
 
 export const qs = (params) => new URLSearchParams(params).toString();
 
+// Envoi d'un petit fichier binaire (photo de profil…) en une seule requête.
+export async function sendBlob(method, path, blob) {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: { 'X-Astra': '1', 'Content-Type': blob.type || 'application/octet-stream' },
+    credentials: 'same-origin',
+    body: blob,
+  });
+  const data = res.headers.get('content-type')?.includes('application/json') ? await res.json() : null;
+  if (res.status === 401) onUnauthorized();
+  if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);
+  return data;
+}
+
 // Téléversement brut d'un fichier avec suivi de progression.
 export function upload(path, file, onProgress) {
   return new Promise((resolve, reject) => {

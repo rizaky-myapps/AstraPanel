@@ -4,6 +4,8 @@ import { envEditor } from '../env-editor.js';
 import { filesTab } from './files.js';
 import {
   $,
+  avatar,
+  pageHero,
   TYPE_INFO,
   confirmDialog,
   copyText,
@@ -120,41 +122,42 @@ function renderHeader(el, app) {
   const running = rt.status === 'running';
   const active = running || rt.status === 'restarting' || rt.status === 'stopping';
   const busy = Boolean(rt.busy);
-  const details = [type.label];
-  if (app.port) details.push(`port ${app.port}`);
+  // indicateurs façon barre d'état, comme sur le tableau de bord
+  const pills = [html`<span class="desk-pill">${icon(type.icon)} ${type.label}</span>`];
+  if (app.port) pills.push(html`<span class="desk-pill">${icon('link')} port ${app.port}</span>`);
   if (running) {
-    details.push(`PID ${rt.pid}`, `depuis ${formatDuration(Date.now() - rt.startedAt)}`);
-    details.push(`CPU ${formatPercent(rt.cpu)}`, `RAM ${formatBytes(rt.memory)}`);
+    pills.push(html`<span class="desk-pill">${icon('clock')} depuis ${formatDuration(Date.now() - rt.startedAt)}</span>`);
+    pills.push(html`<span class="desk-pill">${icon('cpu')} CPU ${formatPercent(rt.cpu)}</span>`);
+    pills.push(html`<span class="desk-pill">${icon('memory')} RAM ${formatBytes(rt.memory)}</span>`);
+    pills.push(html`<span class="desk-pill faint-pill">PID ${rt.pid}</span>`);
   } else if (rt.lastExit) {
-    details.push(`dernier arrêt ${formatDate(rt.lastExit.at)}`);
+    pills.push(html`<span class="desk-pill">${icon('clock')} dernier arrêt ${formatDate(rt.lastExit.at)}</span>`);
   }
   const url = localUrl(app);
 
   setHTML(
     el,
-    html`<div class="page-header app-header">
-      <div class="title">
-        <div class="app-icon lg ${app.type}">${icon(type.icon)}</div>
-        <div class="app-title">
-          <div class="row"><h1 class="truncate">${app.name}</h1>${statusBadge(app)}</div>
-          <div class="sub">${details.join(' · ')}</div>
-        </div>
-      </div>
-      <span class="spacer"></span>
-      ${app.domains.length || url
-        ? html`<div class="row app-links">
-            ${app.domains.map((d) => html`<a class="btn btn-ghost btn-sm" href="${domainUrl(d)}" target="_blank" rel="noopener">${icon('globe')} ${d}</a>`)}
-            ${url ? html`<a class="btn btn-ghost btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external')} Ouvrir</a>` : ''}
-          </div>`
-        : ''}
-      <div class="row app-controls">
-        ${active
-          ? html`<button class="btn" data-action="stop" ${busy ? 'disabled' : ''}>${icon('stop')} Arrêter</button>`
-          : html`<button class="btn btn-success" data-action="start" ${busy ? 'disabled' : ''}>${icon('play')} Démarrer</button>`}
-        <button class="btn" data-action="restart" ${busy ? 'disabled' : ''}>${icon('restart')} Redémarrer</button>
-        ${active ? html`<button class="btn btn-ghost btn-icon" data-action="kill" title="Forcer l'arrêt" aria-label="Forcer l'arrêt">${icon('zap')}</button>` : ''}
-      </div>
-    </div>`,
+    pageHero({
+      icon: type.icon,
+      tone: app.type,
+      title: app.name,
+      badge: statusBadge(app),
+      meta: pills,
+      cls: 'app-hero',
+      actions: html`${app.domains.length || url
+          ? html`<div class="row app-links">
+              ${app.domains.map((d) => html`<a class="btn btn-glass btn-sm" href="${domainUrl(d)}" target="_blank" rel="noopener">${icon('globe')} ${d}</a>`)}
+              ${url ? html`<a class="btn btn-glass btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external')} Ouvrir</a>` : ''}
+            </div>`
+          : ''}
+        <div class="row app-controls">
+          ${active
+            ? html`<button class="btn btn-glass" data-action="stop" ${busy ? 'disabled' : ''}>${icon('stop')} Arrêter</button>`
+            : html`<button class="btn btn-success" data-action="start" ${busy ? 'disabled' : ''}>${icon('play')} Démarrer</button>`}
+          <button class="btn btn-glass" data-action="restart" ${busy ? 'disabled' : ''}>${icon('restart')} Redémarrer</button>
+          ${active ? html`<button class="btn btn-glass btn-icon" data-action="kill" title="Forcer l'arrêt" aria-label="Forcer l'arrêt">${icon('zap')}</button>` : ''}
+        </div>`,
+    }),
   );
 }
 
@@ -597,8 +600,6 @@ function settingsTab(el, page, app) {
 async function usersTab(el, page, app) {
   let info = await api.get(`/apps/${app.id}/members`);
   if (!page.active) return;
-  const initial = (name) => (name || '?').slice(0, 1).toUpperCase();
-
   const draw = () => {
     const { owner, members, candidates, canManage } = info;
     setHTML(
@@ -616,7 +617,7 @@ async function usersTab(el, page, app) {
         <div class="card-body">
           <ul class="member-list">
             <li class="member owner">
-              <div class="avatar">${owner?.deleted ? icon('user') : initial(owner?.username)}</div>
+              ${owner?.deleted || !owner ? html`<div class="avatar">${icon('user')}</div>` : avatar(owner)}
               <div class="member-name">
                 ${owner?.deleted ? html`<span class="muted">Compte supprimé</span>` : owner ? html`<b>${owner.username}</b>` : html`<span class="muted">Créateur inconnu</span>`}
                 ${owner?.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}
@@ -625,7 +626,7 @@ async function usersTab(el, page, app) {
             </li>
             ${members.map(
               (m) => html`<li class="member">
-                <div class="avatar">${initial(m.username)}</div>
+                ${avatar(m)}
                 <div class="member-name"><b>${m.username}</b>${m.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}</div>
                 ${canManage ? html`<button class="btn btn-ghost btn-sm" data-remove="${m.id}" data-name="${m.username}">${icon('x')} Retirer</button>` : ''}
               </li>`,

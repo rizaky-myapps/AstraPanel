@@ -18,6 +18,7 @@ import { serveStatic } from './http/static.js';
 import { listPanelAssets, servePanelAsset } from './http/panel-assets.js';
 import { HttpError, clientIp, readJson, sendJson } from './http/util.js';
 import { authRoutes } from './routes/auth.js';
+import { accountRoutes } from './routes/account.js';
 import { appRoutes } from './routes/apps.js';
 import { settingsRoutes } from './routes/settings.js';
 import { fileRoutes } from './routes/files.js';
@@ -52,6 +53,7 @@ export function createPanel(cfg = config) {
   const router = new Router();
   const deps = { store, auth, apps, config: cfg, metrics, tunnel, updater, publish, audit, hardware };
   authRoutes(router, deps);
+  accountRoutes(router, deps);
   appRoutes(router, deps);
   fileRoutes(router, deps);
   settingsRoutes(router, deps);

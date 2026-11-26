@@ -42,6 +42,10 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Journal d'activité** : chaque action (connexions, applications, fichiers, comptes, tunnel, mises à jour,
   redémarrages) avec le compte, la date et l'adresse IP, filtrable par compte et par application — sans aucun secret
 - **Onglet Hardware** : informations sur la machine et redémarrage de la machine depuis le panel, avec validation
+- **Gestion de son compte** : pseudo, photo de profil (recadrée dans le navigateur), mot de passe avec jauge de force,
+  déconnexion des autres appareils, dernières connexions, tentatives échouées et activité récente
+- **Style unique** : toutes les pages reprennent le style du tableau de bord (bandeaux en dégradé, onglets en pastilles,
+  cartes arrondies) ; écran de connexion façon écran de verrouillage, avec l'heure
 - **Grades ADMIN et UTILISATEUR** : chaque application a sa liste d'utilisateurs (onglet **Utilisateurs** : le
   créateur, figé, puis les comptes à qui il a donné accès) ; les administrateurs voient toutes les applications et
   gèrent aussi le panel

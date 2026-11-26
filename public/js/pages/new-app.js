@@ -2,7 +2,18 @@ import { api, qs, upload } from '../api.js';
 import { refreshApps } from '../state.js';
 import { envEditor } from '../env-editor.js';
 import { openOverlay, stepsAt } from '../overlay.js';
-import { $, filePicker, html, icon, routingWarnings, setHTML, tip, toast, toggle } from '../ui.js';
+import {
+  $,
+  filePicker,
+  html,
+  icon,
+  pageHero,
+  routingWarnings,
+  setHTML,
+  tip,
+  toast,
+  toggle,
+} from '../ui.js';
 
 const TYPES = [
   { id: 'bot', title: 'Bot Discord', desc: 'Un bot discord.js, ou tout programme Node.js sans site web.', icon: 'bot' },
@@ -98,11 +109,7 @@ export function renderNewApp(view) {
     setHTML(
       root,
       html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
-        <div class="page-header">
-          <div>
-            <h1>Nouvelle application ${tip('Hébergez un bot Discord ou un site web (Node.js ou statique) sur votre machine.')}</h1>
-          </div>
-        </div>
+        ${pageHero({ icon: 'plus', tone: 'green', title: 'Nouvelle application', info: 'Hébergez un bot Discord ou un site web (Node.js ou statique) sur votre machine.' })}
         <form id="new-app" class="stack" novalidate>
           <div class="card">
             <div class="card-header"><h2><span class="step-num">1</span> Type d'application</h2></div>

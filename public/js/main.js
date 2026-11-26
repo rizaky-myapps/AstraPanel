@@ -1,5 +1,5 @@
 import { api, setUnauthorizedHandler } from './api.js';
-import { $, ROLE_LABEL, html, icon, initTooltips, setHTML, statusOf } from './ui.js';
+import { $, ROLE_LABEL, avatar, html, icon, initTooltips, setHTML, statusOf } from './ui.js';
 import { renderLogin } from './pages/login.js';
 import { startUpdateWatch, stopUpdateWatch } from './update-overlay.js';
 import { renderDashboard } from './pages/dashboard.js';
@@ -157,8 +157,21 @@ function setSidebarHidden(hidden) {
   setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
 }
 
+// Compte affiché en bas du panneau latéral (mis à jour quand on change de pseudo ou de photo)
+function renderSideUser() {
+  const box = $('#side-user');
+  if (!box || !state.user) return;
+  setHTML(
+    box,
+    html`${avatar(state.user)}
+      <span class="truncate">
+        <span class="truncate side-name">${state.user.username}</span>
+        <span class="faint side-role">${ROLE_LABEL[state.user.role] || ''}</span>
+      </span>`,
+  );
+}
+
 function renderShell() {
-  const name = state.user.username;
   setHTML(
     $('#app'),
     html`<div class="shell ${sidebarHidden() ? 'side-hidden' : ''}">
@@ -176,13 +189,8 @@ function renderShell() {
         <div class="side-title">Applications</div>
         <div id="side-apps"></div>
         <div class="side-foot">
-          <div class="avatar">${name.slice(0, 1).toUpperCase()}</div>
-          <div class="truncate">
-            <div class="truncate">${name}</div>
-            <div class="faint side-role">${ROLE_LABEL[state.user.role] || ''}</div>
-          </div>
-          <span class="spacer"></span>
-          <button class="btn btn-ghost btn-sm btn-icon" id="logout" title="Se déconnecter">${icon('logout')}</button>
+          <a class="side-user" id="side-user" href="#/settings/compte" title="Mon compte"></a>
+          <button class="btn btn-ghost btn-sm btn-icon" id="logout" title="Se déconnecter" aria-label="Se déconnecter">${icon('logout')}</button>
         </div>
       </aside>
       <div>
@@ -195,6 +203,7 @@ function renderShell() {
       </div>
     </div>`,
   );
+  renderSideUser();
   $('#logout').addEventListener('click', async () => {
     await api.post('/auth/logout').catch(() => {});
     endSession();
@@ -263,6 +272,7 @@ function endSession(setupRequired = false) {
 
 async function boot() {
   onAppsChange(renderSidebarApps);
+  window.addEventListener('astra:user', renderSideUser);
   setUnauthorizedHandler(() => {
     if (state.user) endSession();
   });

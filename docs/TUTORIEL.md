@@ -185,9 +185,11 @@ Le script, qui prend quelques minutes :
 3. Choisissez votre nom d'utilisateur et un mot de passe solide (8 caractères minimum). Ce premier compte est
    **administrateur** (voir l'étape 12 pour ajouter d'autres personnes).
 
-Vous arrivez sur le **tableau de bord**, présenté comme le bureau d'un système d'exploitation :
+L'écran de connexion affiche l'heure et la date, comme l'écran de verrouillage d'un téléphone. Une fois connecté,
+vous arrivez sur le **tableau de bord**, présenté comme le bureau d'un système d'exploitation (toutes les pages du
+panel reprennent le même style : bandeau en dégradé avec une icône, onglets en pastilles, cartes arrondies) :
 
-- en haut, l'**horloge** et la date, votre **compte** (nom, grade, boutons **Mon compte** et **Déconnexion**) et une
+- en haut, l'**horloge** et la date, votre **compte** (photo, pseudo, grade, boutons **Mon compte** et **Déconnexion**) et une
   rangée d'indicateurs : nom et adresse IP de la machine, durée depuis son démarrage et, pour les administrateurs,
   l'état du tunnel Cloudflare et des mises à jour (un clic ouvre le réglage correspondant) ;
 - le bloc **Système** : quatre jauges pour le processeur, la mémoire, le stockage et la température (avec la vitesse
@@ -440,11 +442,26 @@ AstraPanel a deux grades :
 | Supprimer une application | ✔ | |
 | Explorateur de stockage | ✔ | |
 | Paramètres : utilisateurs, mises à jour, tunnel Cloudflare, ports | ✔ | |
-| Changer son propre mot de passe | ✔ | ✔ |
+| Gérer son compte : pseudo, photo de profil, mot de passe, autres appareils | ✔ | ✔ |
+
+**Mon compte.** Chaque compte gère son profil dans **Paramètres → Mon compte** (ou en cliquant sur sa photo, en bas du
+panneau latéral ou sur le tableau de bord) :
+
+- **Photo de profil** : **Ajouter une photo** (PNG, JPEG, WebP ou GIF), puis cadrez-la dans la fenêtre qui s'ouvre :
+  faites glisser l'image et zoomez avec le curseur ou la molette. Elle s'affiche dans le panneau latéral, sur le
+  tableau de bord et dans les listes d'utilisateurs. **Retirer** remet l'initiale du pseudo ;
+- **Pseudo** : c'est aussi le nom de connexion. Saisissez le nouveau, confirmez avec votre mot de passe : vous restez
+  connecté, et vous vous connecterez ensuite avec le nouveau pseudo ;
+- **Mot de passe** : l'ancien, puis le nouveau (une jauge indique s'il est faible, correct ou solide ; l'œil affiche
+  ce que vous tapez). Les autres appareils sont déconnectés, pas celui-ci ;
+- **Appareils et connexions** : dernière connexion, connexion précédente et tentatives échouées avec votre pseudo
+  (date et adresse IP). **Se déconnecter des autres appareils** ferme toutes vos autres sessions (un ordinateur prêté,
+  un téléphone perdu…) ;
+- **Activité récente** : vos 20 dernières actions dans le panel, et les tentatives de connexion échouées en rouge.
 
 Les administrateurs gèrent les comptes dans **Paramètres → Utilisateurs** : **Ajouter un utilisateur** (avec son
-grade), changer le grade d'un compte avec la liste déroulante, définir un nouveau mot de passe (icône clé) ou
-supprimer un compte. Il reste toujours au moins un administrateur.
+grade), changer le grade d'un compte avec la liste déroulante, changer son pseudo (icône @), définir un nouveau mot
+de passe (icône clé) ou supprimer un compte. Il reste toujours au moins un administrateur.
 
 **Qui voit quelle application ?** Chaque application a un onglet **Utilisateurs** : la liste des comptes qui peuvent la
 voir et tout faire dessus (console, fichiers, variables, déploiement…).

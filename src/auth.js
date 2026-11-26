@@ -121,6 +121,20 @@ export class Auth {
     return this.store.data.users.filter((u) => u.role === 'admin').length;
   }
 
+  // Nouveau pseudo (nom de connexion). Pour son propre compte, le mot de passe actuel le confirme ; un administrateur
+  // peut renommer un compte sans (password: null). Les sessions restent ouvertes : elles suivent l'identifiant du compte.
+  async renameUser(user, username, { password = null, checkPassword = true } = {}) {
+    if (checkPassword && !(await verifyPassword(String(password || ''), user.hash))) {
+      throw new HttpError(400, 'Mot de passe incorrect');
+    }
+    if (!USERNAME_RE.test(username)) throw new HttpError(400, "Pseudo invalide (3 à 32 caractères : lettres, chiffres, . _ -)");
+    if (username === user.username) throw new HttpError(400, 'C’est déjà le pseudo de ce compte');
+    const other = this.findUser(username);
+    if (other && other.id !== user.id) throw new HttpError(409, 'Ce pseudo est déjà utilisé');
+    user.username = username;
+    this.store.save();
+  }
+
   // Changement de rôle ou de mot de passe d'un compte par un administrateur.
   async updateUser(user, { role, password }) {
     if (role !== undefined) {
@@ -221,5 +235,5 @@ export class Auth {
 }
 
 export function publicUser(user) {
-  return user ? { id: user.id, username: user.username, role: user.role, createdAt: user.createdAt } : null;
+  return user ? { id: user.id, username: user.username, role: user.role, createdAt: user.createdAt, avatar: user.avatar?.v || null } : null;
 }

@@ -1009,3 +1009,99 @@ test('webhook GitHub : déploiement au push, appels ignorés expliqués, push en
   assert.equal(res.status, 400);
   assert.match(res.data.error, /liée à aucun dépôt Git/);
 });
+
+test('compte : pseudo, photo de profil, autres appareils, activité', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const adminCookie = ctx.getCookie();
+  const bob = (await ctx.request('POST', '/api/users', { body: { username: 'bob', password: 'motdepasse123', role: 'user' } })).data;
+  const login = async (username, password = 'motdepasse123') => {
+    ctx.setCookie('');
+    const res = await ctx.request('POST', '/api/auth/login', { body: { username, password } });
+    return { res, cookie: ctx.getCookie() };
+  };
+  const bobCookie = (await login('bob')).cookie;
+
+  let res = await ctx.request('GET', '/api/account');
+  assert.equal(res.data.user.username, 'bob');
+  assert.equal(res.data.user.avatar, null);
+  assert.deepEqual(res.data.apps, { owned: 0, shared: 0 });
+
+  // --- pseudo : confirmé par le mot de passe, unique, valide
+  res = await ctx.request('PATCH', '/api/account', { body: { username: 'bobby', password: 'mauvais-mdp' } });
+  assert.equal(res.status, 400);
+  assert.match(res.data.error, /Mot de passe incorrect/);
+  res = await ctx.request('PATCH', '/api/account', { body: { username: 'b', password: 'motdepasse123' } });
+  assert.match(res.data.error, /Pseudo invalide/);
+  res = await ctx.request('PATCH', '/api/account', { body: { username: 'ADMIN', password: 'motdepasse123' } });
+  assert.equal(res.status, 409);
+  res = await ctx.request('PATCH', '/api/account', { body: { username: 'bobby', password: 'motdepasse123' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.data.user.username, 'bobby');
+  assert.equal(res.data.previous, 'bob');
+  assert.equal((await ctx.request('GET', '/api/auth/status')).data.user.username, 'bobby'); // la session continue
+  assert.equal((await login('bob')).res.status, 401);
+  const bobbyLogin = await login('bobby');
+  assert.equal(bobbyLogin.res.status, 200);
+
+  // --- photo de profil : formats vérifiés d'après le contenu, taille limitée
+  res = await ctx.request('PUT', '/api/account/avatar', { raw: '<svg onload="alert(1)"/>', headers: { 'Content-Type': 'image/svg+xml' } });
+  assert.equal(res.status, 400);
+  res = await ctx.request('PUT', '/api/account/avatar', { raw: Buffer.alloc(600 * 1024, 1), headers: { 'Content-Type': 'image/png' } });
+  assert.equal(res.status, 413);
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
+  res = await ctx.request('PUT', '/api/account/avatar', { raw: png, headers: { 'Content-Type': 'image/png' } });
+  assert.equal(res.status, 200);
+  assert.ok(res.data.user.avatar > 0);
+  const photo = await fetch(`${ctx.base}/api/users/${bob.id}/avatar?v=${res.data.user.avatar}`, { headers: { Cookie: ctx.getCookie() } });
+  assert.equal(photo.status, 200);
+  assert.equal(photo.headers.get('content-type'), 'image/png');
+  assert.equal(photo.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(photo.headers.get('content-security-policy'), /sandbox/);
+  assert.equal(Buffer.from(await photo.arrayBuffer()).compare(png), 0);
+  assert.equal((await fetch(`${ctx.base}/api/users/${bob.id}/avatar`)).status, 401); // comptes connectés seulement
+  // visible dans la liste des comptes (administrateurs)
+  ctx.setCookie(adminCookie);
+  assert.ok((await ctx.request('GET', '/api/users')).data.find((u) => u.id === bob.id).avatar > 0);
+  ctx.setCookie(bobbyLogin.cookie);
+  res = await ctx.request('DELETE', '/api/account/avatar');
+  assert.equal(res.data.user.avatar, null);
+  assert.equal((await ctx.request('GET', `/api/users/${bob.id}/avatar`)).status, 404);
+
+  // --- se déconnecter des autres appareils : la session actuelle reste ouverte
+  assert.equal((await login('bobby', 'faux-mot-de-passe')).res.status, 401); // tentative échouée, notée dans l'activité
+  const other = (await login('bobby')).cookie;
+  ctx.setCookie(bobbyLogin.cookie);
+  res = await ctx.request('POST', '/api/account/logout-others');
+  assert.equal(res.status, 200);
+  assert.equal((await ctx.request('GET', '/api/auth/status')).data.user.username, 'bobby');
+  const kept = ctx.getCookie();
+  ctx.setCookie(other);
+  assert.equal((await ctx.request('GET', '/api/auth/status')).data.user, null);
+  ctx.setCookie(bobCookie);
+  assert.equal((await ctx.request('GET', '/api/auth/status')).data.user, null);
+
+  // --- activité du compte (la plus récente d'abord), tentatives échouées comprises
+  ctx.setCookie(kept);
+  const { entries } = (await ctx.request('GET', '/api/account/activity')).data;
+  const labels = entries.map((e) => e.label);
+  assert.equal(labels[0], 'Déconnexion des autres appareils');
+  assert.ok(labels.includes('Photo de profil modifiée'));
+  assert.ok(labels.includes('Photo de profil retirée'));
+  assert.ok(entries.some((e) => e.label === 'Pseudo modifié' && e.detail === 'bob → bobby'));
+  assert.ok(entries.some((e) => e.label === 'Échec de connexion' && e.failed));
+
+  // --- un administrateur peut renommer un compte ; la photo disparaît avec le compte
+  await ctx.request('PUT', '/api/account/avatar', { raw: png, headers: { 'Content-Type': 'image/png' } });
+  const file = path.join(ctx.cfg.dataDir, 'avatars', bob.id);
+  assert.ok(existsSync(file));
+  ctx.setCookie(adminCookie);
+  res = await ctx.request('PATCH', `/api/users/${bob.id}`, { body: { username: 'robert' } });
+  assert.equal(res.data.username, 'robert');
+  res = await ctx.request('PATCH', `/api/users/${bob.id}`, { body: { username: 'admin' } });
+  assert.equal(res.status, 409);
+  res = await ctx.request('DELETE', `/api/users/${bob.id}`);
+  assert.equal(res.status, 200);
+  assert.equal(existsSync(file), false);
+});

@@ -1,10 +1,11 @@
-import { api, qs } from '../api.js';
+import { api, qs, sendBlob } from '../api.js';
 import { isAdmin, state } from '../state.js';
 import { helpHref } from './help.js';
 import { clearCacheAndReload, openRebootOverlay, openUpdateOverlay } from '../update-overlay.js';
 import {
   $,
   ROLE_LABEL,
+  avatar,
   confirmDialog,
   copyText,
   formatBytes,
@@ -15,6 +16,7 @@ import {
   html,
   icon,
   modal,
+  pageHero,
   routingWarnings,
   setHTML,
   tip,
@@ -36,6 +38,8 @@ const TABS = [
 const short = (sha) => (sha ? sha.slice(0, 7) : '—');
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
+const heroUser = () => html`${avatar(state.user, 'xs')} ${state.user.username}`;
+
 export function renderSettings(view, page, tab = 'compte', arg = '') {
   const tabs = TABS.filter((t) => !t.admin || isAdmin());
   if (!tabs.some((t) => t.id === tab)) tab = 'compte';
@@ -43,10 +47,22 @@ export function renderSettings(view, page, tab = 'compte', arg = '') {
   view.replaceChildren(root);
   setHTML(
     root,
-    html`<div class="page-header"><div><h1>Paramètres ${tip('Votre compte et, pour les administrateurs : les utilisateurs, les mises à jour, le tunnel Cloudflare, les réglages du panel, la machine et le journal d’activité.')}</h1></div></div>
+    html`${pageHero({
+        icon: 'sliders',
+        title: 'Paramètres',
+        info: 'Votre compte et, pour les administrateurs : les utilisateurs, les mises à jour, le tunnel Cloudflare, les réglages du panel, la machine et le journal d’activité.',
+        meta: html`<span class="desk-pill" id="hero-user">${heroUser()}</span><span class="desk-pill">${icon(state.user.role === 'admin' ? 'shield' : 'user')} ${ROLE_LABEL[state.user.role]}</span>`,
+      })}
       ${tabs.length > 1 ? html`<nav class="tabs">${tabs.map((t) => html`<a href="#/settings/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}</nav>` : ''}
       <div id="settings-tab"></div>`,
   );
+  // pseudo ou photo modifiés depuis « Mon compte » : le bandeau suit
+  const onUser = () => {
+    const pill = $('#hero-user', root);
+    if (pill) setHTML(pill, heroUser());
+  };
+  window.addEventListener('astra:user', onUser);
+  page.onCleanup(() => window.removeEventListener('astra:user', onUser));
   const el = $('#settings-tab', root);
   const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, general: generalTab, hardware: hardwareTab, journal: journalTab };
   return Promise.resolve(renderers[tab](el, page, arg)).catch((err) => {
@@ -55,37 +71,276 @@ export function renderSettings(view, page, tab = 'compte', arg = '') {
 }
 
 // ---- Mon compte ----------------------------------------------------------------
-function accountTab(el) {
+const ACTIVITY_ICONS = { compte: 'user', application: 'box', fichiers: 'folder', tunnel: 'cloud', machine: 'server', panel: 'sliders' };
+const DAY_FORMAT = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+// Force d'un mot de passe (indication, pas une règle) : longueur et variété des caractères
+export function passwordStrength(pw) {
+  if (!pw) return null;
+  if (pw.length < 8) return { pct: 18, label: 'Trop court : 8 caractères minimum', cls: 'err' };
+  const variety = [/[a-z]/, /[A-Z]/, /\d/, /[^a-zA-Z0-9]/].filter((re) => re.test(pw)).length;
+  const score = variety + (pw.length >= 12 ? 1 : 0) + (pw.length >= 16 ? 1 : 0);
+  if (score <= 2) return { pct: 38, label: 'Faible', cls: 'warn' };
+  if (score <= 3) return { pct: 66, label: 'Correct', cls: '' };
+  return { pct: 100, label: 'Solide', cls: 'ok' };
+}
+
+// Le compte a changé (pseudo, photo) : la barre latérale et les autres pages se mettent à jour
+function setMe(user) {
+  state.user = { ...state.user, ...user };
+  window.dispatchEvent(new Event('astra:user'));
+}
+
+// Recadrage de la photo : carré de 256 px, image déplaçable à la souris ou au doigt, zoom.
+async function photoEditor(canvas, zoomInput, file) {
+  let img;
+  try {
+    img = await createImageBitmap(file);
+  } catch {
+    throw new Error('Image illisible : choisissez une photo PNG, JPEG, WebP ou GIF');
+  }
+  const SIZE = canvas.width;
+  const g = canvas.getContext('2d');
+  const base = SIZE / Math.min(img.width, img.height);
+  let zoom = 1;
+  let cx = img.width / 2;
+  let cy = img.height / 2;
+  const draw = () => {
+    const scale = base * zoom;
+    const half = SIZE / 2 / scale;
+    cx = Math.min(Math.max(cx, half), img.width - half);
+    cy = Math.min(Math.max(cy, half), img.height - half);
+    g.clearRect(0, 0, SIZE, SIZE);
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, cx - half, cy - half, half * 2, half * 2, 0, 0, SIZE, SIZE);
+  };
+  let drag = null;
+  canvas.onpointerdown = (e) => {
+    drag = { x: e.clientX, y: e.clientY };
+    canvas.setPointerCapture(e.pointerId);
+  };
+  canvas.onpointermove = (e) => {
+    if (!drag) return;
+    const ratio = SIZE / canvas.getBoundingClientRect().width / (base * zoom);
+    cx -= (e.clientX - drag.x) * ratio;
+    cy -= (e.clientY - drag.y) * ratio;
+    drag = { x: e.clientX, y: e.clientY };
+    draw();
+  };
+  canvas.onpointerup = () => {
+    drag = null;
+  };
+  canvas.onwheel = (e) => {
+    e.preventDefault();
+    zoom = Math.min(4, Math.max(1, zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+    zoomInput.value = zoom;
+    draw();
+  };
+  zoomInput.value = 1;
+  zoomInput.oninput = () => {
+    zoom = Number(zoomInput.value);
+    draw();
+  };
+  draw();
+  return {
+    // WebP si le navigateur sait l'écrire, sinon PNG
+    toBlob: () => new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.9)),
+    close: () => img.close?.(),
+  };
+}
+
+async function accountTab(el, page) {
+  const [info, activity] = await Promise.all([api.get('/account'), api.get('/account/activity')]);
+  if (!page.active) return;
+  setMe(info.user);
   const u = state.user;
+  const root = document.createElement('div');
+  el.replaceChildren(root);
+  const redraw = () => accountTab(el, page).catch((err) => toast(err.message, 'err'));
+  const logins = activity.entries.filter((e) => e.label === 'Connexion');
+  const failed = activity.entries.filter((e) => e.failed);
+
   setHTML(
-    el,
-    html`<div class="grid grid-2">
-      <div class="card">
-        <div class="card-header"><h2>${icon('user')} Profil</h2></div>
-        <div class="card-body row">
-          <div class="avatar lg">${u.username.slice(0, 1).toUpperCase()}</div>
-          <div>
-            <div class="label">${u.username}</div>
-            <span class="badge plain role-${u.role}">${ROLE_LABEL[u.role]}</span>${tip(
+    root,
+    html`<div class="stack">
+      <section class="profile-hero">
+        <div class="profile-photo">
+          ${avatar(u, 'xl')}
+          <button type="button" class="profile-photo-btn" data-pick title="Changer la photo de profil" aria-label="Changer la photo de profil">${icon('camera')}</button>
+        </div>
+        <div class="profile-id">
+          <h2>${u.username}</h2>
+          <div class="desk-pills">
+            <span class="desk-pill">${icon(u.role === 'admin' ? 'shield' : 'user')} ${ROLE_LABEL[u.role]} ${tip(
               u.role === 'admin'
                 ? 'Accès complet : toutes les applications, utilisateurs, mises à jour, tunnel, stockage, machine et journal.'
                 : 'Vous voyez les applications que vous avez créées et celles auxquelles on vous a donné accès (onglet « Utilisateurs » de chaque application). Les paramètres du panel sont réservés aux administrateurs.',
-            )}
+            )}</span>
+            ${u.createdAt ? html`<span class="desk-pill">${icon('clock')} Membre depuis le ${DAY_FORMAT.format(new Date(u.createdAt))}</span>` : ''}
+            <span class="desk-pill">${icon('box')} ${info.apps.owned} application${info.apps.owned > 1 ? 's' : ''} créée${info.apps.owned > 1 ? 's' : ''}</span>
+            ${info.apps.shared ? html`<span class="desk-pill">${icon('users')} ${info.apps.shared} partagée${info.apps.shared > 1 ? 's' : ''} avec vous</span>` : ''}
           </div>
         </div>
-      </div>
-      <form class="card" id="password-form">
-        <div class="card-header"><h2>${icon('shield')} Mot de passe</h2></div>
-        <div class="card-body">
-          <div class="field"><label>Mot de passe actuel</label><input type="password" name="current" autocomplete="current-password" /></div>
-          <div class="field"><label>Nouveau mot de passe</label><input type="password" name="next" autocomplete="new-password" /></div>
-          <div class="field"><label>Confirmation</label><input type="password" name="confirm" autocomplete="new-password" /></div>
+        <div class="profile-actions">
+          <button type="button" class="btn btn-glass" data-pick>${icon('camera')} ${u.avatar ? 'Changer la photo' : 'Ajouter une photo'}</button>
+          ${u.avatar ? html`<button type="button" class="btn btn-ghost" data-remove-photo>${icon('trash')} Retirer</button>` : ''}
+          ${tip('La photo s’affiche dans le panneau latéral, sur le tableau de bord et dans les listes d’utilisateurs. Elle est recadrée en carré : faites-la glisser pour choisir la partie visible, et zoomez avec le curseur ou la molette.')}
         </div>
-        <div class="card-foot"><button class="btn btn-primary" type="submit">Changer le mot de passe</button></div>
-      </form>
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" id="photo-file" />
+      </section>
+
+      <div class="account-cols">
+        <div class="account-col">
+        <form class="card" id="name-form" autocomplete="off">
+          <div class="card-header"><h2>${icon('atSign')} Pseudo ${tip('Votre pseudo s’affiche partout dans le panel et sert à vous connecter. 3 à 32 caractères : lettres, chiffres, . _ -')}</h2></div>
+          <div class="card-body">
+            <div class="field"><label for="acc-name">Nouveau pseudo</label><input id="acc-name" type="text" name="username" value="${u.username}" spellcheck="false" autocapitalize="off" maxlength="32" required /></div>
+            <div class="field"><label for="acc-name-pw">Mot de passe ${tip('Confirme que c’est bien vous.')}</label><input id="acc-name-pw" type="password" name="password" autocomplete="current-password" required /></div>
+          </div>
+          <div class="card-foot"><button class="btn btn-primary" type="submit">${icon('check')} Changer de pseudo</button></div>
+        </form>
+        <section class="card">
+          <div class="card-header"><h2>${icon('devices')} Appareils et connexions ${tip('Déconnecte toutes vos autres sessions : autre navigateur, téléphone, ordinateur prêté… Vous restez connecté ici. Pratique si vous avez oublié de vous déconnecter ailleurs.')}</h2></div>
+          <div class="card-body stack-sm">
+            <table class="table kv-table compact">
+              <tbody>
+                <tr><td class="muted">Dernière connexion</td><td>${logins[0] ? html`${formatDate(logins[0].at)} <span class="muted">· ${logins[0].ip || '—'}</span>` : '—'}</td></tr>
+                <tr><td class="muted">Connexion précédente</td><td>${logins[1] ? html`${formatDate(logins[1].at)} <span class="muted">· ${logins[1].ip || '—'}</span>` : '—'}</td></tr>
+                <tr><td class="muted">Tentatives échouées</td><td>${failed.length
+                  ? html`<span class="badge st-crashed">${failed.length}</span> <span class="muted">dernière le ${formatDate(failed[0].at)} · ${failed[0].ip || '—'}</span>`
+                  : html`<span class="badge st-running">Aucune</span>`}</td></tr>
+              </tbody>
+            </table>
+            <div class="row"><button type="button" class="btn" data-logout-others>${icon('logout')} Se déconnecter des autres appareils</button></div>
+          </div>
+        </section>
+        </div>
+        <div class="account-col">
+        <form class="card" id="password-form">
+          <div class="card-header"><h2>${icon('key')} Mot de passe ${tip('Changer de mot de passe déconnecte vos autres appareils ; vous restez connecté ici.')}</h2></div>
+          <div class="card-body">
+            <div class="field"><label for="acc-pw-current">Mot de passe actuel</label><input id="acc-pw-current" type="password" name="current" autocomplete="current-password" required /></div>
+            <div class="field">
+              <label for="acc-pw-next">Nouveau mot de passe</label>
+              <div class="input-group">
+                <input id="acc-pw-next" type="password" name="next" autocomplete="new-password" required />
+                <button type="button" class="btn btn-ghost btn-icon" data-show-pw title="Afficher les mots de passe" aria-label="Afficher les mots de passe">${icon('eye')}</button>
+              </div>
+              <div class="pw-meter" id="pw-meter" aria-live="polite"><div class="pw-meter-bar"><i></i></div><span></span></div>
+            </div>
+            <div class="field"><label for="acc-pw-confirm">Confirmation</label><input id="acc-pw-confirm" type="password" name="confirm" autocomplete="new-password" required /></div>
+          </div>
+          <div class="card-foot"><button class="btn btn-primary" type="submit">${icon('check')} Changer le mot de passe</button></div>
+        </form>
+
+        </div>
+      </div>
+
+      <section class="card">
+        <div class="card-header"><h2>${icon('activity')} Activité récente ${tip('Vos 20 dernières actions dans le panel, et les tentatives de connexion échouées avec votre pseudo.')}</h2></div>
+        ${activity.entries.length
+          ? html`<ul class="activity-list">
+              ${activity.entries.map(
+                (e) => html`<li class="${e.failed ? 'failed' : ''}">
+                  <span class="activity-icon">${icon(e.failed ? 'alert' : ACTIVITY_ICONS[e.category] || 'info')}</span>
+                  <span class="activity-text"><b>${e.failed ? 'Tentative de connexion échouée' : e.label}</b>${e.app ? html` · <a href="#/apps/${e.app.id}">${e.app.name}</a>` : ''}${e.detail ? html`<span class="muted"> · ${e.detail}</span>` : ''}</span>
+                  <span class="activity-meta faint">${formatDate(e.at)}${e.ip ? ` · ${e.ip}` : ''}</span>
+                </li>`,
+              )}
+            </ul>`
+          : html`<div class="card-body muted">Aucune activité pour l'instant.</div>`}
+      </section>
     </div>`,
   );
-  $('#password-form', el).addEventListener('submit', (e) => {
+
+  // --- Photo : recadrage dans une fenêtre, puis envoi
+  const fileInput = $('#photo-file', root);
+  const editPhoto = async (file) => {
+    let editor = null;
+    const saved = await modal({
+      title: 'Photo de profil',
+      confirmLabel: 'Enregistrer',
+      cls: 'photo-modal',
+      body: html`<div class="photo-edit">
+        <canvas width="256" height="256" class="photo-canvas" aria-label="Aperçu : faites glisser la photo pour la cadrer"></canvas>
+        <label class="photo-zoom">${icon('search')}<input type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom" /></label>
+      </div>`,
+      onOpen: async (form) => {
+        editor = await photoEditor(form.querySelector('canvas'), form.querySelector('input[type=range]'), file);
+      },
+      onConfirm: async () => {
+        if (!editor) throw new Error('La photo n’est pas encore prête');
+        const { user } = await sendBlob('PUT', '/account/avatar', await editor.toBlob());
+        return user;
+      },
+    });
+    editor?.close();
+    if (saved) {
+      setMe(saved);
+      toast('Photo de profil enregistrée');
+      redraw();
+    }
+  };
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) editPhoto(file);
+  });
+  root.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-pick]')) {
+      fileInput.value = '';
+      fileInput.click();
+    }
+    const remove = e.target.closest('[data-remove-photo]');
+    if (remove) {
+      if (!(await confirmDialog('Retirer la photo ?', 'L’initiale de votre pseudo la remplacera.', { confirmLabel: 'Retirer' }))) return;
+      await withBusy(remove, async () => {
+        const { user } = await api.del('/account/avatar');
+        setMe(user);
+        toast('Photo de profil retirée');
+        redraw();
+      });
+    }
+    const pw = e.target.closest('[data-show-pw]');
+    if (pw) {
+      const show = pw.dataset.shown !== '1';
+      pw.dataset.shown = show ? '1' : '';
+      $('#password-form', root).querySelectorAll('input[name=next], input[name=confirm]').forEach((i) => (i.type = show ? 'text' : 'password'));
+      setHTML(pw, icon(show ? 'eyeOff' : 'eye'));
+      pw.title = show ? 'Masquer les mots de passe' : 'Afficher les mots de passe';
+    }
+    const others = e.target.closest('[data-logout-others]');
+    if (others) {
+      if (!(await confirmDialog('Se déconnecter des autres appareils ?', 'Toutes vos autres sessions seront fermées. Vous restez connecté ici.', { confirmLabel: 'Déconnecter' }))) return;
+      await withBusy(others, async () => {
+        await api.post('/account/logout-others');
+        toast('Vos autres appareils ont été déconnectés');
+        redraw();
+      });
+    }
+  });
+
+  // --- Pseudo
+  $('#name-form', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const values = Object.fromEntries(new FormData(form));
+    withBusy($('[type=submit]', form), async () => {
+      const { user } = await api.patch('/account', { username: values.username.trim(), password: values.password });
+      setMe(user);
+      toast(`Pseudo modifié : connectez-vous désormais avec « ${user.username} »`);
+      redraw();
+    });
+  });
+
+  // --- Mot de passe
+  const meter = $('#pw-meter', root);
+  $('#password-form [name=next]', root).addEventListener('input', (e) => {
+    const s = passwordStrength(e.target.value);
+    meter.className = `pw-meter ${s ? s.cls : ''} ${s ? 'shown' : ''}`;
+    meter.querySelector('i').style.width = `${s ? s.pct : 0}%`;
+    meter.querySelector('span').textContent = s ? s.label : '';
+  });
+  $('#password-form', root).addEventListener('submit', (e) => {
     e.preventDefault();
     const form = e.target;
     const values = Object.fromEntries(new FormData(form));
@@ -96,7 +351,8 @@ function accountTab(el) {
     withBusy($('[type=submit]', form), async () => {
       await api.post('/auth/password', { current: values.current, next: values.next });
       form.reset();
-      toast('Mot de passe modifié. Les autres sessions ont été déconnectées.');
+      toast('Mot de passe modifié. Vos autres appareils ont été déconnectés.');
+      redraw();
     });
   });
 }
@@ -126,12 +382,13 @@ async function usersTab(el, page) {
           <tbody>
             ${users.map(
               (u) => html`<tr data-id="${u.id}" data-name="${u.username}">
-                <td><div class="user-cell"><div class="avatar">${u.username.slice(0, 1).toUpperCase()}</div><span class="truncate">${u.username}${u.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}</span></div></td>
+                <td><div class="user-cell">${avatar(u)}<span class="truncate">${u.username}${u.id === state.user.id ? html` <span class="faint">(vous)</span>` : ''}</span></div></td>
                 <td class="role-cell">${roleSelect('role', u.role)}</td>
                 <td class="muted hide-sm">${formatDate(u.createdAt)}</td>
                 <td>
                   <div class="file-actions">
                     <a class="btn btn-ghost btn-sm btn-icon" title="Voir son activité" aria-label="Voir l'activité de ${u.username}" href="#/settings/journal/${u.id}">${icon('clock')}</a>
+                    <button class="btn btn-ghost btn-sm btn-icon" title="Changer le pseudo" data-rename>${icon('atSign')}</button>
                     <button class="btn btn-ghost btn-sm btn-icon" title="Définir un nouveau mot de passe" data-password>${icon('key')}</button>
                     ${u.id === state.user.id ? '' : html`<button class="btn btn-ghost btn-sm btn-icon" title="Supprimer" data-del>${icon('trash')}</button>`}
                   </div>
@@ -178,6 +435,23 @@ async function usersTab(el, page) {
     }
     const row = e.target.closest('tr[data-id]');
     if (!row) return;
+    if (e.target.closest('[data-rename]')) {
+      const renamed = await modal({
+        title: `Nouveau pseudo pour ${row.dataset.name}`,
+        confirmLabel: 'Renommer',
+        body: html`<div class="field"><label>Pseudo ${tip('Il sert aussi à se connecter : prévenez la personne. 3 à 32 caractères : lettres, chiffres, . _ -')}</label><input type="text" name="username" value="${row.dataset.name}" autocomplete="off" spellcheck="false" /></div>`,
+        onConfirm: (values) => api.patch(`/users/${row.dataset.id}`, { username: values.username.trim() }),
+      });
+      if (renamed) {
+        toast(`${row.dataset.name} s’appelle maintenant ${renamed.username}`);
+        if (renamed.id === state.user.id) {
+          state.user = { ...state.user, username: renamed.username };
+          window.dispatchEvent(new Event('astra:user'));
+        }
+        rerender();
+      }
+      return;
+    }
     if (e.target.closest('[data-password]')) {
       const done = await modal({
         title: `Nouveau mot de passe pour ${row.dataset.name}`,
@@ -1010,7 +1284,7 @@ async function journalTab(el, page, userFilter = '') {
 
   const who = (e) =>
     e.user
-      ? html`<div class="user-cell"><div class="avatar sm">${e.user.username.slice(0, 1).toUpperCase()}</div><span class="truncate">${e.user.username}</span></div>`
+      ? html`<div class="user-cell">${avatar({ ...e.user, avatar: data.users.find((u) => u.id === e.user.id)?.avatar }, 'sm')}<span class="truncate">${e.user.username}</span></div>`
       : html`<span class="muted">Anonyme</span>`;
 
   function drawList() {
