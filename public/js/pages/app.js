@@ -36,7 +36,29 @@ const TABS = [
   { id: 'users', label: 'Utilisateurs', icon: 'users' },
 ];
 
-export function renderApp(view, page, id, tab = 'console') {
+// Dernier onglet ouvert : on le garde en passant d'une application à l'autre (barre latérale, journal…).
+const TAB_KEY = 'astra.app-tab';
+let lastTab = null;
+try {
+  lastTab = localStorage.getItem(TAB_KEY);
+} catch {
+  // stockage indisponible : on retient l'onglet le temps de la session
+}
+const isTab = (tab) => TABS.some((t) => t.id === tab);
+
+export function renderApp(view, page, id, tab) {
+  // lien sans onglet (#/apps/<id>) : on ouvre l'onglet utilisé en dernier, et l'adresse l'indique
+  if (!tab) {
+    tab = isTab(lastTab) ? lastTab : 'console';
+    history.replaceState(null, '', `#/apps/${id}/${tab}`);
+  }
+  if (!isTab(tab)) tab = 'console';
+  lastTab = tab;
+  try {
+    localStorage.setItem(TAB_KEY, tab);
+  } catch {
+    // stockage indisponible
+  }
   const app = findApp(id);
   if (!app) {
     setHTML(
@@ -45,7 +67,6 @@ export function renderApp(view, page, id, tab = 'console') {
     );
     return;
   }
-  if (!TABS.some((t) => t.id === tab)) tab = 'console';
 
   const root = document.createElement('div');
   view.replaceChildren(root);

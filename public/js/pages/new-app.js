@@ -289,7 +289,7 @@ export function renderNewApp(view) {
       await refreshApps();
       // l'écran reste visible un court instant (pas de clignotement), puis l'application s'ouvre et l'écran disparaît
       await new Promise((r) => setTimeout(r, Math.max(0, 700 - (Date.now() - screen.startedAt))));
-      location.hash = `#/apps/${app.id}`;
+      location.hash = `#/apps/${app.id}/console`; // suivre l'installation dans la console
       toast(`« ${app.name} » a été créée`);
       setTimeout(() => screen.close(), 250);
     } catch (err) {

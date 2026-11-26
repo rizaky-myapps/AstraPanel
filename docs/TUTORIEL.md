@@ -197,7 +197,9 @@ Vous arrivez sur le **tableau de bord** :
   interne, SSD, clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus léger**. Cliquez sur un dossier
   pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les journaux, une vieille archive…).
 
-Vos applications sont listées dans la barre latérale, avec le bouton **Nouvelle application**.
+Vos applications sont listées dans la barre latérale, avec le bouton **Nouvelle application**. Chaque application a
+ses onglets (Console, Fichiers, Variables, Déploiement, Paramètres, Utilisateurs) ; quand vous passez d'une
+application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
 
 ![Tableau de bord](images/tableau-de-bord.png)
 
