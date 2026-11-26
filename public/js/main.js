@@ -115,6 +115,8 @@ function route() {
   }
   const params = match.m.slice(1);
   currentNav = match.r.nav;
+  // page d'où l'on ouvre l'aide (elle n'est plus dans la barre latérale) : son bouton « Retour » y ramène
+  if (match.r.nav !== 'aide') state.returnTo = location.hash || '#/';
   renderBanner();
   setActiveNav(match.r.nav, params[0]);
   const view = $('#view');
@@ -143,7 +145,6 @@ function renderShell() {
           <a href="#/" data-nav="dashboard">${icon('grid')} Tableau de bord</a>
           <a href="#/new" data-nav="new">${icon('plus')} Nouvelle application</a>
           <a href="#/settings" data-nav="settings">${icon('sliders')} Paramètres</a>
-          <a href="#/aide" data-nav="aide">${icon('book')} Aide</a>
         </nav>
         <div class="side-title">Applications</div>
         <div id="side-apps"></div>

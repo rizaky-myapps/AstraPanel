@@ -11,8 +11,8 @@ ensuite les visites. Résultat :
 - le certificat HTTPS est fourni et renouvelé automatiquement par Cloudflare ;
 - c'est gratuit (offre *Free* de Cloudflare).
 
-> Ce tutoriel est aussi disponible dans le panel : menu **Aide** → **Tunnel Cloudflare**. L'onglet
-> **Paramètres → Tunnel Cloudflare** reprend ces étapes, en français, à côté des boutons à utiliser.
+> Ce tutoriel est aussi disponible dans le panel : bouton **Tutoriel** de l'onglet **Paramètres → Tunnel Cloudflare**.
+> Cet onglet reprend aussi ces étapes, en français, à côté des boutons à utiliser.
 
 > Les menus du tableau de bord Cloudflare sont indiqués **en anglais, tels qu'ils apparaissent à l'écran**, avec la
 > traduction entre parenthèses quand c'est utile. Cloudflare fait évoluer son interface : si un libellé diffère

@@ -343,8 +343,8 @@ domaine géré par Cloudflare (offre gratuite).
 
 👉 **Toutes les étapes, en détail, sont dans le [tutoriel Cloudflare](CLOUDFLARE.md)** : création du compte, ajout du
 domaine et changement des serveurs DNS, jeton d'API, création du tunnel, mise en ligne d'un site, vérifications et
-dépannage. Ce tutoriel est aussi lisible directement dans le panel, menu **Aide** → **Tunnel Cloudflare**, et
-l'onglet **Paramètres → Tunnel Cloudflare** affiche un pas-à-pas en français pour chaque étape.
+dépannage. Ce tutoriel est aussi lisible directement dans le panel (bouton **Tutoriel** de l'onglet
+**Paramètres → Tunnel Cloudflare**), et cet onglet affiche un pas-à-pas en français pour chaque étape.
 
 En résumé, avec le mode recommandé (« Géré depuis le panel ») :
 

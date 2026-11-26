@@ -28,7 +28,8 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Tunnel Cloudflare intégré** : mise en ligne en HTTPS sans ouvrir de port ; en mode « géré par le panel », ajouter
   un domaine à une application crée tout seul la route du tunnel et l'enregistrement DNS, avec un pas-à-pas en
   français dans le panel
-- **Page Aide** : les tutoriels (installation, tunnel Cloudflare) lisibles directement dans le panel
+- **Tutoriels intégrés** : les tutoriels (installation, tunnel Cloudflare) lisibles directement dans le panel, depuis
+  les pages qui y renvoient (bouton « Tutoriel » du tunnel Cloudflare)
 - **Tableau de bord** : graphiques du processeur, de la température et de la RAM sur 1 h, 24 h, 15 jours et 30 jours,
   alerte de sous-tension sur les cartes qui la signalent
 - **Explorateur de stockage** : les disques de la machine et leur contenu trié par taille, pour trouver ce qui prend de la place
