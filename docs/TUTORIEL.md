@@ -471,8 +471,9 @@ Dans **Paramètres → Mises à jour** :
 - **Vérifier maintenant** : vérifie tout de suite, sans attendre les 5 minutes ;
 - **Mettre à jour vers la X.Y.Z** : télécharge la nouvelle version et l'installe. Pendant la mise à jour, tout le
   panel est flouté et un écran de chargement indique où elle en est : demande envoyée, téléchargement, installation
-  (avec le détail : paquets système, copie du panel…), redémarrage du panel, terminé. La page se recharge toute seule
-  à la fin (une à trois minutes). Cet écran s'affiche pour tous les comptes connectés, même quand la mise à jour a été
+  (avec le détail : paquets système, copie du panel…), redémarrage du panel, terminé. À la fin (une à trois minutes),
+  la page **vide le cache du navigateur** et se recharge toute seule : pas de mélange entre l'ancienne et la nouvelle
+  interface. Une page restée ouverte pendant une mise à jour faite ailleurs (autre onglet, SSH) fait de même. Cet écran s'affiche pour tous les comptes connectés, même quand la mise à jour a été
   lancée par un autre administrateur ou en SSH ; le journal complet reste dans **Paramètres → Mises à jour**.
 
 > Si votre panel a été installé avant l'arrivée de cette fonction, faites une dernière mise à jour en SSH en
@@ -601,6 +602,12 @@ cd ~/AstraPanel && sudo ./install.sh
 ```
 
 Les mises à jour suivantes se feront depuis le panel.
+
+**Une application apparaît « plantée » alors qu'elle tournait encore en arrière-plan.** Plus possible : quand le panel
+affiche une application arrêtée ou plantée, il arrête aussi les programmes qu'elle aurait laissés en arrière-plan
+(lancés depuis son dossier avec `&`, `nohup`, `pm2`, ou restés d'une ancienne instance), et le note dans la console.
+Lancez votre serveur directement (par exemple `node server.js`) pour que le panel puisse le surveiller. Le panel
+refuse aussi de lancer une application qui contient AstraPanel lui-même (un panel dans le panel).
 
 **« Le port X est déjà utilisé par … » (ou `EADDRINUSE` dans la console).** Avant de démarrer un site, le panel
 vérifie que son port est libre et indique dans la console qui l'occupe :

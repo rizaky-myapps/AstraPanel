@@ -2,14 +2,14 @@ import crypto from 'node:crypto';
 import net from 'node:net';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { HttpError } from '../http/util.js';
 import { assertDomainsFree, normalizeDomains } from '../domains.js';
 import { LogBuffer } from './logs.js';
 import { baseEnv, killGroup, pipeOutput, runCommand, runShell } from './process.js';
 import { CLK_TCK, sampleProcessGroups } from './stats.js';
-import { addrInUsePort, portOwner } from '../ports.js';
+import { addrInUsePort, listProcesses, portOwner } from '../ports.js';
 
 export const TYPES = ['bot', 'node', 'static'];
 const SOURCES = ['empty', 'template', 'git', 'archive'];
@@ -448,10 +448,75 @@ export class AppManager {
     for (let i = 0; i < 20 && alive(); i++) await new Promise((r) => setTimeout(r, 100));
   }
 
+  // --- Processus restés en arrière-plan ----------------------------------------
+  // Le code d'AstraPanel ne peut pas tourner comme application du panel (un panel dans le panel) : il garde des
+  // processus en arrière-plan que le panel ne suit pas, et se dispute les ports avec lui.
+  isAstraPanelCode(app) {
+    if (app.type === 'static') return false;
+    const dir = this.dir(app);
+    const isPanel = (base) => {
+      try {
+        if (JSON.parse(readFileSync(path.join(base, 'package.json'), 'utf8')).name === 'astrapanel') return true;
+      } catch {
+        // pas de package.json lisible
+      }
+      return existsSync(path.join(base, 'src', 'apps', 'manager.js')) && existsSync(path.join(base, 'src', 'server.js'));
+    };
+    if (isPanel(dir)) return true;
+    // dépôt cloné dans un sous-dossier (« cd AstraPanel && npm start »)
+    try {
+      return readdirSync(dir, { withFileTypes: true }).some((e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules' && isPanel(path.join(dir, e.name)));
+    } catch {
+      return false;
+    }
+  }
+
+  // Processus lancés depuis le dossier de l'appli mais que le panel ne suit pas (restés en arrière-plan : ancienne
+  // instance, programme qui se détache, lancement à la main…). Les tâches en cours du panel sont exclues.
+  async strays(app) {
+    const dir = this.dir(app) + path.sep;
+    const tracked = new Set();
+    for (const rt of this.runtime.values()) {
+      if (rt.pid) tracked.add(rt.pid);
+      if (rt.taskChild?.pid) tracked.add(rt.taskChild.pid);
+    }
+    return (await listProcesses()).filter(
+      (p) => p.pid !== process.pid && p.ppid !== process.pid && !tracked.has(p.pgid) && !tracked.has(p.pid) && `${p.cwd}${path.sep}`.startsWith(dir),
+    );
+  }
+
+  // Arrête ces processus : ce que le panel affiche (arrêté, planté) correspond alors à ce qui tourne vraiment.
+  async reapStrays(app) {
+    const strays = await this.strays(app);
+    if (!strays.length) return 0;
+    const log = this.logsFor(app.id);
+    for (const p of strays.slice(0, 5)) log.system(`Processus resté en arrière-plan arrêté (PID ${p.pid} : ${p.command.slice(0, 100) || '?'})`);
+    if (strays.length > 5) log.system(`… et ${strays.length - 5} autre(s)`);
+    // tout le groupe si son chef est lui-même un processus égaré, sinon ce processus seul
+    const strayPids = new Set(strays.map((p) => p.pid));
+    await Promise.all(strays.map((p) => this.killLeftover({ pid: p.pid, pgid: strayPids.has(p.pgid) ? p.pgid : null })));
+    return strays.length;
+  }
+
   // Démarre l'appli après avoir vérifié que son port est libre. Un ancien processus de la même appli resté en marche
   // est arrêté ; sinon l'appli n'est pas lancée et la console explique qui occupe le port.
   async launch(app, { userAction = false } = {}) {
     const rt = this.rt(app.id);
+    if (rt.child) return;
+    if (this.isAstraPanelCode(app)) {
+      const message = 'Cette application contient AstraPanel lui-même : un panel ne peut pas être lancé comme application du panel';
+      this.logsFor(app.id).system(`✖ ${message}. Supprimez-la ; pour mettre le panel à jour, utilisez Paramètres → Mises à jour.`);
+      app.desired = 'stopped';
+      this.store.save();
+      rt.status = 'stopped';
+      if (userAction) {
+        const err = new HttpError(409, message);
+        err.logged = true;
+        throw err;
+      }
+      return;
+    }
+    await this.reapStrays(app);
     if (rt.child) return;
     if (app.port && needsPort(app.type) && !(await isPortFree(app.port))) {
       const log = this.logsFor(app.id);
@@ -556,10 +621,12 @@ export class AppManager {
     const waiters = rt.exitWaiters.splice(0);
     const how = signal ? `signal ${signal}` : `code ${code}`;
 
+    const stopped = this.find(id);
     if (rt.stopping || this.shuttingDown) {
       rt.stopping = false;
       rt.status = 'stopped';
       log.system(`■ Arrêté (${how})`);
+      if (stopped && !this.shuttingDown) this.reapStrays(stopped).catch(() => {});
       waiters.forEach((fn) => fn());
       return;
     }
@@ -570,6 +637,14 @@ export class AppManager {
     const busyPort = addrInUsePort(log.lines.filter((l) => l.t >= rt.startedAt - 1000).map((l) => l.m).join('\n'));
     const crashed = this.find(id);
     if (busyPort && crashed) this.explainAddrInUse(crashed, busyPort).catch(() => {});
+    // commande qui lance le vrai programme en arrière-plan puis se termine : le panel ne peut pas le surveiller
+    if (crashed) {
+      this.reapStrays(crashed)
+        .then((n) => {
+          if (n) log.system('Votre commande de démarrage a lancé un programme en arrière-plan puis s’est terminée : le panel ne peut pas le surveiller. Lancez le serveur directement (par exemple node server.js), sans « & », pm2 ni nohup.');
+        })
+        .catch(() => {});
+    }
     if (uptime > 60000) rt.crashCount = 0;
     rt.crashCount += 1;
 
@@ -873,7 +948,10 @@ export class AppManager {
         app.desired = wanted;
         this.store.save();
       }
-      if (!start) continue;
+      if (!start) {
+        await this.reapStrays(app).catch(() => {});
+        continue;
+      }
       this.logsFor(app.id).system(systemBoot ? 'Démarrage automatique avec le Raspberry Pi' : 'Démarrage automatique avec le panel');
       await this.launch(app).catch(() => {});
       await new Promise((r) => setTimeout(r, 500));

@@ -370,6 +370,107 @@ test('ports occupés : le panel dit qui occupe le port et arrête un ancien proc
   assert.match(text, new RegExp(`Votre code écoute sur le port ${busy.port}, alors que le panel lui a attribué le port ${bad.port}`));
 });
 
+test('applications : pas d’AstraPanel dans le panel, et rien ne reste en arrière-plan', async (t) => {
+  const ctx = await startTestPanel();
+  const extra = [];
+  t.after(async () => {
+    for (const pid of extra) {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        // déjà arrêté
+      }
+    }
+    await ctx.close();
+  });
+  await ctx.setupAdmin();
+  const alive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const logText = (id) => ctx.panel.apps.logsFor(id).lines.map((l) => l.m).join('\n');
+  const create = async (body) => (await ctx.request('POST', '/api/apps', { body: { type: 'node', source: 'empty', autoRestart: false, ...body } })).data.app;
+
+  // 1. une copie d'AstraPanel ne peut pas être lancée comme application
+  const panel = await create({ name: 'Panel de test', startCommand: 'npm start' });
+  writeFileSync(path.join(ctx.cfg.appsDir, panel.id, 'package.json'), JSON.stringify({ name: 'astrapanel', version: '1.2.9' }));
+  let res = await ctx.request('POST', `/api/apps/${panel.id}/start`);
+  assert.equal(res.status, 409);
+  assert.match(res.data.error, /contient AstraPanel lui-même/);
+  assert.equal((await ctx.request('GET', `/api/apps/${panel.id}`)).data.desired, 'stopped');
+  // … y compris cloné dans un sous-dossier
+  const nested = await create({ name: 'Clone', startCommand: 'cd AstraPanel && npm start' });
+  mkdirSync(path.join(ctx.cfg.appsDir, nested.id, 'AstraPanel', 'src', 'apps'), { recursive: true });
+  writeFileSync(path.join(ctx.cfg.appsDir, nested.id, 'AstraPanel', 'src', 'server.js'), '');
+  writeFileSync(path.join(ctx.cfg.appsDir, nested.id, 'AstraPanel', 'src', 'apps', 'manager.js'), '');
+  assert.equal((await ctx.request('POST', `/api/apps/${nested.id}/start`)).status, 409);
+
+  // 2. une commande qui laisse le vrai programme en arrière-plan : affichée plantée, et le programme est arrêté
+  const bg = await create({
+    name: 'Arrière-plan',
+    // le programme se détache (nouvelle session) puis la commande se termine, comme avec nohup, pm2…
+    startCommand: `setsid node -e "setInterval(() => {}, 1000)" & sleep 1`,
+  });
+  await ctx.request('POST', `/api/apps/${bg.id}/start`);
+  await waitFor(() => /lancé un programme en arrière-plan/.test(logText(bg.id)));
+  const bgPid = Number(/Processus resté en arrière-plan arrêté \(PID (\d+) : node -e/.exec(logText(bg.id))?.[1]);
+  assert.ok(bgPid > 0);
+  extra.push(bgPid);
+  await waitFor(() => !alive(bgPid));
+  assert.notEqual((await ctx.request('GET', `/api/apps/${bg.id}`)).data.runtime.status, 'running');
+
+  // 3. au démarrage du panel, un ancien processus d'une appli (non suivi) est arrêté
+  const old = await create({ name: 'Ancienne', startCommand: 'node index.js' });
+  // lancé par un shell qui se termine aussitôt : comme un vrai processus orphelin, il n'a plus de parent connu
+  const leftoverPid = Number(
+    execFileSync('/bin/sh', ['-c', `${JSON.stringify(process.execPath)} -e "setInterval(() => {}, 1000)" >/dev/null 2>&1 & echo $!`], { cwd: path.join(ctx.cfg.appsDir, old.id), encoding: 'utf8' }).trim(),
+  );
+  extra.push(leftoverPid);
+  await waitFor(() => alive(leftoverPid));
+  await ctx.panel.apps.bootstrap();
+  await waitFor(() => !alive(leftoverPid));
+  assert.match(logText(old.id), new RegExp(`Processus resté en arrière-plan arrêté \\(PID ${leftoverPid}`));
+});
+
+test('interface versionnée et cache vidé après une mise à jour', async (t) => {
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  const version = ctx.cfg.version;
+
+  // index.html : jamais en cache, fichiers appelés avec la version
+  let res = await fetch(`${ctx.base}/`);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  const page = await res.text();
+  assert.ok(page.includes(`/js/main.js?v=${version}`) && page.includes(`/css/style.css?v=${version}`));
+  assert.ok(page.includes(`<meta name="astra-version" content="${version}" />`));
+  assert.ok(!page.includes('__ASTRA_VERSION__'));
+
+  // modules : imports relatifs versionnés, revalidation par ETag
+  res = await fetch(`${ctx.base}/js/main.js?v=${version}`);
+  const main = await res.text();
+  assert.match(res.headers.get('content-type'), /javascript/);
+  assert.ok(main.includes(`from './ui.js?v=${version}'`) && main.includes(`from './pages/settings.js?v=${version}'`));
+  assert.ok(!/from '\.\.?\/[^']+\.js'/.test(main)); // aucun import sans version
+  const settingsJs = await (await fetch(`${ctx.base}/js/pages/settings.js`)).text();
+  assert.ok(settingsJs.includes(`from '../ui.js?v=${version}'`));
+  res = await fetch(`${ctx.base}/js/main.js`, { headers: { 'If-None-Match': res.headers.get('etag') } });
+  assert.equal(res.status, 304);
+  assert.equal((await fetch(`${ctx.base}/css/style.css`)).status, 200); // autres fichiers : inchangés
+
+  // vidage du cache : réservé aux comptes connectés, avec Clear-Site-Data et la liste des fichiers
+  assert.equal((await ctx.request('POST', '/api/cache/clear')).status, 401);
+  await ctx.setupAdmin();
+  res = await ctx.request('POST', '/api/cache/clear');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('clear-site-data'), '"cache"');
+  assert.equal(res.data.version, version);
+  for (const asset of ['/', '/js/main.js', '/js/pages/app.js', '/css/style.css', '/favicon.svg']) assert.ok(res.data.assets.includes(asset), asset);
+});
+
 test('analyse des URL GitHub', () => {
   assert.deepEqual(parseGithub('https://github.com/moi/AstraPanel.git'), { owner: 'moi', repo: 'AstraPanel', token: null });
   assert.deepEqual(parseGithub('https://ghp_x@github.com/moi/AstraPanel'), { owner: 'moi', repo: 'AstraPanel', token: 'ghp_x' });

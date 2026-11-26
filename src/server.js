@@ -15,6 +15,7 @@ import { Hardware } from './hardware.js';
 import { bootId } from './system.js';
 import { Router } from './http/router.js';
 import { serveStatic } from './http/static.js';
+import { listPanelAssets, servePanelAsset } from './http/panel-assets.js';
 import { HttpError, clientIp, readJson, sendJson } from './http/util.js';
 import { authRoutes } from './routes/auth.js';
 import { appRoutes } from './routes/apps.js';
@@ -65,6 +66,7 @@ export function createPanel(cfg = config) {
         return;
       }
       if (!pathname.startsWith('/api/') && !pathname.startsWith('/hooks/')) {
+        if (await servePanelAsset(req, res, cfg.publicDir, pathname, cfg.version)) return;
         await serveStatic(req, res, cfg.publicDir, pathname, { cacheControl: 'no-cache' });
         return;
       }

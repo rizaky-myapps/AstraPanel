@@ -2,6 +2,7 @@ import { HttpError, streamLog } from '../http/util.js';
 import { normalizeDomains } from '../domains.js';
 import { systemInfo } from '../system.js';
 import { analyze, listMounts } from '../storage.js';
+import { listPanelAssets } from '../http/panel-assets.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -28,6 +29,12 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
   // --- Mises à jour du panel --------------------------------------------------
   router.get('/api/update', () => updater.status(), { admin: true });
   router.get('/api/update/progress', () => updater.progress()); // tous les comptes : écran « mise à jour en cours »
+  // Fin de mise à jour : vide le cache du navigateur (HTTPS) et donne la liste des fichiers à recharger (HTTP aussi).
+  router.post('/api/cache/clear', async (ctx) => {
+    ctx.res.setHeader('Clear-Site-Data', '"cache"');
+    ctx.res.setHeader('Cache-Control', 'no-store');
+    return { version: config.version, assets: await listPanelAssets(config.publicDir) };
+  });
   router.post('/api/update/check', () => updater.check(), { admin: true });
   router.post('/api/update/apply', (ctx) => updater.request(ctx.user), { admin: true });
   router.get('/api/update/log', async () => ({ log: await updater.log(), run: await updater.runStatus() }), { admin: true });

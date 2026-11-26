@@ -1,7 +1,7 @@
 import { api, qs } from '../api.js';
 import { isAdmin, state } from '../state.js';
 import { helpHref } from './help.js';
-import { openUpdateOverlay } from '../update-overlay.js';
+import { clearCacheAndReload, openUpdateOverlay } from '../update-overlay.js';
 import {
   $,
   ROLE_LABEL,
@@ -323,7 +323,7 @@ async function updateTab(el, page) {
       if (run?.state === 'done' && startedAt && fresh) {
         stateEl.innerHTML = String(html`<span class="badge st-running">Terminée</span>`);
         toast('Mise à jour terminée : rechargement du panel…');
-        setTimeout(() => location.reload(), 2500);
+        setTimeout(clearCacheAndReload, 2000);
         return;
       }
       if (run?.state === 'failed') {

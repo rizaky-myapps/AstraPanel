@@ -12,6 +12,24 @@ const STEPS = [
   { id: 'restart', label: 'Redémarrage du panel' },
   { id: 'done', label: 'Terminé' },
 ];
+// Version de la page (écrite par le serveur dans index.html)
+const PAGE_VERSION = document.querySelector('meta[name="astra-version"]')?.content || '';
+const CLEARED_KEY = 'astra.cache-cleared-for';
+
+// Vide le cache du navigateur puis recharge : le serveur envoie « Clear-Site-Data » (pris en compte en HTTPS) et
+// la liste des fichiers de l'interface, que l'on retélécharge en ignorant le cache (efficace aussi en HTTP).
+export async function clearCacheAndReload() {
+  try {
+    const res = await fetch('/api/cache/clear', { method: 'POST', headers: { 'X-Astra': '1' }, cache: 'no-store' });
+    const { assets = [] } = res.ok ? await res.json() : {};
+    if (window.caches) for (const key of await caches.keys()) await caches.delete(key);
+    await Promise.all(assets.map((url) => fetch(url, { cache: 'reload', credentials: 'same-origin' }).catch(() => {})));
+  } catch {
+    // le rechargement suffit souvent ; on recharge quoi qu'il arrive
+  }
+  location.reload();
+}
+
 const IDLE_POLL = 5000;
 const ACTIVE_POLL = 1500;
 const GIVE_UP = 20 * 60_000;
@@ -133,7 +151,7 @@ function apply(p, reachable) {
   render();
   if (overlay.phase.id === 'done' && !overlay.finished) {
     overlay.finished = 'done';
-    setTimeout(() => location.reload(), 1800);
+    setTimeout(clearCacheAndReload, 1500);
   }
   if (overlay.phase.id === 'failed') overlay.finished = 'failed';
   if (!overlay.finished && Date.now() - overlay.startedAt > GIVE_UP) {
@@ -161,8 +179,30 @@ async function poll() {
     if (!overlay.finished) schedule(ACTIVE_POLL);
     return;
   }
-  if (progress?.active) openUpdateOverlay({ progress });
-  else schedule(IDLE_POLL);
+  if (progress?.active) {
+    openUpdateOverlay({ progress });
+    return;
+  }
+  // le panel a changé de version (mise à jour faite pendant que la page était ouverte, ou en SSH) : on vide le cache
+  // et on recharge, une seule fois par version
+  if (progress?.current && PAGE_VERSION && !PAGE_VERSION.startsWith('__') && progress.current !== PAGE_VERSION) {
+    let already = null;
+    try {
+      already = sessionStorage.getItem(CLEARED_KEY);
+    } catch {
+      // stockage indisponible
+    }
+    if (already !== progress.current) {
+      try {
+        sessionStorage.setItem(CLEARED_KEY, progress.current);
+      } catch {
+        // stockage indisponible
+      }
+      clearCacheAndReload();
+      return;
+    }
+  }
+  schedule(IDLE_POLL);
 }
 
 function schedule(delay) {

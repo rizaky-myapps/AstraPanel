@@ -37,6 +37,30 @@ export async function portOwner(port) {
   return { pid: null };
 }
 
+// Processus lisibles par le panel (même compte système) : pid, groupe, parent, dossier courant et commande.
+export async function listProcesses() {
+  const out = [];
+  for (const pid of await readdir('/proc').catch(() => [])) {
+    if (!/^\d+$/.test(pid)) continue;
+    const cwd = await readlink(`/proc/${pid}/cwd`).catch(() => null);
+    if (!cwd) continue; // processus d'un autre compte, ou déjà terminé
+    const [stat, cmdline] = await Promise.all([
+      readFile(`/proc/${pid}/stat`, 'utf8').catch(() => ''),
+      readFile(`/proc/${pid}/cmdline`, 'utf8').catch(() => ''),
+    ]);
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    if (fields[0] === 'Z') continue; // zombie : déjà terminé
+    out.push({
+      pid: Number(pid),
+      ppid: Number(fields[1]) || 0,
+      pgid: Number(fields[2]) || 0,
+      cwd: cwd.replace(/ \(deleted\)$/, ''),
+      command: cmdline.split('\0').filter(Boolean).join(' '),
+    });
+  }
+  return out;
+}
+
 // Port mentionné dans une erreur « EADDRINUSE » de Node.js (« … 0.0.0.0:8080 », « … :::8999 »).
 export function addrInUsePort(text) {
   const m = /EADDRINUSE\b[^\n]*?:(\d{2,5})\b/.exec(String(text));
