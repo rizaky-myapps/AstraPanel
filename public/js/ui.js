@@ -116,6 +116,8 @@ const ICONS = {
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
   chevronUp: '<path d="m18 15-6-6-6 6"/>',
+  // bloc façon Minecraft (cube vu en perspective, face du dessus marquée)
+  cube: '<path d="M12 2.5 3 7.25v9.5L12 21.5l9-4.75v-9.5z"/><path d="M3 7.25 12 12l9-4.75"/><path d="M12 12v9.5"/><path d="m7.5 9.6 0 2.2M16.5 9.6v2.2"/>',
   arrowUpCircle: '<circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/>',
   user: '<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
   userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
@@ -300,6 +302,7 @@ export const TYPE_INFO = {
   bot: { label: 'Bot Discord', icon: 'bot' },
   node: { label: 'Site Node.js', icon: 'globe' },
   static: { label: 'Site statique', icon: 'layers' },
+  minecraft: { label: 'Serveur Minecraft', icon: 'cube' },
 };
 
 const STATUS = {

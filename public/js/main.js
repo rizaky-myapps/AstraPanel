@@ -195,8 +195,8 @@ async function startSession(user) {
   route();
   clearInterval(updatePoller);
   checkUpdate();
-  // le panel vérifie GitHub toutes les 5 minutes ; on relit son résultat chaque minute
-  updatePoller = setInterval(checkUpdate, 60_000);
+  // le panel vérifie GitHub en continu (toutes les 30 secondes) ; on relit son résultat au même rythme
+  updatePoller = setInterval(checkUpdate, 30_000);
   // écran flouté pendant une mise à jour en cours (pour tous les comptes)
   startUpdateWatch();
 }

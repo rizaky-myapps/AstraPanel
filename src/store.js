@@ -2,6 +2,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 const DEFAULT_SETTINGS = {
   panelDomain: '',
+  // installer tout seul chaque nouvelle version publiée sur AstraPanel-Latest
+  autoUpdate: false,
   portRange: { start: 4000, end: 4999 },
   // Tunnel Cloudflare : « token » = géré depuis le site Cloudflare, « api » = géré depuis le panel
   tunnel: {

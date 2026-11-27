@@ -1,7 +1,9 @@
 /* =====================================================================================================
    Thème : jetons de couleur.
    - Sombre par défaut ; clair avec data-theme="light" sur <html>, ou selon le système si aucun choix n'est fait.
-   - Couleur d'accent : data-accent="solaire" (par défaut), "ocean", "aurore", "nebuleuse", "framboise".
+   - Couleur d'accent : data-accent="solaire" (par défaut), "ocean", "aurore", "nebuleuse", "framboise", "crepuscule",
+     "lagon", "foret", "lave", "glacier", "graphite" ; "custom" : dégradé de deux couleurs choisies par le compte
+     (variables posées par public/js/theme.js).
    - Les zones de code (console, éditeur) et la visionneuse restent toujours sombres.
    ===================================================================================================== */
 :root {
@@ -54,6 +56,61 @@
   --accent-3-rgb: 249, 115, 22;
   --accent-light: #f9a8d4;
   --accent-deep: #be185d;
+}
+
+:root[data-accent='crepuscule'] {
+  --accent: #f59e0b;
+  --accent-rgb: 245, 158, 11;
+  --accent-2: #a855f7;
+  --accent-2-rgb: 168, 85, 247;
+  --accent-3-rgb: 236, 72, 153;
+  --accent-light: #fcd34d;
+  --accent-deep: #b45309;
+}
+:root[data-accent='lagon'] {
+  --accent: #14b8a6;
+  --accent-rgb: 20, 184, 166;
+  --accent-2: #3b82f6;
+  --accent-2-rgb: 59, 130, 246;
+  --accent-3-rgb: 34, 211, 238;
+  --accent-light: #5eead4;
+  --accent-deep: #0f766e;
+}
+:root[data-accent='foret'] {
+  --accent: #22c55e;
+  --accent-rgb: 34, 197, 94;
+  --accent-2: #84cc16;
+  --accent-2-rgb: 132, 204, 22;
+  --accent-3-rgb: 20, 184, 166;
+  --accent-light: #86efac;
+  --accent-deep: #15803d;
+}
+:root[data-accent='lave'] {
+  --accent: #ef4444;
+  --accent-rgb: 239, 68, 68;
+  --accent-2: #f97316;
+  --accent-2-rgb: 249, 115, 22;
+  --accent-3-rgb: 234, 179, 8;
+  --accent-light: #fca5a5;
+  --accent-deep: #b91c1c;
+}
+:root[data-accent='glacier'] {
+  --accent: #38bdf8;
+  --accent-rgb: 56, 189, 248;
+  --accent-2: #818cf8;
+  --accent-2-rgb: 129, 140, 248;
+  --accent-3-rgb: 45, 212, 191;
+  --accent-light: #bae6fd;
+  --accent-deep: #0369a1;
+}
+:root[data-accent='graphite'] {
+  --accent: #94a3b8;
+  --accent-rgb: 148, 163, 184;
+  --accent-2: #64748b;
+  --accent-2-rgb: 100, 116, 139;
+  --accent-3-rgb: 203, 213, 225;
+  --accent-light: #cbd5e1;
+  --accent-deep: #475569;
 }
 
 /* Sombre (anthracite) */
@@ -1561,7 +1618,7 @@ details summary {
 .role-cell select {
   width: auto;
   min-width: 150px;
-  padding: 5px 10px;
+  padding: 5px 34px 5px 10px;
 }
 
 /* Bannière de mise à jour */
@@ -2623,8 +2680,9 @@ pre.code {
     min-width: 0;
   }
   .users-table select {
-    width: 118px;
-    padding: 6px 8px;
+    width: 124px;
+    padding: 6px 28px 6px 8px;
+    background-position: right 8px center;
     font-size: 13px;
   }
   .users-table .avatar {
@@ -4442,6 +4500,27 @@ textarea:focus {
 }
 .swatch-framboise .swatch-dot {
   background: linear-gradient(135deg, #ec4899, #8b5cf6);
+}
+.swatch-crepuscule .swatch-dot {
+  background: linear-gradient(135deg, #f59e0b, #a855f7);
+}
+.swatch-lagon .swatch-dot {
+  background: linear-gradient(135deg, #14b8a6, #3b82f6);
+}
+.swatch-foret .swatch-dot {
+  background: linear-gradient(135deg, #22c55e, #84cc16);
+}
+.swatch-lave .swatch-dot {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+}
+.swatch-glacier .swatch-dot {
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+}
+.swatch-graphite .swatch-dot {
+  background: linear-gradient(135deg, #94a3b8, #64748b);
+}
+.swatch-custom .swatch-dot {
+  background: linear-gradient(135deg, var(--custom-from, #ff6b35), var(--custom-to, #8b5cf6));
 }
 [aria-busy='true'] {
   cursor: progress;
@@ -6396,3 +6475,293 @@ a.dash-stat.gauge:hover {
 .account-row-text .account-dots {
   letter-spacing: 2px;
 }
+
+/* ---- Écran de connexion : un peu plus haut que le centre ---- */
+.auth {
+  padding: clamp(16px, 5vh, 56px) 16px clamp(72px, 19vh, 220px);
+}
+@media (max-height: 720px) {
+  .auth {
+    padding-bottom: 24px;
+  }
+}
+
+/* ---- Menus de sélection : même style que les champs, flèche du panel, liste déroulante aux couleurs du thème ---- */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a93b0' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background-color 0.15s;
+}
+select:hover:not(:disabled) {
+  border-color: var(--faint);
+  background-color: rgba(var(--ink-rgb), 0.04);
+}
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+select option {
+  background: var(--panel);
+  color: var(--text);
+}
+.type-select select {
+  background-image: none;
+}
+
+/* navigateurs récents : la liste elle-même prend le style du panel (verre dépoli, coins arrondis, choix en couleur) */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+  select::picker-icon {
+    display: none;
+  }
+  ::picker(select) {
+    margin-block: 6px;
+    padding: 6px;
+    max-height: min(340px, 60vh);
+    overflow-y: auto;
+    border: 1px solid var(--border-2);
+    border-radius: 14px;
+    background: var(--glass-strong);
+    backdrop-filter: blur(22px);
+    box-shadow: 0 18px 44px rgba(var(--shadow-rgb), calc(0.42 * var(--shadow-k)));
+    color: var(--text);
+  }
+  select option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    background: transparent;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  select option:hover,
+  select option:focus-visible {
+    background: rgba(var(--ink-rgb), 0.07);
+    outline: none;
+  }
+  select option:checked {
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+  select option::checkmark {
+    order: 1;
+    margin-left: auto;
+    color: var(--accent-fg);
+  }
+  select option:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+/* ---- Journal : la carte remplit la fenêtre, seul le corps du tableau (les lignes) défile ---- */
+.journal-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.journal-card > .card-header,
+.journal-card > .journal-filters {
+  flex: none;
+}
+#journal-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+#journal-list > .card-foot {
+  flex: none;
+}
+.journal-table {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.journal-table thead,
+.journal-table tbody {
+  display: block;
+}
+.journal-table thead {
+  flex: none;
+  padding-right: var(--journal-sb, 0px);
+}
+.journal-table tbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (min-width: 601px) {
+  .journal-table tr {
+    display: grid;
+    grid-template-columns: 168px minmax(120px, 0.7fr) minmax(0, 2fr) 150px;
+  }
+  .journal-table th,
+  .journal-table td {
+    display: block;
+    min-width: 0;
+  }
+}
+@media (min-width: 601px) and (max-width: 900px) {
+  .journal-table tr {
+    grid-template-columns: 150px minmax(110px, 0.7fr) minmax(0, 2fr);
+  }
+}
+
+/* ---- Apparence : pastilles rondes, et dégradé personnalisé (deux couleurs) ---- */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
+  gap: 14px 6px;
+}
+.swatch {
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 550;
+}
+.swatch:hover {
+  color: var(--text);
+}
+.swatch .swatch-dot {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: #fff;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 6px 14px rgba(var(--shadow-rgb), calc(0.25 * var(--shadow-k)));
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.swatch .swatch-dot svg {
+  width: 17px;
+  height: 17px;
+  opacity: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+.swatch-custom .swatch-dot svg {
+  opacity: 0.95;
+}
+.swatch:hover .swatch-dot {
+  transform: scale(1.08);
+}
+.swatch[aria-pressed='true'] {
+  border: 0;
+  box-shadow: none;
+  color: var(--text);
+  font-weight: 650;
+}
+.swatch[aria-pressed='true'] .swatch-dot {
+  box-shadow:
+    0 0 0 3px var(--panel),
+    0 0 0 5px var(--accent);
+}
+.swatch[aria-pressed='true'] .swatch-dot svg {
+  opacity: 1;
+}
+.custom-colors {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.custom-colors[hidden] {
+  display: none;
+}
+.color-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.color-pick input[type='color'] {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  background: none;
+  cursor: pointer;
+}
+.color-pick input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 4px;
+}
+.color-pick input[type='color']::-webkit-color-swatch {
+  border: 0;
+  border-radius: 10px;
+}
+.color-pick input[type='color']::-moz-color-swatch {
+  border: 0;
+  border-radius: 10px;
+}
+.custom-preview {
+  flex: 1;
+  height: 46px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 20px rgba(var(--accent-rgb), 0.3);
+}
+
+
+/* ---- Serveur Minecraft : couleurs « bloc d'herbe » ---- */
+.app-icon.minecraft {
+  color: #4ade80;
+}
+.app-tile-icon.type-minecraft {
+  background: linear-gradient(135deg, #4ade80, #a16207);
+}
+.tone-minecraft {
+  background: linear-gradient(135deg, #4ade80, #a16207);
+}
+/* champ avec unité (mémoire en Go…) */
+.input-unit {
+  position: relative;
+}
+.input-unit input {
+  padding-right: 44px;
+}
+.input-unit span {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  color: var(--muted);
+  font-size: 13px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.mc-eula a {
+  color: var(--accent-fg);
+}
+

@@ -152,6 +152,77 @@ test('mises à jour : le panel lit la version publiée sur AstraPanel-Latest', a
   assert.match(st.error, /AstraPanel-Latest/);
 });
 
+test('mises à jour : vérification en continu et mises à jour automatiques (sans relance en boucle)', async (t) => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'astra-auto-'));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const repo = path.join(tmp, 'depot');
+  mkdirSync(repo);
+  gitIn(repo, 'init', '-q', '-b', LATEST_BRANCH);
+  const first = publishLocal(repo, '1.2.2');
+  const root = path.join(tmp, 'install');
+  mkdirSync(root);
+  writeFileSync(path.join(root, 'version.json'), JSON.stringify({ repo, commit: first, installedAt: 1 }));
+  const config = { root, dataDir: path.join(tmp, 'data'), version: '1.2.2' };
+  mkdirSync(config.dataDir);
+  // service de mise à jour « installé » (fichier .path de systemd)
+  const unit = path.join(tmp, 'astrapanel-update.path');
+  writeFileSync(unit, '');
+  process.env.ASTRA_UPDATER_UNIT = unit;
+  t.after(() => delete process.env.ASTRA_UPDATER_UNIT);
+  const store = { data: { settings: { autoUpdate: false }, state: {} }, save() {} };
+  const updater = new Updater({ store, config });
+  const autos = [];
+  updater.onAutoUpdate = (v) => autos.push(v);
+  const requested = () => existsSync(updater.requestFile);
+
+  let st = await updater.check();
+  assert.equal(st.interval, 30_000); // vérification en continu : toutes les 30 secondes
+  assert.equal(st.auto, false);
+  publishLocal(repo, '1.2.3');
+  st = await updater.check();
+  assert.equal(st.available, true);
+  assert.equal(requested(), false); // désactivées : la mise à jour attend un clic
+
+  st = await updater.setAuto(true); // activées alors qu'une version attend : installée tout de suite
+  assert.equal(st.auto, true);
+  assert.equal(requested(), true);
+  assert.deepEqual(JSON.parse(readFileSync(updater.requestFile, 'utf8')).by, 'mise à jour automatique');
+  assert.deepEqual(autos, ['1.2.3']);
+  assert.equal(store.data.state.autoUpdate.version, '1.2.3');
+
+  // le service l'a prise en charge mais elle a échoué : pas de nouvel essai avant 6 heures
+  rmSync(updater.requestFile);
+  await updater.check();
+  assert.equal(requested(), false);
+  store.data.state.autoUpdate.at -= 7 * 3600_000;
+  await updater.check();
+  assert.equal(requested(), true);
+  assert.deepEqual(autos, ['1.2.3', '1.2.3']);
+
+  // désactivées : plus rien n'est lancé tout seul
+  rmSync(updater.requestFile);
+  store.data.state.autoUpdate.at -= 7 * 3600_000;
+  await updater.setAuto(false);
+  await updater.check();
+  assert.equal(requested(), false);
+
+  // API : réservée aux administrateurs, réglage désactivé par défaut
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  assert.equal(ctx.panel.store.data.settings.autoUpdate, false);
+  let res = await ctx.request('PUT', '/api/update/auto', { body: { enabled: true } });
+  assert.equal(res.status, 200);
+  assert.equal(res.data.auto, true);
+  assert.equal(ctx.panel.store.data.settings.autoUpdate, true);
+  await ctx.request('POST', '/api/users', { body: { username: 'dora', password: 'motdepasse123', role: 'user' } });
+  ctx.setCookie('');
+  await ctx.request('POST', '/api/auth/login', { body: { username: 'dora', password: 'motdepasse123' } });
+  res = await ctx.request('PUT', '/api/update/auto', { body: { enabled: false } });
+  assert.equal(res.status, 403);
+  assert.equal(ctx.panel.store.data.settings.autoUpdate, true);
+});
+
 test('publication : nouvelle-version.sh pousse AstraPanel-Latest et AstraPanel-V.X.Y.Z', () => {
   const tmp = mkdtempSync(path.join(os.tmpdir(), 'astra-release-'));
   const remote = path.join(tmp, 'remote.git');
@@ -1383,5 +1454,126 @@ test('le panel ne démarre jamais depuis une de ses applications, ni deux fois s
   assert.equal(lock.ok, true);
   lock.release();
   assert.ok(!existsSync(path.join(dataDir, 'panel.pid')));
+});
+
+test('serveurs Minecraft : versions, Java, téléchargement vérifié, RAM / cœurs, arrêt propre', async (t) => {
+  const http = await import('node:http');
+  const crypto = await import('node:crypto');
+  const mc = await import('../src/apps/minecraft.js');
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'astra-mc-'));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+
+  // validation des réglages
+  assert.deepEqual(mc.cleanMinecraft({ ramMin: 512, ramMax: 1024, cores: 1, eula: true }).ramMax, 1024);
+  assert.throws(() => mc.cleanMinecraft({ ramMin: 4096, ramMax: 1024 }), /minimale/);
+  assert.throws(() => mc.cleanMinecraft({ ramMax: mc.machineMemory() + 1024 }), /trop grande/);
+  assert.throws(() => mc.cleanMinecraft({ cores: mc.machineCores() + 1 }), /cœurs/);
+  assert.throws(() => mc.cleanMinecraft({ flavor: 'forge' }), /inconnu/);
+  assert.throws(() => mc.cleanMinecraft({ version: '1.21"; rm -rf /' }), /invalide/);
+  assert.equal(mc.javaLts(16), 17);
+  assert.equal(mc.javaFor('1.20.4'), 17);
+  assert.equal(mc.javaFor('1.21.4'), 21);
+  assert.equal(mc.javaFor('26.3'), 25);
+  const cmd = mc.launchCommand('/opt/java', { ramMin: 1024, ramMax: 2048, cores: 1, flavor: 'paper' });
+  assert.ok(cmd.args.includes('-Xms1024M') && cmd.args.includes('-Xmx2048M') && cmd.args.includes('-XX:ActiveProcessorCount=1'));
+  assert.ok(cmd.args.includes('-Dterminal.ansi=true'));
+  assert.equal(cmd.args.at(-1), '--nogui');
+  assert.equal(mc.launchCommand('/opt/java', { ramMin: 512, ramMax: 512, cores: 0, flavor: 'vanilla' }).args.at(-1), 'nogui');
+
+  // faux Java : note ses options, annonce « Done », s'arrête proprement sur « stop »
+  const jreDir = path.join(tmp, 'jre-src', 'jdk-25-jre', 'bin');
+  mkdirSync(jreDir, { recursive: true });
+  writeFileSync(
+    path.join(jreDir, 'java'),
+    '#!/bin/sh\necho "$@" > java-args.txt\necho "[INFO]: Done (0.1s)! For help, type \\"help\\""\nwhile read line; do\n  if [ "$line" = "stop" ]; then echo "[INFO]: Stopping server"; exit 0; fi\n  echo "> $line"\ndone\n',
+    { mode: 0o755 },
+  );
+  const jre = path.join(tmp, 'jre.tar.gz');
+  execFileSync('tar', ['-czf', jre, '-C', path.join(tmp, 'jre-src'), 'jdk-25-jre']);
+  const jreBytes = readFileSync(jre);
+  const jarBytes = Buffer.from('faux serveur paper');
+  const sha = (b, algo = 'sha256') => crypto.createHash(algo).update(b).digest('hex');
+  let corrupt = false;
+  const server = http.createServer((req, res) => {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const json = (o) => res.end(JSON.stringify(o));
+    const u = req.url;
+    if (u === '/paper/versions') return json({ versions: [{ version: { id: '1.21.4', java: { version: { minimum: 21 } } } }, { version: { id: '26.3', java: { version: { minimum: 25 } } } }, { version: { id: '26.4-rc-1' } }] });
+    if (u === '/paper/versions/26.3/builds/latest') return json({ id: 7, downloads: { 'server:default': { url: `${base}/files/paper.jar`, checksums: { sha256: corrupt ? 'f'.repeat(64) : sha(jarBytes) } } } });
+    if (u.startsWith('/adoptium/assets/latest/25/hotspot')) return json([{ binary: { package: { link: `${base}/files/jre.tar.gz`, checksum: sha(jreBytes) } } }]);
+    if (u === '/mojang/manifest') return json({ latest: { release: '26.3' }, versions: [{ id: '26.3', type: 'release', url: `${base}/mojang/26.3.json` }, { id: '26w10a', type: 'snapshot', url: '' }] });
+    if (u === '/mojang/26.3.json') return json({ downloads: { server: { url: `${base}/files/paper.jar`, sha1: sha(jarBytes, 'sha1') } }, javaVersion: { majorVersion: 25 } });
+    if (u === '/files/paper.jar') return res.end(jarBytes);
+    if (u === '/files/jre.tar.gz') return res.end(jreBytes);
+    res.statusCode = 404;
+    res.end();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  Object.assign(process.env, { ASTRA_PAPER_API: `${base}/paper`, ASTRA_MOJANG_MANIFEST: `${base}/mojang/manifest`, ASTRA_ADOPTIUM_API: `${base}/adoptium` });
+  t.after(() => ['ASTRA_PAPER_API', 'ASTRA_MOJANG_MANIFEST', 'ASTRA_ADOPTIUM_API'].forEach((k) => delete process.env[k]));
+
+  // versions : stables seulement, la plus récente d'abord
+  assert.deepEqual((await mc.listVersions('paper')).map((v) => v.id), ['26.3', '1.21.4']);
+  assert.deepEqual((await mc.listVersions('vanilla')).map((v) => v.id), ['26.3']);
+  const vanilla = await mc.resolveServer('vanilla', 'latest');
+  assert.equal(vanilla.java, 25);
+  assert.equal(vanilla.sha1, sha(jarBytes, 'sha1'));
+
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const body = { name: 'Survie', type: 'minecraft', mc: { flavor: 'paper', version: 'latest', ramMin: 512, ramMax: 1024, cores: 1 } };
+  // CLUF obligatoire ; pas de domaine
+  let res = await ctx.request('POST', '/api/apps', { body });
+  assert.equal(res.status, 400);
+  assert.match(res.data.error, /CLUF/);
+  res = await ctx.request('POST', '/api/apps', { body: { ...body, mc: { ...body.mc, eula: true }, domains: 'mc.exemple.fr' } });
+  assert.equal(res.status, 400);
+  // API des versions (interface)
+  res = await ctx.request('GET', '/api/minecraft/versions?flavor=paper');
+  assert.deepEqual(res.data.versions, ['26.3', '1.21.4']);
+  assert.ok(res.data.memory > 0 && res.data.cores > 0);
+
+  // création : Java 25 et Paper 26.3 téléchargés, CLUF et port écrits, serveur démarré
+  res = await ctx.request('POST', '/api/apps', { body: { ...body, mc: { ...body.mc, eula: true } } });
+  assert.equal(res.status, 200);
+  const app = res.data.app;
+  assert.ok(app.port >= 25565 && app.port < 25665, `port ${app.port}`);
+  const apps = ctx.panel.apps;
+  const log = apps.logsFor(app.id);
+  await waitFor(() => log.lines.some((l) => l.m.includes('Done (')), { timeout: 20000 });
+  const dir = apps.dir(apps.get(app.id));
+  assert.equal(readFileSync(path.join(dir, 'server.jar'), 'utf8'), 'faux serveur paper');
+  assert.match(readFileSync(path.join(dir, 'eula.txt'), 'utf8'), /^eula=true$/m);
+  assert.match(readFileSync(path.join(dir, 'server.properties'), 'utf8'), new RegExp(`^server-port=${app.port}$`, 'm'));
+  assert.deepEqual(
+    (({ flavor, version, build, java }) => ({ flavor, version, build, java }))(apps.get(app.id).mcInstalled),
+    { flavor: 'paper', version: '26.3', build: 7, java: 25 },
+  );
+  assert.ok(existsSync(path.join(ctx.cfg.dataDir, 'runtime', 'java-25', 'bin', 'java')));
+  const args = readFileSync(path.join(dir, 'java-args.txt'), 'utf8');
+  assert.match(args, /-Xms512M -Xmx1024M -XX:ActiveProcessorCount=1 .*-jar server\.jar --nogui/);
+  // un cœur alloué : le processus ne peut tourner que sur le processeur 0
+  if (existsSync('/usr/bin/taskset')) {
+    const pid = apps.rt(app.id).pid;
+    assert.match(readFileSync(`/proc/${pid}/status`, 'utf8'), /^Cpus_allowed_list:\s+0$/m);
+  }
+  // commande dans la console, puis arrêt propre par « stop »
+  await ctx.request('POST', `/api/apps/${app.id}/stdin`, { body: { text: 'list' } });
+  await waitFor(() => log.lines.some((l) => l.m === '> list'));
+  await ctx.request('POST', `/api/apps/${app.id}/stop`);
+  await waitFor(() => apps.rt(app.id).status === 'stopped');
+  assert.ok(log.lines.some((l) => l.m.includes('« stop »')));
+  assert.ok(log.lines.some((l) => l.m.includes('Stopping server')));
+  assert.equal(apps.rt(app.id).lastExit.code, 0);
+  // tâches npm refusées ; une empreinte incorrecte est détectée et le fichier n'est pas gardé
+  assert.equal((await ctx.request('POST', `/api/apps/${app.id}/tasks/install`, { body: {} })).status, 400);
+  corrupt = true;
+  apps.get(app.id).mcInstalled.url = 'autre';
+  await ctx.request('POST', `/api/apps/${app.id}/tasks/deploy`, { body: {} });
+  await waitFor(() => log.lines.some((l) => l.m.includes('fichier corrompu')));
+  assert.equal(readFileSync(path.join(dir, 'server.jar'), 'utf8'), 'faux serveur paper'); // l'ancien serveur reste en place
 });
 

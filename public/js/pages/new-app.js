@@ -2,12 +2,14 @@ import { api } from '../api.js';
 import { refreshApps } from '../state.js';
 import { openOverlay, stepsAt } from '../overlay.js';
 import { $, html, icon, pageHero, routingWarnings, setHTML, tip, toast, toggle } from '../ui.js';
+import { fillVersions, mcFieldsHTML, readMcFields } from '../minecraft-ui.js';
 import { navigate } from '../router.js';
 
 const TYPES = [
   { id: 'bot', title: 'Bot Discord', desc: 'Un bot discord.js, ou tout programme Node.js sans site web.', icon: 'bot', placeholder: 'Mon super bot' },
   { id: 'node', title: 'Site Node.js', desc: 'Express, Fastify, Next.js… Le port est fourni via la variable PORT.', icon: 'globe', placeholder: 'Mon site' },
   { id: 'static', title: 'Site statique', desc: 'HTML / CSS / JS, ou le résultat d’un build (Vite, React…).', icon: 'layers', placeholder: 'Mon site' },
+  { id: 'minecraft', title: 'Serveur Minecraft', desc: 'Serveur Java Edition (Paper ou Vanilla) : le panel télécharge Java et le serveur, puis le démarre.', icon: 'cube', placeholder: 'Mon serveur' },
 ];
 
 const defaultStart = (type) => (type === 'static' ? '' : 'npm start');
@@ -31,12 +33,17 @@ export function renderNewApp(view) {
     domains: '',
     autoRestart: true,
     startOnBoot: true,
+    // serveur Minecraft (mémoire en Mo)
+    mc: { flavor: 'paper', version: 'latest', ramMin: 1024, ramMax: 2048, cores: 0 },
+    eula: false,
   };
+  let machine = null; // mémoire et cœurs de la machine, connus après le premier chargement des versions
 
   function render() {
     const type = TYPES.find((t) => t.id === f.type);
     const isStatic = f.type === 'static';
-    const hasPort = f.type !== 'bot';
+    const isMc = f.type === 'minecraft';
+    const hasPort = f.type !== 'bot' && !isMc;
     setHTML(
       root,
       html`<a class="back" href="/home">${icon('back')} Tableau de bord</a>
@@ -70,20 +77,35 @@ export function renderNewApp(view) {
           <div class="card">
             <div class="card-header"><h2><span class="step-num">2</span> Configuration</h2></div>
             <div class="card-body form-grid">
-              ${isStatic
+              ${isMc
+                ? html`${mcFieldsHTML(f.mc, machine)}
+                    <div class="field">
+                      <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port (25565 : port habituel de Minecraft, qu’on n’a pas besoin de taper). Pour jouer depuis Internet, redirigez ce port vers la machine dans votre box.')}</label>
+                      <input id="mc-port" type="number" name="port" value="${f.port}" placeholder="Automatique (25565)" min="1024" max="65535" />
+                    </div>
+                    <div class="full new-app-toggles">
+                      <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique ${tip('Relance le serveur s’il plante.')}</span></label>
+                      <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec la machine ${tip('Lance le serveur à chaque démarrage de la machine.')}</span></label>
+                      <label class="check mc-eula">${toggle('eula', f.eula)}<span>J'accepte le <a href="https://aka.ms/MinecraftEULA" target="_blank" rel="noopener">CLUF de Minecraft</a> ${tip('Le contrat de licence de Mojang : obligatoire pour faire tourner un serveur Minecraft.')}</span></label>
+                    </div>
+                    <div class="full error-text"></div>`
+                : ''}
+              ${isStatic || isMc
                 ? ''
                 : html`<div class="field full">
                     <label>Commande de démarrage ${tip(html`Par exemple <code>node index.js</code>, plus léger que <code>npm start</code> (un seul processus au lieu de deux).`)}</label>
                     <input type="text" name="startCommand" class="mono" value="${f.startCommand}" spellcheck="false" />
                   </div>`}
-              <div class="field">
-                <label>Installation des dépendances ${tip('Lancée s’il y a un package.json. Laissez vide pour la désactiver.')}</label>
-                <input type="text" name="installCommand" class="mono" value="${f.installCommand}" spellcheck="false" />
-              </div>
-              <div class="field">
-                <label>Commande de build <span class="faint">(optionnel)</span></label>
-                <input type="text" name="buildCommand" class="mono" value="${f.buildCommand}" placeholder="npm run build" spellcheck="false" />
-              </div>
+              ${isMc
+                ? ''
+                : html`<div class="field">
+                      <label>Installation des dépendances ${tip('Lancée s’il y a un package.json. Laissez vide pour la désactiver.')}</label>
+                      <input type="text" name="installCommand" class="mono" value="${f.installCommand}" spellcheck="false" />
+                    </div>
+                    <div class="field">
+                      <label>Commande de build <span class="faint">(optionnel)</span></label>
+                      <input type="text" name="buildCommand" class="mono" value="${f.buildCommand}" placeholder="npm run build" spellcheck="false" />
+                    </div>`}
               ${isStatic
                 ? html`<div class="field">
                       <label>Dossier à servir ${tip(html`<code>.</code> pour la racine, <code>dist</code> ou <code>build</code> après un build.`)}</label>
@@ -104,36 +126,63 @@ export function renderNewApp(view) {
                       <input type="text" name="domains" class="mono" value="${f.domains}" placeholder="monsite.fr, www.monsite.fr" spellcheck="false" />
                     </div>`
                 : ''}
-              <div class="full new-app-toggles">
-                <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique ${tip('Relance l’application si elle plante.')}</span></label>
-                <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec la machine ${tip('Lance l’application à chaque démarrage de la machine.')}</span></label>
-              </div>
-              <div class="full error-text"></div>
+              ${isMc
+                ? ''
+                : html`<div class="full new-app-toggles">
+                      <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique ${tip('Relance l’application si elle plante.')}</span></label>
+                      <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec la machine ${tip('Lance l’application à chaque démarrage de la machine.')}</span></label>
+                    </div>
+                    <div class="full error-text"></div>`}
             </div>
             <div class="card-foot">
               <a class="btn btn-ghost" href="/home">Annuler</a>
-              <button class="btn btn-primary" type="submit">${icon('check')} Créer l'application</button>
+              <button class="btn btn-primary" type="submit">${icon('check')} ${isMc ? 'Créer le serveur' : 'Créer l’application'}</button>
             </div>
           </div>
         </form>`,
     );
   }
 
+  // serveur Minecraft : versions disponibles (et mémoire / cœurs de la machine pour les limites)
+  const loadVersions = async () => {
+    if (f.type !== 'minecraft') return;
+    const info = await fillVersions(root, f.mc.flavor);
+    if (info && !machine) {
+      machine = { memory: info.memory, cores: info.cores };
+      keepMc();
+      render();
+      loadVersions();
+    }
+  };
+  // garde les valeurs des champs Minecraft avant de redessiner la page
+  const keepMc = () => {
+    const form = $('#new-app', root);
+    if (form?.querySelector('[name=mcFlavor]')) f.mc = readMcFields(form);
+  };
+
   render();
+  loadVersions();
   // le nom se tape tout de suite (pas sur téléphone : le clavier masquerait la page)
   if (matchMedia('(pointer: fine)').matches) $('#na-name', root)?.focus();
 
   root.addEventListener('change', (e) => {
+    if (e.target.name === 'mcFlavor') {
+      keepMc();
+      fillVersions(root, e.target.value);
+      return;
+    }
     if (e.target.name !== 'type') return;
+    keepMc();
     f.type = e.target.value;
     if (!f.startTouched) f.startCommand = defaultStart(f.type);
     render();
+    loadVersions();
     $('#na-type', root).focus();
   });
 
   root.addEventListener('input', (e) => {
     const { name } = e.target;
-    if (!name || name === 'type' || !(name in f)) return;
+    if (!name || name === 'type' || !(name in f) || name === 'mc') return;
     f[name] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     if (name === 'startCommand') f.startTouched = true;
   });
@@ -150,6 +199,18 @@ export function renderNewApp(view) {
       return;
     }
 
+    const isMc = f.type === 'minecraft';
+    if (isMc) {
+      f.mc = readMcFields(form);
+      if (!f.eula) {
+        error.textContent = 'Acceptez le CLUF de Minecraft pour créer le serveur';
+        return;
+      }
+      if (!(f.mc.ramMax >= f.mc.ramMin && f.mc.ramMin >= 256)) {
+        error.textContent = 'Mémoire : le minimum doit être inférieur ou égal au maximum';
+        return;
+      }
+    }
     const body = {
       name: f.name,
       type: f.type,
@@ -159,9 +220,15 @@ export function renderNewApp(view) {
       autoRestart: f.autoRestart,
       startOnBoot: f.startOnBoot,
     };
-    if (f.type !== 'static') body.startCommand = f.startCommand;
-    if (f.type === 'static') Object.assign(body, { staticDir: f.staticDir, spa: f.spa });
-    if (f.type !== 'bot') Object.assign(body, { port: f.port || null, domains: f.domains });
+    if (isMc) {
+      delete body.installCommand;
+      delete body.buildCommand;
+      Object.assign(body, { mc: { ...f.mc, eula: true }, port: f.port || null, start: true });
+    } else {
+      if (f.type !== 'static') body.startCommand = f.startCommand;
+      if (f.type === 'static') Object.assign(body, { staticDir: f.staticDir, spa: f.spa });
+      if (f.type !== 'bot') Object.assign(body, { port: f.port || null, domains: f.domains });
+    }
 
     button.disabled = true;
     // écran flouté pendant la création ; il disparaît une fois l'application ouverte
@@ -178,7 +245,8 @@ export function renderNewApp(view) {
       await refreshApps();
       // l'écran reste visible un court instant (pas de clignotement), puis l'application s'ouvre et l'écran disparaît
       await new Promise((r) => setTimeout(r, Math.max(0, 700 - (Date.now() - screen.startedAt))));
-      navigate(`/apps/${app.id}/files`); // dossier vide : on y dépose le code
+      // dossier vide : on y dépose le code ; serveur Minecraft : son installation se suit dans la console
+      navigate(`/apps/${app.id}/${isMc ? 'console' : 'files'}`);
       toast(`« ${app.name} » a été créée`);
       setTimeout(() => screen.close(), 250);
     } catch (err) {

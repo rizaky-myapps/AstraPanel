@@ -51,6 +51,8 @@ export function createPanel(cfg = config) {
   const appMetrics = new AppMetrics(path.join(cfg.dataDir, 'app-metrics.json'), apps);
   const updater = new Updater({ store, config: cfg });
   const audit = new AuditLog({ file: path.join(cfg.dataDir, 'audit.log'), store });
+  // mise à jour automatique lancée par le panel lui-même : notée dans le journal d'activité
+  updater.onAutoUpdate = (version) => audit.record({ category: 'panel', label: 'Mise à jour automatique du panel lancée', detail: `vers la version ${version}` });
   const hardware = new Hardware({ config: cfg });
 
   const router = new Router();

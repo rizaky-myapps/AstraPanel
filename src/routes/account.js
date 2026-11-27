@@ -17,7 +17,8 @@ export function imageType(buf) {
 export const avatarPath = (dataDir, userId) => path.join(dataDir, 'avatars', userId);
 
 export const THEMES = ['auto', 'light', 'dark'];
-export const ACCENTS = ['solaire', 'ocean', 'aurore', 'nebuleuse', 'framboise'];
+export const ACCENTS = ['solaire', 'ocean', 'aurore', 'nebuleuse', 'framboise', 'crepuscule', 'lagon', 'foret', 'lave', 'glacier', 'graphite', 'custom'];
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 // Gestion de son propre compte, pour tous les comptes : pseudo, photo, sessions, activité.
 export function accountRoutes(router, { auth, store, apps, audit, config }) {
@@ -52,6 +53,12 @@ export function accountRoutes(router, { auth, store, apps, audit, config }) {
     if ('accent' in body) {
       if (!ACCENTS.includes(body.accent)) throw new HttpError(400, 'Couleur inconnue');
       prefs.accent = body.accent;
+    }
+    // thème personnalisé : dégradé de deux couleurs (#rrggbb), gardé même quand une autre couleur est choisie
+    if ('custom' in body) {
+      const { from, to } = body.custom || {};
+      if (!HEX_COLOR.test(from || '') || !HEX_COLOR.test(to || '')) throw new HttpError(400, 'Couleurs personnalisées invalides (#rrggbb)');
+      prefs.custom = { from: from.toLowerCase(), to: to.toLowerCase() };
     }
     ctx.user.prefs = prefs;
     store.save();

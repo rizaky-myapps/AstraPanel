@@ -1,7 +1,7 @@
 # AstraPanel : installation
 
-AstraPanel est un panel web, en français, pour héberger vos **bots Discord** et vos **sites web JavaScript** sur votre
-propre machine. Ce guide explique, pas à pas, comment l'installer : choix de la machine et du système, commandes à
+AstraPanel est un panel web, en français, pour héberger vos **bots Discord**, vos **sites web JavaScript** et vos
+**serveurs Minecraft** sur votre propre machine. Ce guide explique, pas à pas, comment l'installer : choix de la machine et du système, commandes à
 taper, première connexion. Comptez 20 à 30 minutes, installation du système comprise.
 
 ![Tableau de bord d'AstraPanel](docs/images/tableau-de-bord.png)
@@ -30,7 +30,7 @@ mini-PC, un serveur à la maison, une carte ARM 64 bits, ou un serveur loué (VP
 | | Minimum | Conseillé |
 | --- | --- | --- |
 | Processeur | 64 bits : **x86-64** (Intel, AMD) ou **ARM64** | 2 cœurs ou plus |
-| Mémoire vive | 2 Go (quelques bots) | 4 Go ou plus (plusieurs bots et sites) |
+| Mémoire vive | 2 Go (quelques bots) | 4 Go ou plus (plusieurs bots et sites), 8 Go avec un serveur Minecraft |
 | Stockage | 16 Go libres | un **SSD**, plus rapide et plus fiable allumé 24 h/24 |
 | Réseau | Wi-Fi | un **câble Ethernet** relié à la box |
 
@@ -226,13 +226,14 @@ Toutes se tapent sur la machine, en SSH.
 | Voir si le panel tourne | `sudo systemctl status astrapanel` |
 | Lire ses messages en direct (Ctrl+C pour quitter) | `sudo journalctl -u astrapanel -f` |
 | Le redémarrer | `sudo systemctl restart astrapanel` |
-| Le mettre à jour (aussi possible depuis **Paramètres → Mises à jour**) | `sudo astrapanel-update` |
+| Le mettre à jour (aussi possible depuis **Paramètres → Mises à jour**, ou automatiquement) | `sudo astrapanel-update` |
 | Revenir à une version précise | `sudo astrapanel-update AstraPanel-V.1.4.4` |
 | Réinitialiser un mot de passe oublié | `sudo astrapanel-cli reset-password admin` |
 | Retrouver l'adresse IP de la machine | `hostname -I` |
 
-Les mises à jour sont annoncées dans le panel (cloche de la barre du haut) : un clic dans **Paramètres → Mises à
-jour** suffit, sans SSH.
+Les mises à jour sont annoncées dans le panel (cloche de la barre du haut) dès leur publication : un clic dans
+**Paramètres → Mises à jour** suffit, sans SSH. L'interrupteur **Mises à jour automatiques** les installe même
+toutes seules.
 
 Pour **changer le port** plus tard, relancez l'installation depuis le dossier téléchargé, après l'avoir mis à jour
 (vos applications et vos comptes sont conservés) :
@@ -282,7 +283,7 @@ autant de fois que nécessaire, sans rien perdre.
 ## 11. Et ensuite ?
 
 - 📘 [**Tutoriel complet**](docs/TUTORIEL.md) : prise en main du panel, héberger un bot Discord, un site Node.js ou
-  statique, gérer les fichiers, le déploiement automatique depuis GitHub, les utilisateurs, la sécurité de la
+  statique, un serveur Minecraft, gérer les fichiers, le déploiement automatique depuis GitHub, les utilisateurs, la sécurité de la
   machine, les sauvegardes.
 - ☁️ [**Tutoriel Cloudflare**](docs/CLOUDFLARE.md) : mettre vos sites en ligne en HTTPS avec votre nom de domaine,
   sans ouvrir de port sur votre box.

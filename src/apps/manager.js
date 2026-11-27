@@ -8,14 +8,17 @@ import { HttpError } from '../http/util.js';
 import { assertDomainsFree, normalizeDomains } from '../domains.js';
 import { LogBuffer, stripAnsi } from './logs.js';
 import { REFUSED_ALREADY_RUNNING, REFUSED_FROM_APP } from '../instance.js';
+import { FLAVORS, JAR, MC_DEFAULTS, MC_PORT, cleanMinecraft, download, ensureJava, javaBin, launchCommand, resolveServer, setServerPort, writeEula } from './minecraft.js';
 import { baseEnv, killGroup, pipeOutput, runCommand, runShell } from './process.js';
 import { CLK_TCK, sampleProcessGroups } from './stats.js';
 import { addrInUsePort, listProcesses, portOwner } from '../ports.js';
 
-export const TYPES = ['bot', 'node', 'static'];
+export const TYPES = ['bot', 'node', 'static', 'minecraft'];
 const SOURCES = ['empty', 'template', 'git', 'archive'];
 const TASKS = { deploy: 'Déploiement', install: 'Installation des dépendances', build: 'Build' };
 const STOP_TIMEOUT = 10000;
+// Minecraft : commande « stop » (sauvegarde des mondes), puis signal d'arrêt si le serveur n'a pas fini à temps
+const MC_STOP_TIMEOUT = 60000;
 const MAX_RESTARTS = 10;
 // Commande qui passe par npm / pnpm / yarn (« npm start », « NODE_OPTIONS=… npm run start »…), sans --prefix
 const PACKAGE_MANAGER_RE = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:npm|pnpm|yarn)(?:\s|$)/;
@@ -29,7 +32,9 @@ const TEMPLATES = {
   static: { dir: 'static-site', startCommand: '' },
 };
 
-const needsPort = (type) => type === 'node' || type === 'static';
+const needsPort = (type) => type === 'node' || type === 'static' || type === 'minecraft';
+// seuls les sites passent par le tunnel Cloudflare (HTTP) : un bot ou un serveur Minecraft n'a pas de domaine
+const needsDomain = (type) => type === 'node' || type === 'static';
 
 function str(value, max, field) {
   if (value === undefined || value === null) return '';
@@ -307,6 +312,20 @@ export class AppManager {
     throw new HttpError(409, `Aucun port libre entre ${start} et ${end}`);
   }
 
+  // Serveur Minecraft : le port habituel (25565) s'il est libre, sinon le suivant
+  async allocateMinecraftPort(exceptId = null) {
+    const used = new Set(this.apps.filter((a) => a.id !== exceptId && a.port).map((a) => a.port));
+    used.add(this.config.port);
+    for (let port = MC_PORT; port < MC_PORT + 100; port++) {
+      if (!used.has(port) && (await isPortFree(port))) return port;
+    }
+    return this.allocatePort(exceptId);
+  }
+
+  get runtimeDir() {
+    return path.join(this.config.dataDir, 'runtime');
+  }
+
   // Valide et applique les champs modifiables sur `app` (appelé sur une copie lors d'une mise à jour).
   applyFields(app, input) {
     if ('name' in input) {
@@ -316,7 +335,8 @@ export class AppManager {
     for (const key of ['startCommand', 'installCommand', 'buildCommand']) {
       if (key in input) app[key] = str(input[key], 1000, key);
     }
-    if (app.type !== 'static' && !app.startCommand) throw new HttpError(400, 'La commande de démarrage est obligatoire');
+    if (app.type !== 'static' && app.type !== 'minecraft' && !app.startCommand) throw new HttpError(400, 'La commande de démarrage est obligatoire');
+    if ('mc' in input && app.type === 'minecraft') app.mc = cleanMinecraft(input.mc || {}, app.mc);
     if ('staticDir' in input) app.staticDir = cleanRelDir(input.staticDir);
     if ('spa' in input) app.spa = Boolean(input.spa);
     if ('autoRestart' in input) app.autoRestart = Boolean(input.autoRestart);
@@ -325,7 +345,9 @@ export class AppManager {
     if ('git' in input) app.git = cleanGit(input.git);
     if ('domains' in input) {
       const domains = normalizeDomains(input.domains);
-      if (domains.length && !needsPort(app.type)) throw new HttpError(400, 'Un bot ne peut pas avoir de domaine');
+      if (domains.length && !needsDomain(app.type)) {
+        throw new HttpError(400, app.type === 'minecraft' ? 'Un serveur Minecraft n’a pas de domaine : les joueurs s’y connectent avec l’adresse de la machine et le port' : 'Un bot ne peut pas avoir de domaine');
+      }
       assertDomainsFree(this.store, domains, app.id);
       app.domains = domains;
     }
@@ -346,12 +368,14 @@ export class AppManager {
     const name = str(input.name, 60, 'nom');
     if (!name) throw new HttpError(400, 'Le nom est obligatoire');
 
+    const mc = type === 'minecraft';
+    if (mc && source !== 'empty') throw new HttpError(400, 'Un serveur Minecraft se crée sans code source : le panel télécharge le serveur');
     const app = {
       id: this.makeId(name),
       name,
       type,
-      startCommand: source === 'template' ? TEMPLATES[type].startCommand : type === 'static' ? '' : 'npm start',
-      installCommand: 'npm install',
+      startCommand: source === 'template' ? TEMPLATES[type].startCommand : type === 'static' || mc ? '' : 'npm start',
+      installCommand: mc ? '' : 'npm install',
       buildCommand: '',
       staticDir: '.',
       spa: false,
@@ -368,9 +392,11 @@ export class AppManager {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    if (mc) app.mc = { ...MC_DEFAULTS };
     this.applyFields(app, input);
     if (source === 'git' && !app.git) throw new HttpError(400, 'L’URL du dépôt Git est obligatoire');
-    if (needsPort(type) && !app.port) app.port = await this.allocatePort();
+    if (mc && !app.mc.eula) throw new HttpError(400, 'Acceptez le CLUF de Minecraft pour créer un serveur');
+    if (needsPort(type) && !app.port) app.port = mc ? await this.allocateMinecraftPort() : await this.allocatePort();
 
     await mkdir(this.dir(app), { recursive: true });
     if (source === 'template') {
@@ -382,6 +408,8 @@ export class AppManager {
 
     const routing = app.domains.length ? await this.publish() : {};
     if (source === 'git' || source === 'template') this.runTask(app.id, 'deploy', { start: Boolean(input.start) });
+    // serveur Minecraft : téléchargement de Java et du serveur, puis démarrage (suivi dans la console)
+    if (mc) this.runTask(app.id, 'deploy', { start: input.start !== false });
     return { app: this.serialize(app), ...routing };
   }
 
@@ -389,11 +417,14 @@ export class AppManager {
     const app = this.get(id);
     const copy = structuredClone(app);
     this.applyFields(copy, input);
-    if (needsPort(copy.type) && !copy.port) copy.port = await this.allocatePort(copy.id);
+    if (needsPort(copy.type) && !copy.port) copy.port = copy.type === 'minecraft' ? await this.allocateMinecraftPort(copy.id) : await this.allocatePort(copy.id);
     const routingChanged = JSON.stringify([app.domains, app.port]) !== JSON.stringify([copy.domains, copy.port]);
+    const serverChanged = copy.type === 'minecraft' && (copy.mc.flavor !== app.mc?.flavor || copy.mc.version !== app.mc?.version);
     Object.assign(app, copy, { updatedAt: Date.now() });
     this.store.save();
     const routing = routingChanged ? await this.publish() : {};
+    // autre version ou autre type de serveur Minecraft : téléchargé tout de suite (redémarré s'il tournait)
+    if (serverChanged && !this.rt(id).busy) this.runTask(id, 'deploy');
     return { app: this.serialize(app), ...routing };
   }
 
@@ -491,7 +522,7 @@ export class AppManager {
   }
 
   isAstraPanelCode(app) {
-    if (app.type === 'static') return false;
+    if (app.type === 'static' || app.type === 'minecraft') return false;
     const dir = this.dir(app);
     const isPanel = (base) => {
       try {
@@ -559,6 +590,13 @@ export class AppManager {
         'Supprimez-la ; pour mettre le panel à jour, utilisez Paramètres → Mises à jour.',
       );
     }
+    if (app.type === 'minecraft') {
+      const java = app.mcInstalled?.java && javaBin(this.runtimeDir, app.mcInstalled.java);
+      if (!java || !existsSync(java) || !existsSync(path.join(this.dir(app), JAR))) {
+        return refuse('Le serveur Minecraft n’est pas encore installé', 'Cliquez sur « Déployer maintenant » dans l’onglet Déploiement : le panel télécharge Java et le serveur.');
+      }
+      await setServerPort(this.dir(app), app.port).catch(() => {});
+    }
     if (app.type !== 'static' && this.packageManagerWithoutPackage(app, app.startCommand)) {
       return refuse(
         `Pas de package.json dans le dossier de l’application : « ${app.startCommand} » ne peut pas fonctionner`,
@@ -613,7 +651,11 @@ export class AppManager {
     let command;
     let args;
     let display;
-    if (app.type === 'static') {
+    if (app.type === 'minecraft') {
+      ({ command, args } = launchCommand(javaBin(this.runtimeDir, app.mcInstalled.java), app.mc, { flavor: app.mcInstalled.flavor }));
+      const cores = app.mc.cores ? `${app.mc.cores} cœur${app.mc.cores > 1 ? 's' : ''}` : 'tous les cœurs';
+      display = `${FLAVORS[app.mcInstalled.flavor].label} ${app.mcInstalled.version} (Java ${app.mcInstalled.java}, ${app.mc.ramMin}–${app.mc.ramMax} Mo, ${cores})`;
+    } else if (app.type === 'static') {
       env.STATIC_ROOT = path.resolve(cwd, app.staticDir || '.');
       env.STATIC_SPA = app.spa ? '1' : '0';
       command = process.execPath;
@@ -728,16 +770,29 @@ export class AppManager {
     if (!child) return Promise.resolve();
     rt.stopping = true;
     rt.status = 'stopping';
+    // serveur Minecraft : « stop » sur sa console (il sauvegarde les mondes), signal d'arrêt seulement s'il traîne
+    const graceful = app.type === 'minecraft' && child.stdin?.writable;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.logsFor(app.id).system('Arrêt forcé (SIGKILL) : le processus ne répondait pas');
-        killGroup(child.pid, 'SIGKILL');
-      }, STOP_TIMEOUT);
+      const term = () => {
+        if (!killGroup(child.pid, 'SIGTERM')) child.kill('SIGTERM');
+      };
+      const termTimer = graceful ? setTimeout(term, MC_STOP_TIMEOUT) : null;
+      const timer = setTimeout(
+        () => {
+          this.logsFor(app.id).system('Arrêt forcé (SIGKILL) : le processus ne répondait pas');
+          killGroup(child.pid, 'SIGKILL');
+        },
+        graceful ? MC_STOP_TIMEOUT + STOP_TIMEOUT : STOP_TIMEOUT,
+      );
       rt.exitWaiters.push(() => {
         clearTimeout(timer);
+        clearTimeout(termTimer);
         resolve();
       });
-      if (!killGroup(child.pid, 'SIGTERM')) child.kill('SIGTERM');
+      if (graceful) {
+        this.logsFor(app.id).system('Arrêt du serveur (commande « stop » : sauvegarde des mondes)…');
+        child.stdin.write('stop\n');
+      } else term();
     });
   }
 
@@ -949,6 +1004,7 @@ export class AppManager {
     const app = this.get(id);
     const rt = this.rt(id);
     if (!TASKS[task]) throw new HttpError(400, 'Tâche inconnue');
+    if (app.type === 'minecraft' && task !== 'deploy') throw new HttpError(400, 'Serveur Minecraft : utilisez « Déployer maintenant » (téléchargement de Java et du serveur)');
     this.assertIdle(rt);
     rt.busy = task;
     const log = this.logsFor(id);
@@ -958,9 +1014,12 @@ export class AppManager {
 
     (async () => {
       try {
-        if (task === 'deploy' && app.git) await this.gitSync(app, log);
-        if (task === 'deploy' || task === 'install') await this.install(app, log, task === 'install');
-        if (task === 'deploy' || task === 'build') await this.build(app, log, task === 'build');
+        if (app.type === 'minecraft') await this.mcInstall(app, log);
+        else {
+          if (task === 'deploy' && app.git) await this.gitSync(app, log);
+          if (task === 'deploy' || task === 'install') await this.install(app, log, task === 'install');
+          if (task === 'deploy' || task === 'build') await this.build(app, log, task === 'build');
+        }
         log.system(`✔ ${label} terminé en ${((Date.now() - begin) / 1000).toFixed(1)} s`);
         onDone?.(null);
         if (task === 'deploy' && this.find(id) && (start || rt.child || app.desired === 'running')) {
@@ -973,6 +1032,7 @@ export class AppManager {
       } finally {
         rt.busy = null;
         rt.taskChild = null;
+        rt.taskAbort = null;
         setImmediate(() => this.runQueuedDeploy(id));
       }
     })();
@@ -983,6 +1043,7 @@ export class AppManager {
     const rt = this.rt(id);
     if (!rt.busy) throw new HttpError(409, 'Aucune tâche en cours');
     if (rt.taskChild) killGroup(rt.taskChild.pid, 'SIGKILL');
+    rt.taskAbort?.abort(); // téléchargement en cours (serveur Minecraft, Java)
     this.logsFor(id).system('Annulation demandée');
   }
 
@@ -1028,6 +1089,33 @@ export class AppManager {
     }
     await git(['reset', '-q', '--hard', 'FETCH_HEAD'], 'git reset');
     await git(['log', '-1', '--format=Commit %h : %s (%an, %cr)'], 'git log');
+  }
+
+  // Serveur Minecraft : Java (la version demandée par Minecraft), le serveur (Paper ou Vanilla), le CLUF et le port
+  async mcInstall(app, log) {
+    const rt = this.rt(app.id);
+    const abort = new AbortController();
+    rt.taskAbort = abort;
+    const { signal } = abort;
+    const dir = this.dir(app);
+    await mkdir(dir, { recursive: true });
+    const mc = app.mc || { ...MC_DEFAULTS };
+    log.system(`Recherche de ${FLAVORS[mc.flavor].label} ${mc.version === 'latest' ? '(dernière version)' : mc.version}…`);
+    const server = await resolveServer(mc.flavor, mc.version, signal);
+    const java = await ensureJava(this.runtimeDir, server.java, { log, signal });
+    const jar = path.join(dir, JAR);
+    if (app.mcInstalled?.url === server.url && existsSync(jar)) log.system(`${server.label} déjà installé`);
+    else {
+      log.system(`Téléchargement de ${server.label}…`);
+      await download(server.url, jar, { log, label: server.label, sha256: server.sha256, sha1: server.sha1, signal });
+    }
+    await writeEula(dir, mc.eula);
+    await setServerPort(dir, app.port);
+    const current = this.find(app.id);
+    if (!current) return;
+    current.mcInstalled = { flavor: mc.flavor, version: server.version, build: server.build, url: server.url, java: java.major, at: Date.now() };
+    this.store.save();
+    log.system(`✔ ${server.label} prêt (Java ${java.major}) — port ${app.port}`);
   }
 
   async install(app, log, explicit) {

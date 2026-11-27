@@ -8,9 +8,12 @@ sécurité. Pour l'installer, suivez le [README](../README.md) ; pour l'utiliser
 - **`AstraPanel-Latest`** (branche principale) contient toujours la dernière version. Chaque version est aussi
   conservée sur sa propre branche **`AstraPanel-V.X.Y.Z`**, avec exactement les mêmes fichiers.
 - Les versions avancent de 0.0.1 à chaque publication : 1.2.8 → 1.2.9 → 1.3.0 → 1.3.1.
-- Les panels installés regardent `AstraPanel-Latest` toutes les 5 minutes et lisent la version dans son
+- Les panels installés regardent `AstraPanel-Latest` en continu (toutes les 30 secondes : un `git ls-remote` de
+  quelques octets, le `package.json` n'est relu que si le dernier commit change) et lisent la version dans son
   `package.json` : si elle est plus récente, une notification l'annonce aux administrateurs, et un clic dans
-  **Paramètres → Mises à jour** l'installe.
+  **Paramètres → Mises à jour** l'installe. Avec **Mises à jour automatiques** (réglage `autoUpdate`, désactivé par
+  défaut), le panel la demande lui-même au service `astrapanel-update` ; après un échec, la même version n'est
+  redemandée que 6 heures plus tard (`state.autoUpdate`).
 - Pour publier une version : `./scripts/nouvelle-version.sh` (calcule la version suivante, met à jour
   `package.json`, pousse `AstraPanel-Latest` et crée `AstraPanel-V.X.Y.Z`).
 
@@ -32,6 +35,14 @@ sécurité. Pour l'installer, suivez le [README](../README.md) ; pour l'utiliser
    └──────────────────────────────────────────────────────────────────────┘
 ```
 
+- **Serveurs Minecraft** (`src/apps/minecraft.js`) : versions lues sur l'API Fill de PaperMC
+  (`fill.papermc.io/v3`) ou le manifeste de Mojang ; Java (Eclipse Temurin, la plus ancienne LTS qui convient : 21
+  pour 1.20.5–1.21.x, 25 pour 26.x…) téléchargé depuis l'API d'Adoptium dans `data/runtime/java-<version>` ; serveur
+  téléchargé dans `server.jar` avec vérification de l'empreinte (SHA-256 ou SHA-1) ; `eula.txt` et `server-port`
+  écrits par le panel. Lancement : `taskset -c 0-<n-1> java -Xms… -Xmx… -XX:ActiveProcessorCount=<n> … -jar
+  server.jar --nogui` (`-Dterminal.ansi=true` pour les couleurs). Arrêt : `stop` sur l'entrée standard, puis SIGTERM
+  après 60 secondes (`TimeoutStopSec=90` dans le service). Adresses des API modifiables pour les tests :
+  `ASTRA_PAPER_API`, `ASTRA_MOJANG_MANIFEST`, `ASTRA_ADOPTIUM_API`.
 - Chaque application est un processus lancé par le panel dans son propre groupe de processus (arrêt propre de tout
   l'arbre, `npm start` compris), avec redémarrage automatique et backoff en cas de plantage.
 - Les sites reçoivent leur port dans `PORT`. Le tunnel Cloudflare, lancé en même temps que le panel, redirige chaque

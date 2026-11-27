@@ -39,6 +39,7 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
   });
   router.post('/api/update/check', () => updater.check(), { admin: true });
   router.post('/api/update/apply', (ctx) => updater.request(ctx.user), { admin: true });
+  router.put('/api/update/auto', async (ctx) => updater.setAuto((await ctx.json()).enabled === true), { admin: true });
   router.get('/api/update/log', async () => ({ log: await updater.log(), run: await updater.runStatus() }), { admin: true });
 
   // --- Tunnel Cloudflare ------------------------------------------------------

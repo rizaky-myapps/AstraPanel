@@ -18,7 +18,8 @@ Restart=always
 RestartSec=3
 # SIGTERM au panel seulement : il arrête proprement les applis, puis systemd nettoie le reste.
 KillMode=mixed
-TimeoutStopSec=30
+# un serveur Minecraft peut mettre jusqu'à une minute à sauvegarder ses mondes
+TimeoutStopSec=90
 LimitNOFILE=65536
 
 # Durcissement : le code du panel et le système sont en lecture seule pour le service.

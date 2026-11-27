@@ -6,6 +6,7 @@ import { readFile, rm } from 'node:fs/promises';
 import { stripAnsi } from '../apps/logs.js';
 import { HttpError, readBody, receiveToFile, streamLog } from '../http/util.js';
 import { RANGE_LIST } from '../metrics.js';
+import { FLAVORS, listVersions, machineCores, machineMemory } from '../apps/minecraft.js';
 
 export function sendDownload(res, file, size, name, type = 'application/octet-stream') {
   res.writeHead(200, {
@@ -35,6 +36,13 @@ export function appRoutes(router, { apps, appMetrics, config }) {
     },
     { admin: true },
   );
+
+  // Serveurs Minecraft : versions disponibles et ressources de la machine (création, réglages)
+  router.get('/api/minecraft/versions', async (ctx) => {
+    const flavor = ctx.query.get('flavor') || 'paper';
+    const versions = await listVersions(flavor);
+    return { flavor, flavors: FLAVORS, versions: versions.map((v) => v.id), memory: machineMemory(), cores: machineCores() };
+  });
 
   // Historique processeur / mémoire de l'application (onglet Statistiques)
   router.get('/api/apps/:id/metrics', (ctx) => {

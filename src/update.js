@@ -9,11 +9,14 @@ import { stripAnsi } from './apps/logs.js';
 import { LATEST_BRANCH, compareVersions, parseVersion } from './version.js';
 
 const execFileAsync = promisify(execFile);
-// Le panel regarde la branche « AstraPanel-Latest » toutes les 5 minutes.
-export const CHECK_EVERY = 5 * 60_000;
+// Le panel regarde la branche « AstraPanel-Latest » en continu : toutes les 30 secondes (une requête « ls-remote » de
+// quelques octets ; le package.json n'est relu que lorsque le dernier commit change).
+export const CHECK_EVERY = 30_000;
+// Mise à jour automatique : pour une même version, nouvel essai au plus toutes les 6 heures (si la précédente a échoué)
+const AUTO_RETRY = 6 * 3600_000;
 
 // Fichiers du service de mise à jour (installés par install.sh, écrits par root)
-const UPDATER_UNIT = '/etc/systemd/system/astrapanel-update.path';
+const updaterUnit = () => process.env.ASTRA_UPDATER_UNIT || '/etc/systemd/system/astrapanel-update.path';
 const statusFile = () => process.env.ASTRA_UPDATE_STATUS || '/var/lib/astrapanel/update-status.json';
 const logFile = () => process.env.ASTRA_UPDATE_LOG || '/var/log/astrapanel-update.log';
 const RUN_FRESH = 30 * 60_000; // une mise à jour plus ancienne n'est plus « en cours »
@@ -121,11 +124,42 @@ export class Updater {
   // Une seule vérification à la fois : les appels simultanés partagent la même.
   check() {
     this.inflight ||= this.doCheck()
+      .then(() => this.autoUpdate())
       .finally(() => {
         this.inflight = null;
       })
       .then(() => this.status());
     return this.inflight;
+  }
+
+  autoEnabled() {
+    return this.store.data.settings.autoUpdate === true;
+  }
+
+  // Mises à jour automatiques (réglage du panel) : une nouvelle version publiée est installée tout de suite.
+  // Un échec n'est pas retenté en boucle : même version, nouvel essai 6 heures plus tard.
+  async autoUpdate() {
+    if (!this.autoEnabled() || !this.installed()) return;
+    const latest = this.state.latestVersion;
+    if (!latest || compareVersions(latest, this.config.version) <= 0 || !existsSync(updaterUnit())) return;
+    const tried = this.store.data.state.autoUpdate;
+    if (tried?.version === latest && Date.now() - tried.at < AUTO_RETRY) return;
+    try {
+      await this.request({ username: 'mise à jour automatique' });
+    } catch {
+      return; // une mise à jour est déjà en cours ou demandée
+    }
+    this.store.data.state.autoUpdate = { version: latest, at: Date.now() };
+    this.store.save();
+    this.onAutoUpdate?.(latest);
+  }
+
+  async setAuto(enabled) {
+    this.store.data.settings.autoUpdate = Boolean(enabled);
+    this.store.save();
+    // activées alors qu'une version est déjà disponible : elle est installée sans attendre
+    if (enabled) await this.check().catch(() => {});
+    return this.status();
   }
 
   async doCheck() {
@@ -216,8 +250,9 @@ export class Updater {
       lastCheck: this.state.lastCheck,
       nextCheck: this.nextCheck,
       interval: CHECK_EVERY,
+      auto: this.autoEnabled(),
       error: this.state.error,
-      updater: existsSync(UPDATER_UNIT),
+      updater: existsSync(updaterUnit()),
       pending: existsSync(this.requestFile),
       run,
     };
@@ -254,7 +289,7 @@ export class Updater {
 
   // Demande la mise à jour au service root « astrapanel-update » (déclenché par la présence du fichier).
   async request(user) {
-    if (!existsSync(UPDATER_UNIT)) {
+    if (!existsSync(updaterUnit())) {
       throw new HttpError(400, 'Le service de mise à jour n’est pas installé : relancez « sudo ./install.sh » une fois sur la machine.');
     }
     const run = await this.runStatus();
@@ -267,18 +302,18 @@ export class Updater {
     return { ok: true };
   }
 
-  // Première vérification peu après le démarrage, puis toutes les 5 minutes.
+  // Première vérification quelques secondes après le démarrage, puis en continu (toutes les 30 secondes).
   start() {
     const tick = () => {
       this.nextCheck = Date.now() + CHECK_EVERY;
       this.check().catch(() => {});
     };
-    this.nextCheck = Date.now() + 15_000;
+    this.nextCheck = Date.now() + 5_000;
     this.firstTimer = setTimeout(() => {
       tick();
       this.timer = setInterval(tick, CHECK_EVERY);
       this.timer.unref();
-    }, 15_000);
+    }, 5_000);
     this.firstTimer.unref();
   }
 

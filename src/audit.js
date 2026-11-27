@@ -107,6 +107,7 @@ const ACTIONS = {
   }),
   'POST /api/update/check': () => ({ label: 'Vérification des mises à jour du panel' }),
   'POST /api/update/apply': (c) => ({ label: 'Mise à jour du panel lancée', detail: c.names.version ? `vers la version ${c.names.version}` : null }),
+  'PUT /api/update/auto': (c) => ({ label: c.body?.enabled ? 'Mises à jour automatiques activées' : 'Mises à jour automatiques désactivées' }),
   'POST /api/hardware/reboot': () => ({ label: 'Redémarrage de la machine' }),
   // --- Tunnel Cloudflare
   'POST /api/tunnel/install': (c) => ({ label: 'Installation de cloudflared', detail: c.result?.version ? `version ${c.result.version}` : null }),

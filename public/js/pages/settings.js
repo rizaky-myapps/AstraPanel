@@ -1,7 +1,7 @@
 import { api, qs, sendBlob } from '../api.js';
 import { isAdmin, state } from '../state.js';
 import { helpHref } from './help.js';
-import { ACCENTS, THEMES, applyAppearance } from '../theme.js';
+import { ACCENTS, DEFAULT_CUSTOM, THEMES, applyAppearance } from '../theme.js';
 import { clearCacheAndReload, openRebootOverlay, openUpdateOverlay } from '../update-overlay.js';
 import {
   $,
@@ -226,7 +226,12 @@ async function accountTab(el, page) {
               ${THEMES.map((t) => html`<button type="button" data-theme-choice="${t.id}" aria-pressed="${t.id === u.prefs.theme}">${icon(t.icon)} ${t.label}</button>`)}
             </div>
             <div class="swatches" role="group" aria-label="Couleur d’accent">
-              ${ACCENTS.map((a) => html`<button type="button" class="swatch swatch-${a.id}" data-accent-choice="${a.id}" aria-pressed="${a.id === u.prefs.accent}" title="${a.label}"><span class="swatch-dot"></span>${a.label}</button>`)}
+              ${ACCENTS.map((a) => html`<button type="button" class="swatch swatch-${a.id}" data-accent-choice="${a.id}" aria-pressed="${a.id === u.prefs.accent}" title="${a.label}"><span class="swatch-dot">${icon(a.id === 'custom' ? 'palette' : 'check')}</span>${a.label}</button>`)}
+            </div>
+            <div class="custom-colors" id="custom-colors" ${u.prefs.accent === 'custom' ? '' : 'hidden'}>
+              <label class="color-pick"><input type="color" data-custom="from" value="${(u.prefs.custom || DEFAULT_CUSTOM).from}" aria-label="Première couleur du dégradé" /><span>Couleur 1</span></label>
+              <span class="custom-preview" aria-hidden="true"></span>
+              <label class="color-pick"><input type="color" data-custom="to" value="${(u.prefs.custom || DEFAULT_CUSTOM).to}" aria-label="Seconde couleur du dégradé" /><span>Couleur 2</span></label>
             </div>
           </div>
         </section>
@@ -392,10 +397,30 @@ async function accountTab(el, page) {
   });
 
   // --- Apparence : appliquée tout de suite, puis enregistrée avec le compte
+  const customBox = $('#custom-colors', root);
+  const customValue = () => ({ from: customBox.querySelector('[data-custom=from]').value, to: customBox.querySelector('[data-custom=to]').value });
+  // dégradé personnalisé : aperçu en direct pendant le choix, enregistré une fois la couleur choisie
+  let customTimer = null;
+  page.onCleanup(() => clearTimeout(customTimer));
+  customBox.addEventListener('input', () => {
+    const custom = customValue();
+    applyAppearance({ ...state.user.prefs, accent: 'custom', custom });
+    state.user = { ...state.user, prefs: { ...state.user.prefs, accent: 'custom', custom } };
+    clearTimeout(customTimer);
+    customTimer = setTimeout(() => {
+      api.patch('/account/preferences', { accent: 'custom', custom }).catch((err) => toast(err.message, 'err'));
+    }, 400);
+  });
   $('#appearance-card', root).addEventListener('click', async (e) => {
     const button = e.target.closest('[data-theme-choice], [data-accent-choice]');
     if (!button || button.getAttribute('aria-pressed') === 'true') return;
-    const change = button.dataset.themeChoice ? { theme: button.dataset.themeChoice } : { accent: button.dataset.accentChoice };
+    const change = button.dataset.themeChoice
+      ? { theme: button.dataset.themeChoice }
+      : { accent: button.dataset.accentChoice, ...(button.dataset.accentChoice === 'custom' ? { custom: customValue() } : {}) };
+    if (change.accent) {
+      clearTimeout(customTimer); // un dégradé en attente d'enregistrement ne doit pas revenir par-dessus ce choix
+      customBox.hidden = change.accent !== 'custom';
+    }
     const before = { ...state.user.prefs };
     const group = button.parentElement;
     const press = (prefs) => {
@@ -545,20 +570,22 @@ async function updateTab(el, page) {
     clearInterval(refreshTimer);
   });
 
-  const inMinutes = (ts) => {
-    const min = Math.max(0, Math.round((ts - Date.now()) / 60_000));
-    return min < 1 ? 'dans moins d’une minute' : `dans ${min} min`;
-  };
-
   const draw = () => {
     const inst = info.installed;
-    const every = Math.round((info.interval || 300_000) / 60_000);
+    const every = Math.round((info.interval || 30_000) / 1000);
     setHTML(
       el,
       html`<div class="stack">
         <div class="card">
-          <div class="card-header"><h2>${icon('arrowUpCircle')} Mises à jour d'AstraPanel ${tip(html`Le panel lit la version publiée sur la branche <code>${info.branch}</code> du dépôt GitHub, automatiquement toutes les 5 minutes.`)}</h2></div>
+          <div class="card-header">
+            <h2>${icon('arrowUpCircle')} Mises à jour d'AstraPanel ${tip(html`Le panel lit en continu (toutes les ${every} secondes) la version publiée sur la branche <code>${info.branch}</code> du dépôt GitHub.`)}</h2>
+            <span class="spacer"></span>
+            ${inst ? html`<button class="btn btn-sm" data-check>${icon('refresh')} Vérifier maintenant</button>` : ''}
+          </div>
           <div class="card-body">
+            ${inst
+              ? html`<label class="check update-auto">${toggle('auto', info.auto, { id: 'auto-update' })}<span>Mises à jour automatiques ${tip('Dès qu’une nouvelle version est publiée, le panel l’installe tout seul : 1 à 3 minutes, pendant lesquelles le panel redémarre et vos applications sont relancées automatiquement. Une mise à jour qui échoue n’est retentée que 6 heures plus tard.')}</span></label>`
+              : ''}
             ${!inst ? html`<div class="alert warn">${icon('alert')}<div>Ce panel n'a pas été installé depuis un clone Git : la mise à jour automatique est indisponible. Réinstallez-le avec <code>install.sh</code>.</div></div>` : ''}
             ${inst && !info.updater
               ? html`<div class="alert warn">${icon('alert')}<div>Le service de mise à jour n'est pas encore installé sur la machine. Faites une dernière mise à jour en SSH, en réinstallant la dernière version (tutoriel, étape 5 : <code>git clone</code> puis <code>sudo ./install.sh</code>) : les suivantes se feront d'ici.</div></div>`
@@ -571,16 +598,11 @@ async function updateTab(el, page) {
                     <tr><td class="muted">Dernière version publiée</td><td>${info.latestVersion ? html`<b>${info.latestVersion}</b> <span class="muted">· branche <code>${info.branch}</code></span>` : html`<span class="muted">pas encore vérifiée</span>`}</td></tr>
                     ${inst.installedAt ? html`<tr><td class="muted">Installée le</td><td>${formatDate(inst.installedAt)}</td></tr>` : ''}
                     <tr><td class="muted">Dépôt</td><td class="mono truncate">${inst.repo || '—'}</td></tr>
-                    <tr><td class="muted">Vérification automatique</td><td>toutes les ${every} minutes<span class="muted">${info.checking ? ' · vérification en cours…' : ''}${!info.checking && info.lastCheck ? ` · dernière : ${formatTime(info.lastCheck)}` : ''}${!info.checking && info.nextCheck > Date.now() ? ` · prochaine : ${inMinutes(info.nextCheck)}` : ''}</span></td></tr>
+                    <tr><td class="muted">Vérification</td><td>en continu <span class="muted" id="last-check">${info.checking ? '· vérification en cours…' : info.lastCheck ? `· dernière : ${formatTime(info.lastCheck)}` : ''}</span></td></tr>
                   </tbody>
                 </table>`
               : ''}
           </div>
-          ${inst
-            ? html`<div class="card-foot">
-                <button class="btn" data-check>${icon('refresh')} Vérifier maintenant</button>
-              </div>`
-            : ''}
         </div>
 
         ${info.available
@@ -612,6 +634,20 @@ async function updateTab(el, page) {
       </div>`,
     );
 
+    $('#auto-update', el)?.addEventListener('change', async (e) => {
+      const input = e.target;
+      input.disabled = true;
+      try {
+        info = await api.put('/update/auto', { enabled: input.checked });
+        toast(input.checked ? 'Mises à jour automatiques activées' : 'Mises à jour automatiques désactivées');
+        if (page.active) draw();
+      } catch (err) {
+        input.checked = !input.checked;
+        toast(err.message, 'err');
+      } finally {
+        input.disabled = false;
+      }
+    });
     $('[data-check]', el)?.addEventListener('click', (e) =>
       withBusy(e.target.closest('button'), async () => {
         info = await api.post('/update/check');
@@ -638,10 +674,16 @@ async function updateTab(el, page) {
     if (startedAt || info.pending) return; // une mise à jour est en cours : le journal a la main
     const next = await api.get('/update').catch(() => null);
     if (!next || !page.active) return;
-    const changed = ['latestVersion', 'available', 'error', 'checking', 'lastCheck'].some((k) => next[k] !== info[k]);
+    const changed = ['latestVersion', 'available', 'error', 'auto', 'pending'].some((k) => next[k] !== info[k]);
     info = next;
     if (changed) draw();
-  }, 30_000);
+    else {
+      const last = $('#last-check', el);
+      if (last) last.textContent = info.checking ? '· vérification en cours…' : info.lastCheck ? `· dernière : ${formatTime(info.lastCheck)}` : '';
+    }
+    // mise à jour automatique lancée par le serveur : le journal s'affiche ici aussi
+    if (info.pending || info.run?.state === 'running') followLog();
+  }, 15_000);
 
   // Suit le journal de la mise à jour ; le panel redémarre en cours de route (requêtes en échec un moment).
   let startedAt = 0;
@@ -1351,6 +1393,8 @@ async function journalTab(el, page, userFilter = '') {
 
   function drawList() {
     const box = $('#journal-list', el);
+    // « Afficher plus » : la liste garde sa position de défilement
+    const scrolled = box.querySelector('tbody')?.scrollTop || 0;
     const userOptions = data.users.map((u) => html`<option value="${u.id}" ${u.id === filters.user ? 'selected' : ''}>${u.username}</option>`);
     const appOptions = data.apps.map((a) => html`<option value="${a.id}" ${a.id === filters.app ? 'selected' : ''}>${a.name}</option>`);
     setHTML($('#f-user', el), html`<option value="">Tous les comptes</option><option value="-" ${filters.user === '-' ? 'selected' : ''}>Anonyme (échecs de connexion)</option>${userOptions}`);
@@ -1378,11 +1422,17 @@ async function journalTab(el, page, userFilter = '') {
         : html`<div class="empty-small muted">${filters.user || filters.app || filters.category || filters.q ? 'Aucune action ne correspond à ces filtres.' : 'Aucune action enregistrée pour l’instant.'}</div>`,
     );
     $('[data-more]', box)?.addEventListener('click', (e) => withBusy(e.target.closest('button'), () => load({ append: true })));
+    const tbody = box.querySelector('tbody');
+    if (tbody) {
+      tbody.scrollTop = scrolled;
+      // l'en-tête reste aligné sur les colonnes, barre de défilement des lignes comprise
+      box.style.setProperty('--journal-sb', `${tbody.offsetWidth - tbody.clientWidth}px`);
+    }
   }
 
   setHTML(
     el,
-    html`<div class="card">
+    html`<div class="card journal-card">
       <div class="card-header">
         <h2>${icon('clock')} Journal d'activité ${tip('Chaque action faite dans le panel est enregistrée : connexions, applications, fichiers, comptes, tunnel, mises à jour, redémarrages. Les mots de passe, jetons et valeurs des variables ne sont jamais enregistrés. Les 10 000 dernières actions sont conservées.')}</h2>
         <span class="spacer"></span>
@@ -1413,5 +1463,21 @@ async function journalTab(el, page, userFilter = '') {
     searchTimer = setTimeout(() => onFilter('q')(e), 300);
   });
   $('[data-reload]', el).addEventListener('click', (e) => withBusy(e.target.closest('button'), () => load()));
+
+  // La carte remplit la fenêtre : seules les lignes du journal défilent, pas la page
+  const card = $('.journal-card', el);
+  const fit = () => {
+    const body = document.getElementById('window-body');
+    if (!body || !card.isConnected) return;
+    const pad = parseFloat(getComputedStyle(body).paddingBottom) || 0;
+    const room = body.getBoundingClientRect().bottom - pad - card.getBoundingClientRect().top + body.scrollTop;
+    card.style.height = `${Math.max(window.innerWidth < 600 ? 480 : 400, Math.floor(room))}px`;
+    const tbody = card.querySelector('tbody');
+    if (tbody) card.querySelector('#journal-list').style.setProperty('--journal-sb', `${tbody.offsetWidth - tbody.clientWidth}px`);
+  };
+  requestAnimationFrame(fit);
+  window.addEventListener('resize', fit);
+  page.onCleanup(() => window.removeEventListener('resize', fit));
   await load();
+  fit();
 }

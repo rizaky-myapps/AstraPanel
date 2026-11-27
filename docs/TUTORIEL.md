@@ -1,4 +1,4 @@
-# Tutoriel : héberger vos sites et bots Discord sur votre propre machine avec AstraPanel
+# Tutoriel : héberger vos sites, bots Discord et serveurs Minecraft sur votre propre machine avec AstraPanel
 
 Ce guide part de zéro : vous préparez une machine Linux, installez AstraPanel, lancez votre premier bot Discord et
 votre premier site, puis mettez le tout en ligne avec votre nom de domaine en HTTPS. Comptez environ une heure.
@@ -16,13 +16,14 @@ ARM ou serveur loué (VPS) chez un hébergeur.
 6. [Première connexion et tableau de bord](#6-première-connexion-et-tableau-de-bord)
 7. [Héberger un bot Discord](#7-héberger-un-bot-discord)
 8. [Héberger un site web](#8-héberger-un-site-web)
-9. [Gérer les fichiers d'une application](#9-gérer-les-fichiers-dune-application)
-10. [Mettre vos sites en ligne sur Internet](#10-mettre-vos-sites-en-ligne-sur-internet)
-11. [Déploiement automatique depuis GitHub](#11-déploiement-automatique-depuis-github)
-12. [Utilisateurs et grades](#12-utilisateurs-et-grades)
-13. [Sécuriser la machine](#13-sécuriser-la-machine)
-14. [Entretien : mises à jour, sauvegardes, journaux](#14-entretien--mises-à-jour-sauvegardes-journaux)
-15. [Dépannage](#15-dépannage)
+9. [Héberger un serveur Minecraft](#9-héberger-un-serveur-minecraft)
+10. [Gérer les fichiers d'une application](#10-gérer-les-fichiers-dune-application)
+11. [Mettre vos sites en ligne sur Internet](#11-mettre-vos-sites-en-ligne-sur-internet)
+12. [Déploiement automatique depuis GitHub](#12-déploiement-automatique-depuis-github)
+13. [Utilisateurs et grades](#13-utilisateurs-et-grades)
+14. [Sécuriser la machine](#14-sécuriser-la-machine)
+15. [Entretien : mises à jour, sauvegardes, journaux](#15-entretien--mises-à-jour-sauvegardes-journaux)
+16. [Dépannage](#16-dépannage)
 
 ---
 
@@ -32,12 +33,12 @@ ARM ou serveur loué (VPS) chez un hébergeur.
 | --- | --- |
 | Une machine | Ordinateur, mini-PC, serveur, carte ARM 64 bits ou VPS. Processeur **x86-64 ou ARM 64 bits**. |
 | Système | Une distribution Linux avec **apt** et **systemd** : **Debian 12+**, **Ubuntu 22.04+** ou une dérivée (Linux Mint, Armbian…). Une version serveur, sans bureau, laisse plus de mémoire à vos applications. |
-| Mémoire | 2 Go de RAM pour quelques bots, 4 Go pour plusieurs bots et sites, davantage si vous hébergez beaucoup de sites. |
+| Mémoire | 2 Go de RAM pour quelques bots, 4 Go pour plusieurs bots et sites, davantage si vous hébergez beaucoup de sites. Un serveur Minecraft demande à lui seul 2 à 4 Go. |
 | Stockage | 16 Go libres minimum ; un **SSD** est plus rapide et plus fiable pour une machine allumée en permanence. |
 | Réseau | Un câble Ethernet relié à votre box (plus stable que le Wi-Fi), ou la connexion de votre VPS. |
 | Un ordinateur | Pour vous connecter à la machine en SSH et utiliser le panel depuis votre navigateur. |
 
-Pour la mise en ligne (étape 10), il vous faudra aussi un **nom de domaine** (une dizaine d'euros par an chez
+Pour la mise en ligne (étape 11), il vous faudra aussi un **nom de domaine** (une dizaine d'euros par an chez
 OVHcloud, Gandi, Infomaniak, Cloudflare…). Les sous-domaines gratuits de type DuckDNS ne conviennent pas.
 
 ## 2. Préparer la machine
@@ -155,7 +156,7 @@ Le script, qui prend quelques minutes :
 - crée l'utilisateur système `astrapanel`, qui fera tourner le panel et vos applications sans droits administrateur ;
 - copie le panel dans `/opt/astrapanel` et crée le service `astrapanel` qui démarre avec la machine ;
 - installe le petit service `astrapanel-update`, qui permettra de **mettre le panel à jour depuis son interface**
-  (plus besoin de SSH, voir l'étape 14).
+  (plus besoin de SSH, voir l'étape 15).
 
 À la fin, le script affiche l'adresse du panel et un **jeton d'installation** :
 
@@ -185,7 +186,7 @@ Le script, qui prend quelques minutes :
    ```
 
 3. Choisissez votre nom d'utilisateur et un mot de passe solide (8 caractères minimum). Ce premier compte est
-   **administrateur** (voir l'étape 12 pour ajouter d'autres personnes).
+   **administrateur** (voir l'étape 13 pour ajouter d'autres personnes).
 
 L'écran de connexion affiche l'heure et la date, comme l'écran de verrouillage d'un téléphone. Une fois connecté, le
 panel se présente comme le **bureau d'un système d'exploitation** :
@@ -212,7 +213,7 @@ panel se présente comme le **bureau d'un système d'exploitation** :
   avec **Maj + clic droit**, c'est le menu habituel du navigateur ;
 - le panel a un **thème sombre et un thème clair** : par défaut (et pour tout nouveau compte) il est en
   **automatique** et suit le réglage de votre appareil ; **Paramètres → Mon compte → Apparence** permet aussi de
-  choisir la couleur du panel et du fond d'écran (voir l'étape 12).
+  choisir la couleur du panel et du fond d'écran (voir l'étape 13).
 
 Le **tableau de bord** (adresse `/home`) est le bureau lui-même, sans fenêtre : ses widgets sont posés sur le fond
 d'écran :
@@ -305,7 +306,7 @@ Dans l'onglet **Paramètres** de chaque application, deux interrupteurs règlent
   remet toujours chaque application dans l'état où elle était).
 
 Pour modifier le bot, ouvrez l'onglet **Fichiers**, double-cliquez sur `index.js`, éditez puis **Enregistrer** (ou
-Ctrl+S), et cliquez sur **Redémarrer** (voir l'étape 9 pour tout ce que permet le gestionnaire de fichiers).
+Ctrl+S), et cliquez sur **Redémarrer** (voir l'étape 10 pour tout ce que permet le gestionnaire de fichiers).
 
 **Bot musical / vocal** : installez ffmpeg sur la machine, puis redéployez le bot :
 
@@ -353,7 +354,53 @@ Choisissez le type **Site statique** :
 Une page `404.html` à la racine du dossier servi est utilisée pour les pages introuvables. Les fichiers et dossiers
 cachés (`.git`, `.env`…) ne sont jamais servis.
 
-## 9. Gérer les fichiers d'une application
+## 9. Héberger un serveur Minecraft
+
+AstraPanel héberge aussi des **serveurs Minecraft Java Edition** : il télécharge le serveur et la version de Java
+qu'il demande, puis le lance avec la mémoire et le nombre de cœurs que vous choisissez.
+
+### 9.1 Créer le serveur
+
+1. Cliquez sur le **+** à côté de **Applications** : la page **Nouvelle application** s'ouvre.
+2. Donnez un **nom** au serveur, puis choisissez **Serveur Minecraft** dans le menu **Type d'application**.
+3. **Serveur** : **Paper** (recommandé : plus rapide, et compatible avec les plugins Bukkit / Spigot) ou **Vanilla**
+   (le serveur officiel de Mojang, sans modification).
+4. **Version** : **Dernière version** (la plus récente à chaque mise à jour du serveur) ou une version précise.
+5. **Mémoire minimale** et **maximale**, en Go : comptez 2 à 4 Go au maximum pour quelques joueurs, davantage avec
+   beaucoup de joueurs ou de plugins. Gardez de la mémoire pour le système et vos autres applications.
+6. **Cœurs alloués** : **Tous**, ou le nombre de cœurs du processeur que le serveur a le droit d'utiliser.
+7. **Port** : 25565 par défaut, le port habituel de Minecraft (le suivant libre s'il est déjà pris).
+8. Activez **J'accepte le CLUF de Minecraft** (le contrat de licence de Mojang, obligatoire), puis **Créer le
+   serveur**.
+
+La console s'ouvre : le panel télécharge Java (Eclipse Temurin, la version que demande Minecraft : Java 25 pour les
+versions 26.x, Java 21 pour les versions 1.20.5 à 1.21.x…), puis le serveur, en vérifiant chaque fichier, et le
+démarre. Au premier démarrage, le serveur prépare le monde (une à deux minutes). Il est prêt quand la console affiche
+`Done (…)! For help, type "help"`.
+
+### 9.2 Se connecter au serveur
+
+- Dans Minecraft : **Multijoueur → Ajouter un serveur**, adresse : l'**adresse IP de la machine**, suivie de
+  `:port` si ce n'est pas 25565. Le bouton avec l'adresse, en haut de la page du serveur, la copie.
+- **Depuis Internet** : redirigez le port TCP du serveur (25565) vers la machine dans l'interface de votre box
+  (rubrique NAT / redirection de ports). Le tunnel Cloudflare ne transmet pas Minecraft.
+- Si le pare-feu `ufw` est actif sur la machine : `sudo ufw allow 25565/tcp`.
+- La **console** accepte les commandes du serveur : `op Pseudo`, `whitelist add Pseudo`, `say Bonjour`, `list`…
+
+### 9.3 Gérer le serveur
+
+- **Arrêter** : le panel envoie la commande `stop` (le serveur sauvegarde les mondes et les joueurs), puis attend
+  jusqu'à une minute avant de l'arrêter de force.
+- **Paramètres** : type de serveur, version, mémoire, cœurs et port, puis **Enregistrer et redémarrer**. Changer de
+  version ou de type télécharge le nouveau serveur ; vos mondes sont gardés.
+- **Déploiement → Mettre à jour le serveur** : télécharge la dernière build de la version choisie, puis redémarre le
+  serveur s'il tournait.
+- **Fichiers** : `server.properties` (nom affiché `motd`, mode de jeu, difficulté, `max-players`, liste blanche…),
+  le dossier `plugins` (Paper : déposez-y les fichiers `.jar` des plugins puis redémarrez) et les mondes (`world`…) :
+  pour les sauvegarder, clic droit → **Compresser en ZIP**, puis **Télécharger**.
+- **Statistiques** : processeur et mémoire du serveur sur 1 h à 7 jours.
+
+## 10. Gérer les fichiers d'une application
 
 L'onglet **Fichiers** de chaque application est un gestionnaire de fichiers complet :
 
@@ -379,7 +426,7 @@ L'onglet **Fichiers** de chaque application est un gestionnaire de fichiers comp
   enregistrer, retour à la ligne activable) ; les **images, vidéos et sons** s'ouvrent dans une visionneuse plein
   écran (flèches ← → pour passer au suivant, Échap pour fermer) ; les PDF s'ouvrent dans un nouvel onglet.
 
-## 10. Mettre vos sites en ligne sur Internet
+## 11. Mettre vos sites en ligne sur Internet
 
 AstraPanel publie vos sites sur Internet grâce au **tunnel Cloudflare** intégré : la machine ouvre elle-même une
 connexion sortante vers Cloudflare, qui lui transmet les visites. **Aucun port à ouvrir sur votre box**, votre adresse
@@ -403,12 +450,12 @@ En résumé, avec le mode recommandé (« Géré depuis le panel ») :
 
 Le tunnel démarre automatiquement en même temps que le panel, à chaque démarrage de la machine.
 
-## 11. Déploiement automatique depuis GitHub
+## 12. Déploiement automatique depuis GitHub
 
 Pour qu'un `git push` mette automatiquement le site ou le bot à jour :
 
 1. L'application doit avoir un **dépôt Git** configuré (onglet **Déploiement**).
-2. Le panel doit être joignable depuis Internet (domaine du panel via le tunnel Cloudflare, voir l'étape 10).
+2. Le panel doit être joignable depuis Internet (domaine du panel via le tunnel Cloudflare, voir l'étape 11).
 3. Dans l'onglet **Déploiement**, copiez l'**adresse du webhook**.
 4. Sur GitHub : dépôt → **Settings** → **Webhooks** → **Add webhook**
    - *Payload URL* : l'adresse copiée
@@ -464,7 +511,7 @@ Le bouton **Redeliver** de GitHub renvoie le même appel : pratique pour tester 
   Ajoutez la clé affichée dans GitHub (dépôt → Settings → **Deploy keys**) et utilisez l'URL SSH du dépôt :
   `git@github.com:moi/mon-bot.git`.
 
-## 12. Utilisateurs et grades
+## 13. Utilisateurs et grades
 
 AstraPanel a deux grades :
 
@@ -498,8 +545,10 @@ d'arrivée et le nombre de vos applications :
 - **Activité récente** : vos dernières actions dans le panel (les actions identiques qui se suivent sont regroupées,
   par exemple « Connexion ×12 »), et les tentatives de connexion échouées en rouge. **Tout afficher** déplie la liste ;
 - **Apparence** : le thème (**Automatique**, qui suit le réglage clair ou sombre de l'appareil, **Clair** ou
-  **Sombre**) et la couleur du panel (**Solaire**, orange et rose, par défaut ; **Océan**, **Aurore**, **Nébuleuse** ou
-  **Framboise**). Le changement est immédiat et suit votre compte sur tous vos appareils. Les consoles et l'éditeur de
+  **Sombre**) et la couleur du panel (**Solaire**, orange et rose, par défaut ; **Océan**, **Aurore**, **Nébuleuse**,
+  **Framboise**, **Crépuscule**, **Lagon**, **Forêt**, **Lave**, **Glacier** ou **Graphite**), ou un dégradé
+  **Personnalisé** : choisissez ses deux couleurs, l'aperçu s'applique en direct. Le changement est immédiat et suit
+  votre compte sur tous vos appareils. Les consoles et l'éditeur de
   fichiers restent sombres dans les deux thèmes, pour la lisibilité du code.
 
 Les administrateurs gèrent les comptes dans **Paramètres → Utilisateurs** : **Ajouter un utilisateur** (avec son
@@ -532,7 +581,7 @@ par type d'action, ou cherchez un nom de fichier, un domaine, une IP. L'icône h
 Les mots de passe, les jetons et les valeurs des variables d'environnement ne sont jamais enregistrés (seulement les
 noms des variables modifiées). Les 10 000 dernières actions sont conservées dans `/opt/astrapanel/data/audit.log`.
 
-## 13. Sécuriser la machine
+## 14. Sécuriser la machine
 
 - **Panel** : mots de passe solides, et **jamais de redirection du port 8080** sur la box (sur un VPS : port 8080
   fermé au public, voir le pare-feu ci-dessous). Pour administrer à distance : domaine du panel en HTTPS via le
@@ -572,15 +621,18 @@ noms des variables modifiées). Les 10 000 dernières actions sont conservées d
 - **SSH** : préférez une connexion par clé (`ssh-copy-id admin@<ip-de-la-machine>` depuis un ordinateur Linux ou macOS), puis
   désactivez l'authentification par mot de passe dans `/etc/ssh/sshd_config` (`PasswordAuthentication no`).
 
-## 14. Entretien : mises à jour, sauvegardes, journaux
+## 15. Entretien : mises à jour, sauvegardes, journaux
 
-**Mettre à jour AstraPanel depuis le panel.** Toutes les **5 minutes**, le panel regarde la branche
+**Mettre à jour AstraPanel depuis le panel.** En continu (toutes les **30 secondes**), le panel regarde la branche
 `AstraPanel-Latest` sur GitHub et lit la version écrite dans son `package.json`. Si elle est plus récente que la
 version installée, les administrateurs reçoivent une **notification** (cloche de la barre du haut) : « AstraPanel
 X.Y.Z est disponible » ; un clic ouvre **Paramètres → Mises à jour** :
 
-- vous voyez la **version installée**, la **dernière version publiée** et l'heure de la prochaine vérification ;
-- **Vérifier maintenant** : vérifie tout de suite, sans attendre les 5 minutes ;
+- vous voyez la **version installée**, la **dernière version publiée** et l'heure de la dernière vérification ;
+- **Vérifier maintenant** (en haut à droite de la carte) : vérifie tout de suite ;
+- **Mises à jour automatiques** (interrupteur, **OFF** par défaut) : sur **ON**, chaque nouvelle version est
+  installée toute seule dès sa publication, sans clic. Une mise à jour qui échoue n'est retentée que 6 heures plus
+  tard ;
 - **Mettre à jour vers la X.Y.Z** : télécharge la nouvelle version et l'installe. Pendant la mise à jour, tout le
   panel est flouté et un écran de chargement indique où elle en est : demande envoyée, téléchargement, installation
   (avec le détail : paquets système, copie du panel…), redémarrage du panel, terminé. À la fin (une à trois minutes),
@@ -604,7 +656,7 @@ Pour revenir à une version précise (chaque version a sa branche `AstraPanel-V.
 sudo astrapanel-update AstraPanel-V.1.2.3
 ```
 
-Le panel proposera de nouveau la dernière version dans les 5 minutes. Ne revenez pas avant la 1.2.3 : les versions
+Le panel proposera de nouveau la dernière version dans la minute. Ne revenez pas avant la 1.2.3 : les versions
 plus anciennes ne savent pas suivre la branche `AstraPanel-Latest`.
 
 **Journaux du panel** :
@@ -667,7 +719,7 @@ sudo astrapanel-cli reset-password admin
 sudo ./uninstall.sh
 ```
 
-## 15. Dépannage
+## 16. Dépannage
 
 **Le panel ne s'affiche pas.** Vérifiez qu'il tourne et lisez ses derniers messages :
 
@@ -759,7 +811,7 @@ sudo journalctl -u astrapanel-update -n 50
 ```
 
 **Un `git push` ne redéploie pas l'application.** Ouvrez l'onglet **Déploiement** : la liste **Derniers appels
-reçus** indique si GitHub a appelé le panel et ce qui s'est passé (voir l'[étape 11](#11-déploiement-automatique-depuis-github)).
+reçus** indique si GitHub a appelé le panel et ce qui s'est passé (voir l'[étape 12](#12-déploiement-automatique-depuis-github)).
 L'erreur « git fetch a échoué : dépôt privé » signifie que le panel n'a pas le droit de lire le dépôt : ajoutez un
 jeton dans l'URL ou une clé de déploiement SSH.
 

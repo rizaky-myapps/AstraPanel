@@ -4,6 +4,7 @@ import { envEditor } from '../env-editor.js';
 import { filesTab } from './files.js';
 import { renderLineChart } from '../chart.js';
 import { newState, renderAnsi } from '../ansi.js';
+import { FLAVOR_LABELS, fillVersions, mcFieldsHTML, mcInfo, readMcFields } from '../minecraft-ui.js';
 import {
   $,
   avatar,
@@ -103,6 +104,11 @@ export function renderApp(view, page, id, tab) {
   page.onCleanup(onAppsChange(update));
 
   header.addEventListener('click', (e) => {
+    const copy = e.target.closest('[data-copy-address]');
+    if (copy) {
+      copyText(copy.dataset.copyAddress);
+      return;
+    }
     const button = e.target.closest('[data-action]');
     if (!button) return;
     const { action } = button.dataset;
@@ -121,6 +127,8 @@ export function renderApp(view, page, id, tab) {
   renderers[tab]($('#tab', root), page, app);
 }
 
+let machineIp = null; // adresse IP de la machine (promesse pendant le chargement)
+
 function renderHeader(el, app) {
   const type = TYPE_INFO[app.type];
   const rt = app.runtime;
@@ -129,6 +137,7 @@ function renderHeader(el, app) {
   const busy = Boolean(rt.busy);
   // indicateurs façon barre d'état, comme sur le tableau de bord
   const pills = [html`<span class="desk-pill">${icon(type.icon)} ${type.label}</span>`];
+  if (app.type === 'minecraft' && app.mcInstalled) pills.push(html`<span class="desk-pill">${icon('box')} ${FLAVOR_LABELS[app.mcInstalled.flavor] || ''} ${app.mcInstalled.version}</span>`);
   if (app.port) pills.push(html`<span class="desk-pill">${icon('link')} port ${app.port}</span>`);
   if (running) {
     pills.push(html`<span class="desk-pill">${icon('clock')} depuis ${formatDuration(Date.now() - rt.startedAt)}</span>`);
@@ -138,7 +147,21 @@ function renderHeader(el, app) {
   } else if (rt.lastExit) {
     pills.push(html`<span class="desk-pill">${icon('clock')} dernier arrêt ${formatDate(rt.lastExit.at)}</span>`);
   }
-  const url = localUrl(app);
+  // serveur Minecraft : pas de page web, mais l'adresse à donner aux joueurs (port 25565 : rien à ajouter).
+  // Panel ouvert par son nom de domaine (tunnel Cloudflare, qui ne transmet pas Minecraft) : adresse IP de la machine.
+  if (app.type === 'minecraft' && !machineIp) {
+    machineIp = api
+      .get('/system')
+      .then((sys) => {
+        machineIp = sys.addresses?.[0]?.address || location.hostname;
+        refreshApps();
+      })
+      .catch(() => (machineIp = location.hostname));
+  }
+  const byIp = /^[\d.]+$|^\[/.test(location.hostname) || location.hostname === 'localhost';
+  const host = byIp || typeof machineIp !== 'string' ? location.hostname : machineIp;
+  const mcAddress = app.type === 'minecraft' && app.port ? `${host}${app.port === 25565 ? '' : `:${app.port}`}` : '';
+  const url = app.type === 'minecraft' ? '' : localUrl(app);
 
   setHTML(
     el,
@@ -149,7 +172,9 @@ function renderHeader(el, app) {
       badge: statusBadge(app),
       meta: pills,
       cls: 'app-hero',
-      actions: html`${app.domains.length || url
+      actions: html`${mcAddress
+          ? html`<div class="row app-links"><button class="btn btn-glass btn-sm" data-copy-address="${mcAddress}" title="Adresse à saisir dans Minecraft (Multijoueur → Ajouter un serveur)">${icon('copy')} ${mcAddress}</button></div>`
+          : ''}${app.domains.length || url
           ? html`<div class="row app-links">
               ${app.domains.map((d) => html`<a class="btn btn-glass btn-sm" href="${domainUrl(d)}" target="_blank" rel="noopener">${icon('globe')} ${d}</a>`)}
               ${url ? html`<a class="btn btn-glass btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external')} Ouvrir</a>` : ''}
@@ -293,7 +318,9 @@ function envTab(el, page, app) {
     el,
     html`<div class="card env-card">
       <div class="card-header"><h2>${icon('key')} Variables d'environnement ${tip(
-        app.type === 'bot'
+        app.type === 'minecraft'
+          ? 'Variables d’environnement transmises au serveur Minecraft (rarement nécessaires : ses réglages sont dans server.properties, onglet Fichiers).'
+          : app.type === 'bot'
           ? html`Mettez ici le token de votre bot (<code>DISCORD_TOKEN</code>) plutôt que dans le code : il ne sera jamais publié sur Git. Votre code les lit avec <code>process.env.NOM</code>.`
           : html`<code>PORT</code> est fourni automatiquement (${app.port}) : votre serveur doit écouter dessus. Votre code lit les variables avec <code>process.env.NOM</code>.`,
       )}</h2><span class="spacer"></span><span id="env-mode"></span></div>
@@ -500,7 +527,7 @@ function hookHistory(app) {
     <div class="hook-log-head">Derniers appels reçus ${tip(
       html`Chaque appel du webhook est noté ici, avec la raison quand un push n'est pas déployé.<br /><br />
         Rien n'apparaît après un push ? L'appel n'atteint pas le panel : sur GitHub, ouvrez Settings → Webhooks → votre webhook →
-        <b>Recent Deliveries</b> pour lire la réponse reçue (voir le tutoriel, étape 11).`,
+        <b>Recent Deliveries</b> pour lire la réponse reçue (voir le tutoriel, étape 12).`,
     )}</div>
     ${list.length
       ? html`<ul class="hook-log">
@@ -525,10 +552,28 @@ function hookHistory(app) {
 
 function deployTab(el, page, app) {
   const hookUrl = (token) => `${location.origin}/hooks/deploy/${app.id}/${token}`;
+  const mc = app.type === 'minecraft';
   setHTML(
     el,
     html`<div class="stack">
-      <div class="card">
+      ${mc
+        ? html`<div class="card">
+            <div class="card-header"><h2>${icon('upload')} Mettre à jour le serveur ${tip('Télécharge la dernière build de la version choisie (onglet Paramètres) et la version de Java qu’elle demande, puis redémarre le serveur s’il tournait. Vos mondes et vos plugins sont gardés.')}</h2></div>
+            <div class="card-body">
+              <table class="table kv-table compact">
+                <tbody>
+                  <tr><td class="muted">Serveur installé</td><td>${app.mcInstalled ? html`<b>${FLAVOR_LABELS[app.mcInstalled.flavor]} ${app.mcInstalled.version}</b>${app.mcInstalled.build ? html` <span class="muted">· build ${app.mcInstalled.build}</span>` : ''}` : html`<span class="muted">pas encore installé</span>`}</td></tr>
+                  <tr><td class="muted">Java</td><td>${app.mcInstalled ? `Java ${app.mcInstalled.java} (Eclipse Temurin)` : '—'}</td></tr>
+                  ${app.mcInstalled?.at ? html`<tr><td class="muted">Installé le</td><td>${formatDate(app.mcInstalled.at)}</td></tr>` : ''}
+                </tbody>
+              </table>
+              <div class="row" style="margin-top: 14px">
+                <button class="btn btn-primary" data-task="deploy">${icon('upload')} ${app.mcInstalled ? 'Mettre à jour le serveur' : 'Installer le serveur'}</button>
+              </div>
+            </div>
+          </div>`
+        : ''}
+      <div class="card ${mc ? 'hidden' : ''}">
         <div class="card-header"><h2>${icon('upload')} Mettre à jour ${tip(
           html`Le déploiement ${app.git ? html`récupère la dernière version du dépôt Git, ` : ''}installe les dépendances
             (<code>${app.installCommand || 'désactivé'}</code>)${app.buildCommand ? html`, lance <code>${app.buildCommand}</code>` : ''}
@@ -543,7 +588,7 @@ function deployTab(el, page, app) {
         </div>
       </div>
 
-      <div class="card">
+      <div class="card ${mc ? 'hidden' : ''}">
         <div class="card-header"><h2>${icon('git')} Dépôt Git ${tip('Attention : un déploiement Git écrase les fichiers suivis par Git modifiés sur la machine (vos fichiers .env, node_modules… sont conservés).')}</h2></div>
         <form class="card-body form-grid" id="git-form">
           <div class="field">
@@ -574,7 +619,7 @@ function deployTab(el, page, app) {
         </form>
       </div>
 
-      ${app.git
+      ${app.git && !mc
         ? html`<div class="card">
             <div class="card-header"><h2>${icon('link')} Déploiement automatique (webhook) ${tip(
               html`À chaque <code>git push</code>, GitHub (ou GitLab, Gitea…) appelle cette adresse et le panel redéploie l'application.<br /><br />
@@ -663,6 +708,7 @@ function deployTab(el, page, app) {
 
 // ---- Paramètres de l'app -------------------------------------------------------
 function settingsTab(el, page, app) {
+  if (app.type === 'minecraft') return minecraftSettings(el, page, app);
   const isStatic = app.type === 'static';
   const hasPort = app.type !== 'bot';
   setHTML(
@@ -716,18 +762,7 @@ function settingsTab(el, page, app) {
         </div>
       </form>
 
-      ${isAdmin()
-        ? html`<div class="card">
-            <div class="card-header danger-head"><h2>${icon('alert')} Zone dangereuse</h2></div>
-            <div class="card-body row">
-              <div>
-                <div class="label">Supprimer l'application ${tip('Arrête l’application et supprime définitivement ses fichiers et ses journaux.')}</div>
-              </div>
-              <span class="spacer"></span>
-              <button class="btn btn-danger" data-delete>${icon('trash')} Supprimer</button>
-            </div>
-          </div>`
-        : ''}
+      ${dangerZone(app)}
     </div>`,
   );
 
@@ -752,6 +787,102 @@ function settingsTab(el, page, app) {
     });
   });
 
+  wireDelete(el, app);
+}
+
+// ---- Paramètres d'un serveur Minecraft ------------------------------------------------------
+async function minecraftSettings(el, page, app) {
+  const mc = app.mc;
+  const draw = (machine) =>
+    setHTML(
+      el,
+      html`<div class="stack">
+        <form class="card" id="settings-form">
+          <div class="card-header"><h2>${icon('sliders')} Configuration ${tip(html`La mémoire, les cœurs et le port s'appliquent au prochain redémarrage. Changer de serveur ou de version télécharge le nouveau serveur (vos mondes sont gardés).<br />Dossier sur la machine : <code>${app.dir}</code>`)}</h2></div>
+          <div class="card-body form-grid">
+            <div class="field full"><label>Nom</label><input type="text" name="name" value="${app.name}" maxlength="60" /></div>
+            ${mcFieldsHTML(mc, machine)}
+            <div class="field">
+              <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port. Pour jouer depuis Internet, redirigez ce port vers la machine dans votre box.')}</label>
+              <input id="mc-port" type="number" name="port" value="${app.port || ''}" min="1024" max="65535" />
+            </div>
+            <div class="full">
+              <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage ${tip('Relance le serveur s’il s’arrête de façon inattendue.')}</span></label>
+              <label class="check">${toggle('startOnBoot', app.startOnBoot !== false)}<span>Démarrer avec la machine ${tip('Lance le serveur à chaque démarrage de la machine.')}</span></label>
+            </div>
+            <div class="full error-text"></div>
+          </div>
+          <div class="card-foot">
+            <button class="btn" type="submit" data-restart="0">${icon('save')} Enregistrer</button>
+            <button class="btn btn-primary" type="submit" data-restart="1">${icon('restart')} Enregistrer et redémarrer</button>
+          </div>
+        </form>
+        ${dangerZone(app)}
+      </div>`,
+    );
+  draw(null);
+  fillVersions(el, mc.flavor);
+  // limites de la machine (mémoire, cœurs) : connues après le premier chargement
+  mcInfo(mc.flavor)
+    .then((info) => {
+      if (!page.active) return;
+      const form = $('#settings-form', el);
+      const keep = { ...readMcFields(form), name: form.name.value };
+      draw({ memory: info.memory, cores: info.cores });
+      $('#settings-form [name=name]', el).value = keep.name;
+      fillVersions(el, keep.flavor);
+      wire();
+    })
+    .catch(() => {});
+  const wire = () => {
+    const form = $('#settings-form', el);
+    form.addEventListener('change', (e) => {
+      if (e.target.name === 'mcFlavor') fillVersions(el, e.target.value);
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const restart = e.submitter?.dataset.restart === '1';
+      const values = readMcFields(form);
+      const error = $('.error-text', form);
+      error.textContent = '';
+      if (!(values.ramMax >= values.ramMin && values.ramMin >= 256)) {
+        error.textContent = 'Mémoire : le minimum doit être inférieur ou égal au maximum';
+        return;
+      }
+      withBusy(e.submitter, async () => {
+        await api.patch(`/apps/${app.id}`, {
+          name: form.name.value,
+          mc: values,
+          port: form.port.value || null,
+          autoRestart: form.autoRestart.checked,
+          startOnBoot: form.startOnBoot.checked,
+        });
+        if (restart) await api.post(`/apps/${app.id}/restart`).catch((err) => toast(err.message, 'err'));
+        toast(restart ? 'Paramètres enregistrés, serveur redémarré' : 'Paramètres enregistrés');
+        await refreshApps();
+      });
+    });
+    wireDelete(el, app);
+  };
+  wire();
+}
+
+function dangerZone(app) {
+  return isAdmin()
+    ? html`<div class="card">
+        <div class="card-header danger-head"><h2>${icon('alert')} Zone dangereuse</h2></div>
+        <div class="card-body row">
+          <div>
+            <div class="label">Supprimer l'application ${tip('Arrête l’application et supprime définitivement ses fichiers et ses journaux.')}</div>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn btn-danger" data-delete>${icon('trash')} Supprimer</button>
+        </div>
+      </div>`
+    : '';
+}
+
+function wireDelete(el, app) {
   $('[data-delete]', el)?.addEventListener('click', async () => {
     const result = await modal({
       title: `Supprimer « ${app.name} » ?`,

@@ -245,6 +245,6 @@ export function publicUser(user) {
     createdAt: user.createdAt,
     avatar: user.avatar?.v || null,
     // apparence choisie par le compte (thème clair / sombre / automatique, couleur d'accent)
-    prefs: { theme: user.prefs?.theme || 'auto', accent: user.prefs?.accent || 'solaire' },
+    prefs: { theme: user.prefs?.theme || 'auto', accent: user.prefs?.accent || 'solaire', ...(user.prefs?.custom ? { custom: user.prefs.custom } : {}) },
   };
 }
