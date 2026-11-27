@@ -328,9 +328,10 @@ function envTab(el, page, app) {
 // ---- Statistiques : historique processeur / mémoire de l'application ----------------------
 const STAT_RANGES = [
   { id: '1h', label: '1 h', refresh: 10_000 },
+  { id: '12h', label: '12 h', refresh: 60_000 },
   { id: '24h', label: '24 h', refresh: 60_000 },
-  { id: '15j', label: '15 j', refresh: 120_000 },
-  { id: '30j', label: '30 j', refresh: 120_000 },
+  { id: '3j', label: '3 j', refresh: 120_000 },
+  { id: '7j', label: '7 j', refresh: 120_000 },
 ];
 const STAT_RANGE_KEY = 'astra.app-range';
 const mo = (v, tick) => (v >= 1024 ? `${(v / 1024).toLocaleString('fr-FR', { maximumFractionDigits: tick ? 1 : 2 })} Go` : `${Math.round(v).toLocaleString('fr-FR')} Mo`);
@@ -360,7 +361,7 @@ function statsTab(el, page, app) {
     html`<div class="stack">
       <div class="grid stats app-stats" id="app-stat-tiles"></div>
       <div class="section-title">
-        <h2>Historique ${tip('Charge du processeur et mémoire vive utilisées par l’application (tous ses processus, enfants compris), mesurées toutes les 10 secondes pendant qu’elle tourne. Un arrêt laisse un vide dans les courbes. Conservé 30 jours. 100 % = un cœur de processeur entièrement occupé.')}</h2>
+        <h2>Historique ${tip('Charge du processeur et mémoire vive utilisées par l’application (tous ses processus, enfants compris), mesurées toutes les 10 secondes pendant qu’elle tourne. Un arrêt laisse un vide dans les courbes. Conservé 7 jours. 100 % = un cœur de processeur entièrement occupé.')}</h2>
         <div class="segmented" role="group" aria-label="Période affichée">
           ${STAT_RANGES.map((r) => html`<button type="button" data-range="${r.id}" aria-pressed="${r.id === range}">${r.label}</button>`)}
         </div>
@@ -430,7 +431,7 @@ function statsTab(el, page, app) {
       card.querySelector('.table-scroll'),
       html`<table class="table compact">
         <thead><tr><th>Moment</th><th class="num">${s.title}</th></tr></thead>
-        <tbody>${rows.map((p) => html`<tr><td>${formatWhen(p[0], data.step)}</td><td class="num">${s.format(p[1])}</td></tr>`)}</tbody>
+        <tbody>${rows.map((p) => html`<tr><td>${formatWhen(p[0], data.step, data.span)}</td><td class="num">${s.format(p[1])}</td></tr>`)}</tbody>
       </table>`,
     );
   }

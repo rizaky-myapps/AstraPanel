@@ -6,7 +6,7 @@ import net from 'node:net';
 import { execFileSync, spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { startTestPanel, waitFor } from './helpers.js';
-import { Metrics } from '../src/metrics.js';
+import { Metrics, RANGES, downsample } from '../src/metrics.js';
 import { Store } from '../src/store.js';
 import { parseTunnelToken, hostnameOf } from '../src/tunnel.js';
 import { Updater, parseGithub } from '../src/update.js';
@@ -26,11 +26,52 @@ test('historique : agrégation par palier et conservation limitée', () => {
   assert.equal(m.query('24h').points.length, 1);
   m.add({ cpu: 1, temp: 1, mem: 1 }, t0 + 2 * 3600_000); // deux heures plus tard
   assert.ok(m.query('1h').points.every((p) => p[0] >= t0 + 3600_000));
-  assert.equal(m.query('7j'), null);
+  assert.equal(m.query('30j'), null); // ancienne période, remplacée par 3 j et 7 j
   m.save();
   const reloaded = new Metrics(m.file);
   assert.ok(reloaded.query('24h').points.length >= 1);
   assert.equal(reloaded.query('1h').points.length, 0); // le palier 1h n'est pas écrit sur le disque
+});
+
+test('historique : périodes 1 h, 12 h, 24 h, 3 j, 7 j et reprise d’un ancien historique (15 j / 30 j)', (t) => {
+  const H = 3600_000;
+  const MIN = 60_000;
+  assert.deepEqual(Object.keys(RANGES), ['1h', '12h', '24h', '3j', '7j']);
+  // regroupement : moyenne de chaque valeur par intervalle, les valeurs absentes sont ignorées
+  assert.deepEqual(downsample([[0, 1, null], [MIN, 3, 4], [5 * MIN, 5, 6]], 5 * MIN), [[0, 2, 4], [5 * MIN, 5, 6]]);
+
+  // fichier d'une version précédente : paliers 24 h (1 min), 15 j (15 min) et 30 j (30 min)
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'astra-metrics-old-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'metrics.json');
+  const now = Date.now();
+  const align = (v, step) => Math.floor(v / step) * step;
+  const day = Array.from({ length: 20 * 60 }, (_, i) => [align(now - 20 * H, MIN) + i * MIN, i % 10, 50, 1000]);
+  const old15 = Array.from({ length: 10 * 96 }, (_, i) => [align(now - 240 * H, 15 * MIN) + i * 15 * MIN, 20, 40, 900]);
+  const old30 = [[align(now - 480 * H, 30 * MIN), 5, 30, 800]];
+  writeFileSync(file, JSON.stringify({ memTotal: 4000, series: { '24h': day, '15j': old15, '30j': old30 } }));
+  const m = new Metrics(file);
+
+  // 12 h : la fin du palier 24 h (une mesure par minute)
+  const r12 = m.query('12h');
+  assert.equal(r12.step, MIN);
+  assert.equal(r12.span, 12 * H);
+  assert.ok(r12.points.every((p) => p[0] >= r12.now - 12 * H));
+  assert.ok(Math.abs(r12.points.length - 12 * 60) <= 2, `${r12.points.length} points sur 12 h`);
+  assert.equal(m.query('24h').points.length, day.length);
+  // 3 j : reconstruit à partir du palier 24 h, regroupé par 5 minutes
+  const r3 = m.query('3j');
+  assert.equal(r3.step, 5 * MIN);
+  assert.ok(r3.points.every((p) => p[0] % (5 * MIN) === 0));
+  assert.ok(Math.abs(r3.points.length - 20 * 12) <= 1, `${r3.points.length} points sur 3 j`);
+  // 7 j : repris de l'ancien palier 15 j (mêmes intervalles de 15 minutes), limité à 7 jours
+  const r7 = m.query('7j');
+  assert.equal(r7.step, 15 * MIN);
+  assert.ok(r7.points.length > 6 * 96);
+  assert.ok(r7.points.every((p) => p[0] >= r7.now - 7 * 24 * H));
+  assert.equal(m.query('15j'), null);
+  m.save();
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).series).sort(), ['24h', '3j', '7j']);
 });
 
 test('graduations rondes', () => {

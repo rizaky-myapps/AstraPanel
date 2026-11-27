@@ -197,7 +197,9 @@ panel se présente comme le **bureau d'un système d'exploitation** :
   - la **cloche** : les notifications (application plantée, déploiement en échec, mise à jour disponible, tunnel
     Cloudflare déconnecté, sous-tension ou processeur bridé par la chaleur) ; un clic ouvre la page concernée, la
     **croix** d'une notification l'efface et **Tout effacer** les efface toutes. Une notification effacée ne revient
-    que si la situation se reproduit (nouveau plantage, nouvelle version, nouvelle sous-tension…) ;
+    que si la situation se reproduit (nouveau plantage, nouvelle version, nouvelle sous-tension…). Quand une
+    notification arrive, la cloche sonne et la notification s'affiche **environ 5 secondes sous la cloche** (la souris
+    posée dessus la garde affichée ; un clic ouvre la page concernée) ;
   - le bouton **soleil / lune** (thème clair ou sombre), la date et l'heure, et votre **photo** : menu du compte
     (**Mon compte**, thème **Automatique / Clair / Sombre**, aide, **Se déconnecter**) ;
 - chaque page s'ouvre en **plein écran** dans une fenêtre posée sur le fond d'écran : la page elle-même ne défile
@@ -220,8 +222,8 @@ Le **tableau de bord** est le bureau lui-même, sans fenêtre : ses widgets sont
 - le bloc **Applications** : une tuile par application, avec son état (en ligne, arrêtée, plantée…) et sa mémoire ;
   un clic l'ouvre. La tuile **Ajouter** crée une nouvelle application ;
 - en dessous, les **graphiques** du processeur, de la température et de la mémoire, avec le choix de la période :
-  **1 h, 24 h, 15 j ou 30 j**. Survolez une courbe pour lire la valeur à un instant donné ; « Voir les données »
-  affiche les mesures sous forme de tableau. L'historique se remplit au fil du temps (il est conservé 30 jours) ;
+  **1 h, 12 h, 24 h, 3 j ou 7 j**. Survolez une courbe pour lire la valeur à un instant donné ; « Voir les données »
+  affiche les mesures sous forme de tableau. L'historique se remplit au fil du temps (il est conservé 7 jours) ;
 - un clic sur la jauge **Stockage** (administrateurs) ouvre l'explorateur de stockage : la liste des disques de la
   machine (disque interne, SSD, clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus
   léger**. Cliquez sur un dossier pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les
@@ -233,9 +235,9 @@ ses onglets (Console, Statistiques, Fichiers, Variables, Déploiement, Paramètr
 d'une application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
 
 L'onglet **Statistiques** d'une application montre sa charge **processeur** et sa **mémoire vive** : valeurs actuelles,
-pics de la période, durée depuis le démarrage, puis deux **graphiques** sur **1 h, 24 h, 15 j ou 30 j** (survolez une
+pics de la période, durée depuis le démarrage, puis deux **graphiques** sur **1 h, 12 h, 24 h, 3 j ou 7 j** (survolez une
 courbe pour lire une valeur ; « Voir les données » affiche le tableau). Les mesures (tous les processus de
-l'application, toutes les 10 secondes) sont enregistrées pendant qu'elle tourne et gardées 30 jours ; un arrêt laisse un
+l'application, toutes les 10 secondes) sont enregistrées pendant qu'elle tourne et gardées 7 jours ; un arrêt laisse un
 vide dans les courbes. 100 % correspond à un cœur de processeur entièrement occupé.
 
 ![Statistiques d'une application](images/statistiques.png)
@@ -750,7 +752,8 @@ utilisez celle recommandée par le fabricant et un câble de qualité. Vérifiez
 | `/opt/astrapanel/data/apps/<id>/` | Fichiers de chaque application |
 | `/opt/astrapanel/data/logs/` | Journaux des applications et du tunnel |
 | `/opt/astrapanel/data/db.json` | Configuration des applications, comptes, paramètres |
-| `/opt/astrapanel/data/metrics.json` | Historique des graphiques (15 et 30 jours) |
+| `/opt/astrapanel/data/metrics.json` | Historique des graphiques de la machine (jusqu'à 7 jours) |
+| `/opt/astrapanel/data/app-metrics.json` | Historique des statistiques de chaque application (jusqu'à 7 jours) |
 | `/opt/astrapanel/data/bin/cloudflared` | Programme du tunnel Cloudflare, téléchargé par le panel |
 | `/var/lib/astrapanel/source` | Copie du dépôt GitHub utilisée par les mises à jour |
 | `/etc/systemd/system/astrapanel.service` | Service systemd du panel |

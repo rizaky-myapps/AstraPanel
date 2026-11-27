@@ -39,9 +39,10 @@ function formatTick(t, step) {
   return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function formatWhen(t, step) {
+// Date d'un point : avec le jour dès que la période dépasse une demi-journée
+export function formatWhen(t, step, span = 0) {
   const d = new Date(t);
-  const opts = step >= 15 * 60_000 ? { dateStyle: 'short', timeStyle: 'short' } : { timeStyle: step < 60_000 ? 'medium' : 'short' };
+  const opts = step >= 5 * 60_000 || span > 12 * 3600_000 ? { dateStyle: 'short', timeStyle: 'short' } : { timeStyle: step < 60_000 ? 'medium' : 'short' };
   return d.toLocaleString('fr-FR', opts);
 }
 
@@ -128,7 +129,7 @@ export function renderLineChart(container, { points, start, end, step, domain, f
     cross.setAttribute('visibility', 'visible');
     dot.setAttribute('visibility', 'visible');
     tipValue.textContent = format(v);
-    tipTime.textContent = formatWhen(t, step);
+    tipTime.textContent = formatWhen(t, step, end - start);
     tip.hidden = false;
     const left = Math.min(Math.max(px - tip.offsetWidth / 2, 0), width - tip.offsetWidth);
     tip.style.left = `${left}px`;

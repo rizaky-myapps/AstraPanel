@@ -126,21 +126,28 @@ function allNotifications() {
   return out;
 }
 
-function notifications() {
-  if (!dismissed) loadDismissed();
-  const all = allNotifications();
-  // effacements devenus inutiles (la situation a disparu) : oubliés, pour être prévenu si elle revient
-  const present = new Set(all.map((n) => n.key));
-  const known = new Set(['apps', ...Object.keys(sys).filter((k) => sys[k])]);
+// retire d'un ensemble de clés celles dont la situation a disparu (seulement si leur source est déjà chargée)
+function forgetGone(keys, present) {
+  const known = new Set([...(state.appsLoaded ? ['apps'] : []), ...Object.keys(sys).filter((k) => sys[k])]);
   let changed = false;
-  for (const key of dismissed) {
+  for (const key of keys) {
     const source = SOURCE[key.split(':')[0]];
     if (source && known.has(source) && !present.has(key)) {
-      dismissed.delete(key);
+      keys.delete(key);
       changed = true;
     }
   }
-  if (changed) saveDismissed();
+  return changed;
+}
+
+function notifications() {
+  if (!dismissed) loadDismissed();
+  if (!seen) loadSeen();
+  const all = allNotifications();
+  // effacements et annonces devenus inutiles (la situation a disparu) : oubliés, pour être prévenu si elle revient
+  const present = new Set(all.map((n) => n.key));
+  if (forgetGone(dismissed, present)) saveDismissed();
+  if (forgetGone(seen, present)) saveSeen();
   return all.filter((n) => !dismissed.has(n.key));
 }
 
@@ -160,6 +167,103 @@ export function refreshNotifications() {
     badge.className = `mb-badge ${list.some((n) => n.level === 'err') ? 'err' : list.some((n) => n.level === 'warn') ? 'warn' : ''}`;
   }
   if (openPopover === 'notif') drawNotifications();
+  announce(list);
+}
+
+// ---- Bannières : une notification qui arrive s'affiche quelques secondes sous la cloche ------------
+// Chaque notification n'est annoncée qu'une fois (clés retenues par compte, dans ce navigateur) ; si l'onglet est
+// en arrière-plan, l'annonce attend que l'on revienne dessus.
+const BANNER_MS = 4500;
+const MAX_BANNERS = 3;
+const seenKey = () => `astra.notif.seen.${state.user?.id || ''}`;
+let seen = null;
+function loadSeen() {
+  try {
+    seen = new Set(JSON.parse(localStorage.getItem(seenKey()) || '[]'));
+  } catch {
+    seen = new Set();
+  }
+}
+function saveSeen() {
+  try {
+    localStorage.setItem(seenKey(), JSON.stringify([...seen].slice(-300)));
+  } catch {
+    // stockage indisponible : les annonces valent jusqu'au rechargement de la page
+  }
+}
+
+function announce(list) {
+  if (!seen) loadSeen();
+  const fresh = list.filter((n) => !seen.has(n.key));
+  if (!fresh.length || document.hidden || !$('#mb-banners')) return;
+  for (const n of fresh) seen.add(n.key);
+  saveSeen();
+  ringBell();
+  if (openPopover !== 'notif') showBanners(fresh); // liste ouverte : elle est déjà sous les yeux
+}
+
+function ringBell() {
+  const bell = $('#mb-notif');
+  if (!bell) return;
+  bell.classList.remove('ring');
+  void bell.offsetWidth; // relance l'animation
+  bell.classList.add('ring');
+}
+
+function showBanners(fresh) {
+  const box = $('#mb-banners');
+  const bell = $('#mb-notif');
+  if (!box || !bell) return;
+  const r = bell.getBoundingClientRect();
+  box.style.right = `${Math.max(8, window.innerWidth - r.right - 4)}px`;
+  // trop d'arrivées d'un coup : les premières, puis un résumé qui ouvre la liste
+  const shown = fresh.length > MAX_BANNERS ? fresh.slice(0, MAX_BANNERS - 1) : fresh;
+  const rest = fresh.length - shown.length;
+  const items = shown.map(
+    (n) => html`<a class="notif ${n.level}" href="${n.href}">
+      <span class="notif-icon">${icon(n.icon)}</span>
+      <span class="notif-text"><b>${n.title}</b><span>${n.text}</span></span>
+    </a>`,
+  );
+  if (rest) {
+    items.push(html`<a class="notif" href="#" data-banner-list>
+      <span class="notif-icon">${icon('bell')}</span>
+      <span class="notif-text"><b>${rest} autre${rest > 1 ? 's' : ''} notification${rest > 1 ? 's' : ''}</b><span>Ouvrir la liste</span></span>
+    </a>`);
+  }
+  // la plus récente en haut, juste sous la cloche
+  for (const item of items.reverse()) addBanner(box, item);
+  while (box.children.length > MAX_BANNERS) box.lastElementChild.remove();
+}
+
+function addBanner(box, content) {
+  const el = document.createElement('div');
+  el.className = 'mb-banner';
+  el.style.setProperty('--banner-ms', `${BANNER_MS}ms`);
+  setHTML(el, html`${content}<button type="button" class="notif-dismiss" data-banner-close title="Masquer" aria-label="Masquer">${icon('x')}</button><i class="mb-banner-time"></i>`);
+  box.prepend(el);
+  // compte à rebours mis en pause tant que la souris est dessus (comme la barre de temps)
+  let left = BANNER_MS;
+  let started = Date.now();
+  let timer = setTimeout(() => hideBanner(el), left);
+  el.addEventListener('mouseenter', () => {
+    clearTimeout(timer);
+    left = Math.max(800, left - (Date.now() - started));
+  });
+  el.addEventListener('mouseleave', () => {
+    started = Date.now();
+    timer = setTimeout(() => hideBanner(el), left);
+  });
+}
+
+function hideBanner(el) {
+  if (!el.isConnected || el.classList.contains('leaving')) return;
+  el.classList.add('leaving');
+  setTimeout(() => el.remove(), 220);
+}
+
+function hideAllBanners() {
+  document.querySelectorAll('.mb-banner').forEach(hideBanner);
 }
 
 function drawNotifications() {
@@ -232,7 +336,10 @@ function togglePopover(kind, anchor) {
   openPopover = kind;
   box.hidden = false;
   box.dataset.kind = kind;
-  if (kind === 'notif') drawNotifications();
+  if (kind === 'notif') {
+    hideAllBanners();
+    drawNotifications();
+  }
   else drawUserMenu();
   const r = anchor.getBoundingClientRect();
   box.style.right = `${Math.max(8, window.innerWidth - r.right - 4)}px`;
@@ -398,12 +505,14 @@ export function menubarHTML() {
       <div class="mb-clock" aria-hidden="true"><span id="mb-date"></span><b id="mb-time"></b></div>
       <button class="mb-user" id="mb-user" title="Mon compte" aria-label="Menu du compte" aria-expanded="false"></button>
     </div>
-    <div class="mb-popover" id="mb-popover" hidden></div>`;
+    <div class="mb-popover" id="mb-popover" hidden></div>
+    <div class="mb-banners" id="mb-banners" role="status" aria-live="polite"></div>`;
 }
 
 export function mountDesktop(options) {
   hooks = { ...hooks, ...options };
   loadDismissed();
+  loadSeen();
   drawUserButton();
   drawThemeButton();
   tickClock();
@@ -413,6 +522,21 @@ export function mountDesktop(options) {
   $('#theme-toggle').addEventListener('click', toggleTheme);
   $('#mb-notif').addEventListener('click', (e) => togglePopover('notif', e.currentTarget));
   $('#mb-user').addEventListener('click', (e) => togglePopover('user', e.currentTarget));
+  $('#mb-notif').addEventListener('animationend', (e) => e.currentTarget.classList.remove('ring'));
+  $('#mb-banners').addEventListener('click', (e) => {
+    const banner = e.target.closest('.mb-banner');
+    if (!banner) return;
+    if (e.target.closest('[data-banner-close]')) {
+      hideBanner(banner);
+      return;
+    }
+    if (e.target.closest('[data-banner-list]')) {
+      e.preventDefault();
+      togglePopover('notif', $('#mb-notif'));
+      return;
+    }
+    if (e.target.closest('a')) hideBanner(banner);
+  });
   $('#mb-popover').addEventListener('click', async (e) => {
     const one = e.target.closest('[data-notif-dismiss]');
     if (one) {
@@ -527,6 +651,9 @@ export function initDesktopGlobals() {
   });
   window.addEventListener('astra:theme', drawThemeButton);
   window.addEventListener('hashchange', closePopover);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.user) refreshNotifications();
+  });
   document.addEventListener('contextmenu', (e) => {
     if (!state.user || e.defaultPrevented || e.shiftKey) return;
     if (e.target.closest('input, textarea, select, [contenteditable], .editor, .ctx-menu')) return;

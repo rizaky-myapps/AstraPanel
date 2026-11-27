@@ -209,6 +209,7 @@ function endSession(setupRequired = false) {
   document.body.classList.remove('os');
   state.user = null;
   state.apps = [];
+  state.appsLoaded = false;
   clearInterval(poller);
   clearInterval(updatePoller);
   stopUpdateWatch();

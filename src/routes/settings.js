@@ -1,6 +1,7 @@
 import { HttpError, streamLog } from '../http/util.js';
 import { normalizeDomains } from '../domains.js';
 import { bootId, systemInfo } from '../system.js';
+import { RANGE_LIST } from '../metrics.js';
 import { analyze, listMounts } from '../storage.js';
 import { listPanelAssets } from '../http/panel-assets.js';
 import { readFile } from 'node:fs/promises';
@@ -15,7 +16,7 @@ export function settingsRoutes(router, { store, apps, config, metrics, tunnel, u
 
   router.get('/api/system/metrics', (ctx) => {
     const data = metrics.query(ctx.query.get('range') || '1h');
-    if (!data) throw new HttpError(400, 'Période inconnue');
+    if (!data) throw new HttpError(400, `Période inconnue (${RANGE_LIST})`);
     return data;
   });
 

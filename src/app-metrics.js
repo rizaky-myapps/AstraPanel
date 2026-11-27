@@ -1,13 +1,13 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { RANGES } from './metrics.js';
+import { RANGES, TIERS, fillTiers } from './metrics.js';
 
 const SAMPLE_EVERY = 10_000;
 const SAVE_EVERY = 10 * 60_000;
 const round = (v, d = 1) => (v === null || v === undefined ? null : Math.round(v * 10 ** d) / 10 ** d);
 
 /**
- * Historique par application : processeur (%) et mémoire (Mo), mêmes paliers que l'historique de la machine
- * (1 h, 24 h, 15 j, 30 j). Un point = [début de l'intervalle (ms), CPU %, RAM Mo]. Seules les périodes où
+ * Historique par application : processeur (%) et mémoire (Mo), mêmes paliers et périodes que l'historique de la
+ * machine (1 h, 12 h, 24 h, 3 j, 7 j). Un point = [début de l'intervalle (ms), CPU %, RAM Mo]. Seules les périodes où
  * l'application tourne sont enregistrées : un arrêt laisse un trou dans les graphiques.
  * Sauvegardé sur disque toutes les 10 minutes (sauf le palier 1 h).
  */
@@ -23,7 +23,7 @@ export class AppMetrics {
   seriesFor(id) {
     let s = this.series.get(id);
     if (!s) {
-      s = Object.fromEntries(Object.keys(RANGES).map((r) => [r, []]));
+      s = Object.fromEntries(Object.keys(TIERS).map((r) => [r, []]));
       this.series.set(id, s);
     }
     return s;
@@ -34,8 +34,7 @@ export class AppMetrics {
     try {
       const data = JSON.parse(readFileSync(this.file, 'utf8'));
       for (const [id, saved] of Object.entries(data.apps || {})) {
-        const s = this.seriesFor(id);
-        for (const r of Object.keys(RANGES)) if (Array.isArray(saved?.[r])) s[r] = saved[r];
+        Object.assign(this.seriesFor(id), fillTiers(saved || {}));
       }
       this.prune();
     } catch {
@@ -58,7 +57,7 @@ export class AppMetrics {
 
   prune(now = Date.now()) {
     for (const s of this.series.values()) {
-      for (const [r, { span }] of Object.entries(RANGES)) {
+      for (const [r, { span }] of Object.entries(TIERS)) {
         const points = s[r];
         let drop = 0;
         while (drop < points.length && points[drop][0] < now - span) drop++;
@@ -71,7 +70,7 @@ export class AppMetrics {
     const s = this.seriesFor(id);
     let pending = this.pending.get(id);
     if (!pending) this.pending.set(id, (pending = {}));
-    for (const [r, { step }] of Object.entries(RANGES)) {
+    for (const [r, { step }] of Object.entries(TIERS)) {
       const start = Math.floor(now / step) * step;
       let b = pending[r];
       if (b && b.t !== start) {
@@ -97,11 +96,12 @@ export class AppMetrics {
   query(id, range) {
     const def = RANGES[range];
     if (!def) return null;
+    const now = Date.now();
     const s = this.series.get(id);
-    const points = s ? [...s[range]] : [];
-    const b = this.pending.get(id)?.[range];
+    const points = s ? s[def.tier].filter((p) => p[0] >= now - def.span) : [];
+    const b = this.pending.get(id)?.[def.tier];
     if (b) points.push(this.close(b));
-    return { range, step: def.step, span: def.span, now: Date.now(), points };
+    return { range, step: TIERS[def.tier].step, span: def.span, now, points };
   }
 
   forget(id) {

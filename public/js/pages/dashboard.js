@@ -5,9 +5,10 @@ import { $, TYPE_INFO, formatBytes, formatPercent, html, icon, setHTML, statusOf
 
 const RANGES = [
   { id: '1h', label: '1 h', refresh: 10_000 },
+  { id: '12h', label: '12 h', refresh: 60_000 },
   { id: '24h', label: '24 h', refresh: 60_000 },
-  { id: '15j', label: '15 j', refresh: 120_000 },
-  { id: '30j', label: '30 j', refresh: 120_000 },
+  { id: '3j', label: '3 j', refresh: 120_000 },
+  { id: '7j', label: '7 j', refresh: 120_000 },
 ];
 
 const num = (v, d = 1) => v.toFixed(d).replace('.', ',');
@@ -245,7 +246,7 @@ export function renderDashboard(view, page) {
       card.querySelector('.table-scroll'),
       html`<table class="table compact">
         <thead><tr><th>Moment</th><th class="num">${s.title}</th></tr></thead>
-        <tbody>${rows.map((p) => html`<tr><td>${formatWhen(p[0], data.step)}</td><td class="num">${s.format(p[1])}</td></tr>`)}</tbody>
+        <tbody>${rows.map((p) => html`<tr><td>${formatWhen(p[0], data.step, data.span)}</td><td class="num">${s.format(p[1])}</td></tr>`)}</tbody>
       </table>`,
     );
   }

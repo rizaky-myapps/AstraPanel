@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { HttpError, readBody, receiveToFile, streamLog } from '../http/util.js';
+import { RANGE_LIST } from '../metrics.js';
 
 export function sendDownload(res, file, size, name, type = 'application/octet-stream') {
   res.writeHead(200, {
@@ -38,7 +39,7 @@ export function appRoutes(router, { apps, appMetrics, config }) {
   router.get('/api/apps/:id/metrics', (ctx) => {
     const app = apps.get(ctx.params.id);
     const data = appMetrics.query(app.id, ctx.query.get('range') || '1h');
-    if (!data) throw new HttpError(400, 'Période inconnue (1h, 24h, 15j ou 30j)');
+    if (!data) throw new HttpError(400, `Période inconnue (${RANGE_LIST})`);
     const rt = apps.rt(app.id);
     return {
       ...data,

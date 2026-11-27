@@ -1,7 +1,7 @@
 import { api } from './api.js';
 
 // État partagé : la liste des applications est rafraîchie régulièrement par main.js.
-export const state = { user: null, apps: [], returnTo: '#/' };
+export const state = { user: null, apps: [], appsLoaded: false, returnTo: '#/' };
 const listeners = new Set();
 
 export function onAppsChange(fn) {
@@ -13,6 +13,7 @@ export async function refreshApps() {
   if (!state.user) return;
   try {
     state.apps = await api.get('/apps');
+    state.appsLoaded = true;
   } catch {
     return;
   }

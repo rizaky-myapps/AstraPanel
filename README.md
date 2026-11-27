@@ -37,9 +37,10 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Tutoriels intégrés** : les tutoriels (installation, tunnel Cloudflare) lisibles directement dans le panel, depuis
   les pages qui y renvoient (bouton « Tutoriel » du tunnel Cloudflare)
 - **Tableau de bord façon bureau** : grande horloge et date, jauges du processeur, de la mémoire, du stockage et de
-  la température, lanceur d'applications, et graphiques sur 1 h, 24 h, 15 jours et 30 jours
+  la température, lanceur d'applications, et graphiques sur 1 h, 12 h, 24 h, 3 jours et 7 jours
 - **Notifications** (cloche de la barre du haut) : application plantée, déploiement en échec, mise à jour disponible,
-  tunnel déconnecté, sous-tension ou surchauffe ; chacune s'efface d'une croix, ou toutes avec « Tout effacer »
+  tunnel déconnecté, sous-tension ou surchauffe ; à son arrivée, une notification s'affiche quelques secondes sous la
+  cloche ; chacune s'efface d'une croix, ou toutes avec « Tout effacer »
 - **Panneau latéral masquable** : il se cache sur la gauche pour laisser toute la place au contenu
 - **Explorateur de stockage** : les disques de la machine et leur contenu trié par taille, pour trouver ce qui prend de la place
 - **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
@@ -53,7 +54,7 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
   déconnexion des autres appareils, dernières connexions, tentatives échouées et activité récente
 - **Bureau façon système d'exploitation** : barre du haut (recherche Ctrl+K au centre, notifications, thème, heure,
   menu du compte), pages en plein écran sur un fond d'écran (seul le contenu défile), menu clic droit sur tout le site
-- **Statistiques par application** : historique processeur et mémoire vive (1 h, 24 h, 15 jours, 30 jours) en graphiques
+- **Statistiques par application** : historique processeur et mémoire vive (1 h, 12 h, 24 h, 3 jours, 7 jours) en graphiques
 - **Interface** : logo « planète en orbite », panneau latéral flottant, onglets en pastilles ;
   thème sombre et thème clair (automatique selon l'appareil, ou au choix) et cinq couleurs d'accent (Solaire par
   défaut, Océan, Aurore, Nébuleuse, Framboise), enregistrés avec chaque compte ; écran de connexion façon écran de
@@ -162,7 +163,7 @@ src/
   audit.js           journal d'activité (qui a fait quoi, quand)
   hardware.js        informations sur la machine, demande de redémarrage
   version.js         numéros de version (+0.0.1) et noms des branches
-  metrics.js         historique CPU / température / RAM (1 h, 24 h, 15 j, 30 j)
+  metrics.js         historique CPU / température / RAM (1 h, 12 h, 24 h, 3 j, 7 j)
   storage.js         disques et analyse de l'espace occupé
   system.js          statistiques de la machine
   apps/manager.js    cycle de vie des applis : démarrage, plantages, déploiements

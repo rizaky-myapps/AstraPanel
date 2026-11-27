@@ -5679,3 +5679,110 @@ body.os .console-output {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---- Bannières : une notification qui arrive s'affiche quelques secondes sous la cloche ---- */
+.mb-banners {
+  position: fixed;
+  top: calc(var(--menubar-h) + 6px);
+  right: 8px;
+  z-index: 59;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.mb-banner {
+  position: relative;
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 18px 44px rgba(var(--shadow-rgb), calc(0.42 * var(--shadow-k)));
+  pointer-events: auto;
+  animation: banner-in 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+.mb-banner .notif {
+  padding-right: 36px;
+}
+.mb-banner.leaving {
+  animation: banner-out 0.22s ease forwards;
+}
+/* temps restant avant que la bannière disparaisse (en pause sous la souris) */
+.mb-banner-time {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(90deg, rgb(var(--accent-rgb)), rgb(var(--accent-2-rgb)));
+  opacity: 0.75;
+  transform-origin: left;
+  animation: banner-time var(--banner-ms, 4500ms) linear forwards;
+}
+.mb-banner:hover .mb-banner-time {
+  animation-play-state: paused;
+}
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+}
+@keyframes banner-out {
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+@keyframes banner-time {
+  to {
+    transform: scaleX(0);
+  }
+}
+/* la cloche sonne à l'arrivée d'une notification */
+#mb-notif.ring svg {
+  transform-origin: 50% 3px;
+  animation: bell-ring 0.9s ease;
+}
+@keyframes bell-ring {
+  15% {
+    transform: rotate(16deg);
+  }
+  30% {
+    transform: rotate(-13deg);
+  }
+  45% {
+    transform: rotate(9deg);
+  }
+  60% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(3deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mb-banner {
+    animation-name: banner-fade;
+  }
+  .mb-banner.leaving {
+    animation-name: banner-fade-out;
+  }
+  #mb-notif.ring svg {
+    animation: none;
+  }
+}
+@keyframes banner-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes banner-fade-out {
+  to {
+    opacity: 0;
+  }
+}
