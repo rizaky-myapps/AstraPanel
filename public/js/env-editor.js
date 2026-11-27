@@ -24,11 +24,15 @@ export function toDotenv(env) {
 
 /**
  * Éditeur de variables d'environnement (lignes clé / valeur ou mode texte .env).
+ * modeSlot : élément où placer le bouton « Mode texte / Mode tableau » (sinon, au-dessus de l'éditeur).
+ * onRender(textMode) : appelé après chaque affichage.
  * Retourne { getValue() } qui lève une erreur si la saisie est invalide.
  */
-export function envEditor(container, initial = {}) {
+export function envEditor(container, initial = {}, { modeSlot = null, onRender = null } = {}) {
   let textMode = false;
   let env = { ...initial };
+  const modeButton = () =>
+    html`<button type="button" class="btn btn-ghost btn-sm" data-mode>${icon(textMode ? 'sliders' : 'file')} ${textMode ? 'Mode tableau' : 'Mode texte (.env)'}</button>`;
 
   const row = (key = '', value = '') => html`<div class="kv">
     <input type="text" class="mono kv-key" placeholder="NOM_VARIABLE" value="${key}" spellcheck="false" autocomplete="off" />
@@ -53,20 +57,20 @@ export function envEditor(container, initial = {}) {
 
   function render() {
     const entries = Object.entries(env);
+    if (modeSlot) setHTML(modeSlot, modeButton());
+    container.classList.toggle('env-text-mode', textMode);
     setHTML(
       container,
-      html`<div class="row env-toolbar">
-          <span class="spacer"></span>
-          <button type="button" class="btn btn-ghost btn-sm" data-mode>${icon(textMode ? 'sliders' : 'file')} ${textMode ? 'Mode tableau' : 'Mode texte (.env)'}</button>
-        </div>
+      html`${modeSlot ? '' : html`<div class="row env-toolbar"><span class="spacer"></span>${modeButton()}</div>`}
         ${textMode
-          ? html`<textarea class="mono" rows="10" spellcheck="false" placeholder="Une variable par ligne : NOM=valeur (vous pouvez coller un fichier .env)">${toDotenv(env)}</textarea>`
+          ? html`<textarea class="mono env-text" rows="10" spellcheck="false" placeholder="Une variable par ligne : NOM=valeur (vous pouvez coller un fichier .env)">${toDotenv(env)}</textarea>`
           : html`<div class="kv-rows">${entries.length ? entries.map(([k, v]) => row(k, v)) : row()}</div>
               <button type="button" class="btn btn-sm" data-add>${icon('plus')} Ajouter une variable</button>`}`,
     );
+    onRender?.(textMode);
   }
 
-  container.addEventListener('click', (e) => {
+  const onClick = (e) => {
     const target = e.target.closest('button');
     if (!target) return;
     if (target.hasAttribute('data-add')) {
@@ -88,7 +92,9 @@ export function envEditor(container, initial = {}) {
       textMode = !textMode;
       render();
     }
-  });
+  };
+  container.addEventListener('click', onClick);
+  modeSlot?.addEventListener('click', onClick);
 
   function getValue() {
     return textMode ? parseDotenv($('textarea', container).value) : readRows();

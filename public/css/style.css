@@ -5499,107 +5499,60 @@ body.os .console-output {
   height: 14px;
 }
 
-/* ---- Écran de connexion : vagues et lueurs en mouvement ---- */
+/* ---- Écran de connexion : vagues animées (canevas) derrière la carte floutée, fond neutre ---- */
 .auth {
   overflow: hidden;
+  background: linear-gradient(160deg, var(--hero-1), var(--hero-2));
 }
 .auth-waves {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: -1;
-  height: min(30vh, 260px);
-  pointer-events: none;
-}
-.waves {
-  display: block;
   width: 100%;
   height: 100%;
-}
-.wave-layers > use {
-  animation: wave-move 25s cubic-bezier(0.55, 0.5, 0.45, 0.5) infinite;
-}
-.wave-layers > use:nth-child(1) {
-  animation-delay: -2s;
-  animation-duration: 8s;
-  fill: rgba(var(--accent-rgb), 0.3);
-}
-.wave-layers > use:nth-child(2) {
-  animation-delay: -3s;
-  animation-duration: 11s;
-  fill: rgba(var(--accent-2-rgb), 0.22);
-}
-.wave-layers > use:nth-child(3) {
-  animation-delay: -4s;
-  animation-duration: 14s;
-  fill: rgba(var(--accent-rgb), 0.16);
-}
-.wave-layers > use:nth-child(4) {
-  animation-delay: -5s;
-  animation-duration: 20s;
-  fill: rgba(var(--accent-2-rgb), 0.28);
-}
-@keyframes wave-move {
-  0% {
-    transform: translate3d(-90px, 0, 0);
-  }
-  100% {
-    transform: translate3d(85px, 0, 0);
-  }
-}
-/* lueurs floues qui dérivent lentement derrière l'horloge et le formulaire */
-.auth-glow {
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  overflow: hidden;
   pointer-events: none;
 }
-.auth-glow i {
-  position: absolute;
-  width: 46vmax;
-  height: 46vmax;
-  border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.5;
-  animation: glow-drift 22s ease-in-out infinite alternate;
+.auth-card {
+  backdrop-filter: blur(22px) saturate(1.4);
 }
-.auth-glow i:nth-child(1) {
-  top: -18vmax;
-  left: -10vmax;
-  background: rgba(var(--accent-rgb), 0.55);
+
+/* ---- Onglet Variables : la carte remplit la fenêtre, son contenu défile ---- */
+.env-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
-.auth-glow i:nth-child(2) {
-  right: -16vmax;
-  bottom: -20vmax;
-  background: rgba(var(--accent-2-rgb), 0.5);
-  animation-duration: 28s;
-  animation-delay: -6s;
+.env-card > .card-header,
+.env-card > .card-foot {
+  flex: none;
 }
-.auth-glow i:nth-child(3) {
-  top: 25%;
-  left: 45%;
-  width: 30vmax;
-  height: 30vmax;
-  background: rgba(var(--accent-3-rgb), 0.35);
-  animation-duration: 34s;
-  animation-delay: -12s;
+.env-card .env-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--ink-rgb), 0.22) transparent;
 }
-@keyframes glow-drift {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(6vmax, 4vmax) scale(1.12);
-  }
-  100% {
-    transform: translate(-5vmax, 7vmax) scale(0.94);
-  }
+.env-card .env-body:has(.env-text-mode) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-@media (prefers-reduced-motion: reduce) {
-  .wave-layers > use,
-  .auth-glow i {
-    animation: none;
-  }
+.env-card #env-editor.env-text-mode {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* mode texte : grande zone de saisie, taille fixe */
+.env-text {
+  min-height: 260px;
+  resize: none;
+  line-height: 1.6;
+}
+.env-card .env-text {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
 }

@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { $, html, icon, setHTML, tip } from '../ui.js';
+import { startWaves } from '../waves.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const DATE_FORMAT = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -8,18 +9,7 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
   setHTML(
     root,
     html`<div class="auth">
-      <div class="auth-glow" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="auth-waves" aria-hidden="true">
-        <svg class="waves" viewBox="0 24 150 28" preserveAspectRatio="none" focusable="false">
-          <defs><path id="auth-wave" d="M-160 44c30 0 58-18 88-18s58 18 88 18 58-18 88-18 58 18 88 18v44h-352z" /></defs>
-          <g class="wave-layers">
-            <use href="#auth-wave" x="48" y="0" />
-            <use href="#auth-wave" x="48" y="3" />
-            <use href="#auth-wave" x="48" y="5" />
-            <use href="#auth-wave" x="48" y="7" />
-          </g>
-        </svg>
-      </div>
+      <canvas class="auth-waves" aria-hidden="true"></canvas>
       <div class="lock-clock" aria-hidden="true">
         <div class="desk-time" id="lock-time">--:--</div>
         <div class="desk-date" id="lock-date"></div>
@@ -65,6 +55,7 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
     setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
   };
   tick();
+  const stopWaves = startWaves($('.auth-waves', root));
 
   const form = $('form', root);
   const error = $('.error-text', form);
@@ -82,6 +73,7 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
     button.disabled = true;
     try {
       const { user } = setupRequired ? await api.post('/auth/setup', values) : await api.post('/auth/login', values);
+      stopWaves();
       onSuccess(user);
     } catch (err) {
       error.textContent = err.message;

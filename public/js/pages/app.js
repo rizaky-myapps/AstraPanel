@@ -284,13 +284,13 @@ function consoleTab(el, page, app) {
 function envTab(el, page, app) {
   setHTML(
     el,
-    html`<div class="card">
+    html`<div class="card env-card">
       <div class="card-header"><h2>${icon('key')} Variables d'environnement ${tip(
         app.type === 'bot'
           ? html`Mettez ici le token de votre bot (<code>DISCORD_TOKEN</code>) plutôt que dans le code : il ne sera jamais publié sur Git. Votre code les lit avec <code>process.env.NOM</code>.`
           : html`<code>PORT</code> est fourni automatiquement (${app.port}) : votre serveur doit écouter dessus. Votre code lit les variables avec <code>process.env.NOM</code>.`,
-      )}</h2></div>
-      <div class="card-body">
+      )}</h2><span class="spacer"></span><span id="env-mode"></span></div>
+      <div class="card-body env-body">
         <div id="env-editor"></div>
       </div>
       <div class="card-foot">
@@ -299,7 +299,20 @@ function envTab(el, page, app) {
       </div>
     </div>`,
   );
-  const editor = envEditor($('#env-editor', el), app.env);
+  // La carte remplit la fenêtre : c'est la liste des variables (ou la zone de texte) qui défile, pas la page
+  const card = $('.env-card', el);
+  const fit = () => {
+    const body = document.getElementById('window-body');
+    if (!body || !card.isConnected) return;
+    const pad = parseFloat(getComputedStyle(body).paddingBottom) || 0;
+    const room = body.getBoundingClientRect().bottom - pad - card.getBoundingClientRect().top + body.scrollTop;
+    // sur téléphone, une hauteur minimale garde la zone de saisie utilisable
+    card.style.height = `${Math.max(window.innerWidth < 600 ? 440 : 360, Math.floor(room))}px`;
+  };
+  requestAnimationFrame(fit);
+  window.addEventListener('resize', fit);
+  page.onCleanup(() => window.removeEventListener('resize', fit));
+  const editor = envEditor($('#env-editor', el), app.env, { modeSlot: $('#env-mode', el) });
   el.addEventListener('click', (e) => {
     const button = e.target.closest('[data-save]');
     if (!button) return;
