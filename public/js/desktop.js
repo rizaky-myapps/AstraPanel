@@ -1,18 +1,21 @@
 // Environnement de bureau façon système d'exploitation :
-// - barre du haut : panneau latéral, logo, fenêtres ouvertes, recherche (Ctrl+K), notifications, thème, horloge, compte ;
-// - chaque page s'affiche dans une fenêtre (fermer, réduire, agrandir) posée sur le fond d'écran ;
+// - barre du haut : panneau latéral, logo, recherche au centre (Ctrl+K), notifications, thème, horloge, compte ;
+// - chaque page s'affiche en plein écran dans une fenêtre posée sur le fond d'écran (le contenu défile dans la fenêtre) ;
 // - le tableau de bord est le « bureau » : ses widgets sont posés directement sur le fond d'écran.
 import { api } from './api.js';
-import { isAdmin, state } from './state.js';
-import { applyAppearance, effectiveTheme } from './theme.js';
-import { $, ROLE_LABEL, TYPE_INFO, avatar, html, icon, setHTML, statusOf } from './ui.js';
+import { isAdmin, refreshApps, state } from './state.js';
+import { THEMES, applyAppearance, effectiveTheme } from './theme.js';
+import { $, ROLE_LABEL, TYPE_INFO, avatar, copyText, html, icon, localUrl, openContextMenu, setHTML, statusOf, toast } from './ui.js';
 
-// fenêtres ouvertes : retenues par compte (deux comptes sur le même navigateur ne se mélangent pas)
-const windowsKey = () => `astra.windows.${state.user?.id || ''}`;
-const MAX_KEY = 'astra.window-max';
-const MAX_WINDOWS = 6;
-
-const APP_TABS = { console: 'Console', files: 'Fichiers', env: 'Variables', deploy: 'Déploiement', settings: 'Paramètres', users: 'Utilisateurs' };
+const APP_TABS = {
+  console: 'Console',
+  stats: 'Statistiques',
+  files: 'Fichiers',
+  env: 'Variables',
+  deploy: 'Déploiement',
+  settings: 'Paramètres',
+  users: 'Utilisateurs',
+};
 const SETTINGS_TABS = {
   compte: 'Mon compte',
   utilisateurs: 'Utilisateurs',
@@ -24,33 +27,15 @@ const SETTINGS_TABS = {
 };
 const HELP_DOCS = { tutoriel: 'Installation et utilisation', cloudflare: 'Tunnel Cloudflare' };
 
-const store = {
-  get(key, fallback) {
-    try {
-      return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback;
-    } catch {
-      return fallback;
-    }
-  },
-  set(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // stockage indisponible : le réglage vaut pour cette page seulement
-    }
-  },
-};
-
 const sys = { update: null, tunnel: null };
 let hooks = { onLogout: () => {}, onToggleSidebar: () => {} };
-let current = null; // fenêtre affichée : { key, hash, title, icon, tone }
-let windows = [];
+let current = null; // page affichée dans la fenêtre : { key, title, icon, tone }
 let openPopover = null;
 
 // ---- Fenêtre de la page affichée -----------------------------------------------------------------
 // Décrit la fenêtre d'une page d'après son itinéraire (titre, icône, couleur de la tuile).
 function describe(nav, params) {
-  const [a, b] = params;
+  const [a] = params;
   if (nav === 'app') {
     const app = state.apps.find((x) => x.id === a);
     const type = TYPE_INFO[app?.type] || { icon: 'box' };
@@ -69,86 +54,14 @@ export function setWindow(nav, params) {
   if (!shell) return;
   const info = describe(nav, params);
   shell.classList.toggle('desktop-mode', !info);
-  current = info ? { ...info, hash: location.hash } : null;
-  if (info) {
-    // l'adresse peut être complétée par la page (onglet retenu) : on la relit juste après
-    setTimeout(() => {
-      if (current?.key !== info.key) return;
-      current.hash = location.hash;
-      const sub = describe(nav, params)?.sub;
-      if (sub) current.sub = sub;
-      remember(current);
-      drawTitle();
-    }, 0);
-    remember(current);
-  }
-  drawTitle();
-  drawWindows();
-}
-
-function drawTitle() {
-  const title = $('#window-title');
-  if (!title || !current) return;
-  setHTML(
-    title,
-    html`<span class="window-icon tone-${current.tone}">${icon(current.icon)}</span><b class="truncate">${current.title}</b>${current.sub ? html`<span class="window-sub truncate">${current.sub}</span>` : ''}`,
-  );
-  document.title = `${current.title}${current.sub ? ` · ${current.sub}` : ''} — AstraPanel`;
-}
-
-// Fenêtres ouvertes (comme une barre des tâches) : on y revient en un clic
-function remember(win) {
-  const entry = { key: win.key, hash: win.hash, title: win.title, icon: win.icon, tone: win.tone };
-  const i = windows.findIndex((w) => w.key === win.key);
-  if (i >= 0) windows[i] = entry;
-  else windows = [...windows, entry].slice(-MAX_WINDOWS);
-  store.set(windowsKey(), windows);
-}
-
-function forget(key) {
-  windows = windows.filter((w) => w.key !== key);
-  store.set(windowsKey(), windows);
-}
-
-function drawWindows() {
-  const box = $('#mb-windows');
-  if (!box) return;
-  // une application supprimée (ou plus accessible) disparaît de la barre
-  const known = new Set(state.apps.map((a) => `app:${a.id}`));
-  const visible = windows.filter((w) => !w.key.startsWith('app:') || known.has(w.key));
-  setHTML(
-    box,
-    visible.map((w) => {
-      const app = w.key.startsWith('app:') ? state.apps.find((a) => `app:${a.id}` === w.key) : null;
-      const title = app?.name || w.title;
-      return html`<a class="mb-window ${current?.key === w.key ? 'active' : ''}" href="${w.hash}" title="${title}">
-        <span class="window-icon tone-${w.tone}">${icon(w.icon)}</span><span class="truncate">${title}</span>${app ? html`<span class="dot ${statusOf(app).cls}"></span>` : ''}
-      </a>`;
-    }),
-  );
-}
-
-function windowAction(action) {
-  if (action === 'max') {
-    const max = !$('.shell').classList.contains('win-max');
-    $('.shell').classList.toggle('win-max', max);
-    store.set(MAX_KEY, max);
-    drawMaxButton();
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
-    return;
-  }
-  // réduire : retour au bureau, la fenêtre reste dans la barre ; fermer : elle en disparaît
-  if (action === 'close' && current) forget(current.key);
-  location.hash = '#/';
-}
-
-function drawMaxButton() {
-  const button = $('[data-win="max"]');
-  if (!button) return;
-  const max = $('.shell').classList.contains('win-max');
-  setHTML(button, icon(max ? 'minimize' : 'maximize'));
-  button.title = max ? 'Taille normale' : 'Agrandir';
-  button.setAttribute('aria-label', max ? 'Remettre la fenêtre à sa taille normale' : 'Agrandir la fenêtre');
+  current = info;
+  const title = () => {
+    const sub = info && describe(nav, params)?.sub;
+    document.title = info ? `${info.title}${sub ? ` · ${sub}` : ''} — AstraPanel` : 'AstraPanel';
+  };
+  title();
+  // l'onglet retenu d'une application n'est connu qu'après l'affichage de la page
+  setTimeout(title, 0);
 }
 
 // ---- Notifications --------------------------------------------------------------------------------
@@ -213,7 +126,6 @@ export function setSystemInfo(info) {
 // ---- Menu du compte -------------------------------------------------------------------------------
 function drawUserMenu() {
   const u = state.user;
-  const dark = effectiveTheme() === 'dark';
   setHTML(
     $('#mb-popover'),
     html`<div class="popover-user">
@@ -222,7 +134,9 @@ function drawUserMenu() {
       </div>
       <div class="popover-menu">
         <a href="#/settings/compte">${icon('user')} Mon compte</a>
-        <button type="button" data-menu="theme">${icon(dark ? 'sun' : 'moon')} ${dark ? 'Thème clair' : 'Thème sombre'}</button>
+        <div class="popover-theme segmented" role="group" aria-label="Thème">
+          ${THEMES.map((t) => html`<button type="button" data-menu-theme="${t.id}" aria-pressed="${t.id === (state.user.prefs?.theme || 'auto')}" title="${t.label}">${icon(t.icon)}<span>${t.label}</span></button>`)}
+        </div>
         ${isAdmin() ? html`<a href="#/settings/utilisateurs">${icon('users')} Utilisateurs</a>` : ''}
         <a href="#/aide">${icon('book')} Aide</a>
         <button type="button" class="danger" data-menu="logout">${icon('logout')} Se déconnecter</button>
@@ -267,6 +181,7 @@ function closePopover() {
 async function toggleTheme() {
   const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
   applyAppearance({ ...state.user.prefs, theme: next });
+  state.user = { ...state.user, prefs: { ...state.user.prefs, theme: next } };
   try {
     const { user } = await api.patch('/account/preferences', { theme: next });
     state.user = { ...state.user, ...user };
@@ -404,33 +319,22 @@ function closeSearch() {
 
 // ---- Installation de la barre -----------------------------------------------------------------------
 export function menubarHTML() {
-  return html`<button class="mb-btn" id="side-toggle" title="Panneau latéral" aria-label="Afficher ou masquer le panneau latéral">${icon('panelClose')}</button>
-    <a class="mb-brand" href="#/" title="Tableau de bord">${icon('logo')}<span>Astra<b>Panel</b></span></a>
-    <nav class="mb-windows" id="mb-windows" aria-label="Fenêtres ouvertes"></nav>
-    <span class="spacer"></span>
-    <button class="mb-btn mb-search" id="mb-search" title="Rechercher (Ctrl+K)" aria-label="Rechercher">${icon('search')}<span>Rechercher</span><kbd>Ctrl K</kbd></button>
-    <button class="mb-btn" id="mb-notif" title="Notifications" aria-label="Notifications" aria-expanded="false">${icon('bell')}<span class="mb-badge" id="mb-notif-count" hidden></span></button>
-    <button class="mb-btn" id="theme-toggle"></button>
-    <div class="mb-clock" aria-hidden="true"><span id="mb-date"></span><b id="mb-time"></b></div>
-    <button class="mb-user" id="mb-user" title="Mon compte" aria-label="Menu du compte" aria-expanded="false"></button>
-    <div class="mb-popover" id="mb-popover" hidden></div>`;
-}
-
-export function windowBarHTML() {
-  return html`<div class="traffic">
-      <button type="button" class="tl tl-close" data-win="close" title="Fermer" aria-label="Fermer la fenêtre">${icon('x')}</button>
-      <button type="button" class="tl tl-min" data-win="min" title="Réduire" aria-label="Réduire la fenêtre">${icon('minus')}</button>
-      <button type="button" class="tl tl-max" data-win="max" title="Agrandir" aria-label="Agrandir la fenêtre">${icon('maximize')}</button>
+  return html`<div class="mb-left">
+      <button class="mb-btn" id="side-toggle" title="Panneau latéral" aria-label="Afficher ou masquer le panneau latéral">${icon('panelClose')}</button>
+      <a class="mb-brand" href="#/" title="Tableau de bord">${icon('logo')}<span>Astra<b>Panel</b></span></a>
     </div>
-    <div class="window-title" id="window-title"></div>
-    <div class="window-bar-end"></div>`;
+    <button class="mb-btn mb-search" id="mb-search" title="Rechercher (Ctrl+K)" aria-label="Rechercher">${icon('search')}<span>Rechercher une application, une page…</span><kbd>Ctrl K</kbd></button>
+    <div class="mb-right">
+      <button class="mb-btn" id="mb-notif" title="Notifications" aria-label="Notifications" aria-expanded="false">${icon('bell')}<span class="mb-badge" id="mb-notif-count" hidden></span></button>
+      <button class="mb-btn" id="theme-toggle"></button>
+      <div class="mb-clock" aria-hidden="true"><span id="mb-date"></span><b id="mb-time"></b></div>
+      <button class="mb-user" id="mb-user" title="Mon compte" aria-label="Menu du compte" aria-expanded="false"></button>
+    </div>
+    <div class="mb-popover" id="mb-popover" hidden></div>`;
 }
 
 export function mountDesktop(options) {
   hooks = { ...hooks, ...options };
-  windows = store.get(windowsKey(), []);
-  $('.shell').classList.toggle('win-max', Boolean(store.get(MAX_KEY, false)));
-  drawMaxButton();
   drawUserButton();
   drawThemeButton();
   tickClock();
@@ -440,23 +344,90 @@ export function mountDesktop(options) {
   $('#theme-toggle').addEventListener('click', toggleTheme);
   $('#mb-notif').addEventListener('click', (e) => togglePopover('notif', e.currentTarget));
   $('#mb-user').addEventListener('click', (e) => togglePopover('user', e.currentTarget));
-  $('#mb-popover').addEventListener('click', (e) => {
+  $('#mb-popover').addEventListener('click', async (e) => {
+    // thème choisi dans le menu du compte : appliqué tout de suite, le menu reste ouvert
+    const theme = e.target.closest('[data-menu-theme]');
+    if (theme) {
+      const next = theme.dataset.menuTheme;
+      applyAppearance({ ...state.user.prefs, theme: next });
+      state.user = { ...state.user, prefs: { ...state.user.prefs, theme: next } };
+      drawUserMenu();
+      try {
+        const { user } = await api.patch('/account/preferences', { theme: next });
+        state.user = { ...state.user, ...user };
+      } catch {
+        // le choix reste appliqué sur cet appareil
+      }
+      return;
+    }
     const item = e.target.closest('[data-menu], a');
     if (!item) return;
     if (item.dataset.menu === 'theme') toggleTheme();
     if (item.dataset.menu === 'logout') hooks.onLogout();
     closePopover();
   });
-  $('#window-bar').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-win]');
-    if (b) windowAction(b.dataset.win);
-  });
-  $('#window-bar').addEventListener('dblclick', (e) => {
-    if (!e.target.closest('[data-win]')) windowAction('max');
-  });
 }
 
-// Écouteurs globaux (une seule fois) : clic hors des menus, Échap, Ctrl+K, thème
+// ---- Menu clic droit du site ------------------------------------------------------------------------
+// (le gestionnaire de fichiers a le sien ; Maj + clic droit et les champs de saisie gardent celui du navigateur)
+function appMenu(app) {
+  const running = app.runtime.status === 'running' || app.runtime.status === 'restarting';
+  const act = (action, label) => async () => {
+    await api.post(`/apps/${app.id}/${action}`);
+    toast(`${app.name} : ${label}`);
+    await refreshApps();
+  };
+  const url = localUrl(app);
+  return [
+    { label: 'Ouvrir', icon: 'external', onClick: () => (location.hash = `#/apps/${app.id}`) },
+    { label: 'Console', icon: 'terminal', onClick: () => (location.hash = `#/apps/${app.id}/console`) },
+    { label: 'Statistiques', icon: 'activity', onClick: () => (location.hash = `#/apps/${app.id}/stats`) },
+    { label: 'Fichiers', icon: 'folder', onClick: () => (location.hash = `#/apps/${app.id}/files`) },
+    { label: 'Paramètres', icon: 'sliders', onClick: () => (location.hash = `#/apps/${app.id}/settings`) },
+    '-',
+    running
+      ? { label: 'Arrêter', icon: 'stop', disabled: Boolean(app.runtime.busy), onClick: act('stop', 'arrêt demandé') }
+      : { label: 'Démarrer', icon: 'play', disabled: Boolean(app.runtime.busy), onClick: act('start', 'démarrage') },
+    { label: 'Redémarrer', icon: 'restart', disabled: Boolean(app.runtime.busy), onClick: act('restart', 'redémarrage') },
+    '-',
+    ...(app.domains || []).slice(0, 2).map((d) => ({ label: `Ouvrir ${d}`, icon: 'globe', onClick: () => window.open(`https://${d}`, '_blank', 'noopener') })),
+    url && { label: 'Ouvrir le site (réseau local)', icon: 'external', onClick: () => window.open(url, '_blank', 'noopener') },
+  ];
+}
+
+function contextItems(target, x, y) {
+  const items = [];
+  const selection = String(window.getSelection?.() || '').trim();
+  if (selection) items.push({ label: 'Copier', icon: 'copy', hint: 'Ctrl+C', onClick: () => copyText(selection) }, '-');
+  const link = target.closest('a[href]');
+  const appLink = link && /^#\/apps\/([^/]+)/.exec(link.getAttribute('href') || '');
+  const app = appLink && state.apps.find((a) => a.id === appLink[1]);
+  if (app && link.closest('.side-app, .app-tile, .spotlight-item')) return [...items, ...appMenu(app)];
+  if (link && /^https?:/.test(link.getAttribute('href'))) {
+    items.push(
+      { label: 'Ouvrir le lien dans un nouvel onglet', icon: 'external', onClick: () => window.open(link.href, '_blank', 'noopener') },
+      { label: 'Copier l’adresse du lien', icon: 'link', onClick: async () => { await copyText(link.href); toast('Adresse copiée'); } },
+      '-',
+    );
+  }
+  const hidden = $('.shell')?.classList.contains('side-hidden');
+  const dark = effectiveTheme() === 'dark';
+  items.push(
+    { label: 'Rechercher…', icon: 'search', hint: 'Ctrl+K', onClick: openSearch },
+    { label: 'Nouvelle application', icon: 'plus', onClick: () => (location.hash = '#/new') },
+    { label: 'Actualiser', icon: 'refresh', onClick: () => window.dispatchEvent(new HashChangeEvent('hashchange')) },
+    '-',
+    { label: dark ? 'Thème clair' : 'Thème sombre', icon: dark ? 'sun' : 'moon', onClick: toggleTheme },
+    window.matchMedia('(min-width: 901px)').matches && { label: hidden ? 'Afficher le panneau latéral' : 'Masquer le panneau latéral', icon: hidden ? 'panelOpen' : 'panelClose', onClick: () => hooks.onToggleSidebar() },
+    '-',
+    { label: 'Tableau de bord', icon: 'grid', onClick: () => (location.hash = '#/') },
+    { label: 'Paramètres', icon: 'sliders', onClick: () => (location.hash = '#/settings') },
+    { label: 'Aide', icon: 'book', onClick: () => (location.hash = '#/aide') },
+  );
+  return items;
+}
+
+// Écouteurs globaux (une seule fois) : clic hors des menus, Échap, Ctrl+K, thème, clic droit
 let globalsReady = false;
 export function initDesktopGlobals() {
   if (globalsReady) return;
@@ -477,18 +448,17 @@ export function initDesktopGlobals() {
   });
   window.addEventListener('astra:theme', drawThemeButton);
   window.addEventListener('hashchange', closePopover);
+  document.addEventListener('contextmenu', (e) => {
+    if (!state.user || e.defaultPrevented || e.shiftKey) return;
+    if (e.target.closest('input, textarea, select, [contenteditable], .editor, .ctx-menu')) return;
+    e.preventDefault();
+    closePopover();
+    openContextMenu(e.clientX, e.clientY, contextItems(e.target, e.clientX, e.clientY));
+  });
 }
 
 export function refreshDesktop() {
-  drawWindows();
   refreshNotifications();
-  if (current) {
-    const app = current.key.startsWith('app:') ? state.apps.find((a) => `app:${a.id}` === current.key) : null;
-    if (app && app.name !== current.title) {
-      current.title = app.name;
-      drawTitle();
-    }
-  }
 }
 
 // Bouton du panneau latéral : masquer / afficher sur grand écran, menu sur téléphone

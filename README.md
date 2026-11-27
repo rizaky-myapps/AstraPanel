@@ -25,9 +25,9 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Sites Node.js** (Express, Fastify, Next.js…) : le panel attribue un port à chaque site via `PORT`
 - **Sites statiques** (HTML, ou le résultat d'un build Vite/React) avec mode SPA
 - **Console en direct** des logs (stdout/stderr) et envoi de commandes sur l'entrée standard
-- **Gestionnaire de fichiers** : sélection multiple, déplacer, copier, renommer, compresser en ZIP, extraire,
-  téléverser des fichiers et des dossiers (glisser-déposer), télécharger un dossier en ZIP, éditeur de code avec
-  numéros de ligne, visionneuse d'images, de vidéos et de sons
+- **Gestionnaire de fichiers** : double-clic pour ouvrir, menu clic droit (avec propriétés), sélection multiple,
+  déplacer, copier, renommer, compresser en ZIP, extraire, téléverser des fichiers et des dossiers (glisser-déposer),
+  télécharger un dossier en ZIP, éditeur de code avec numéros de ligne, visionneuse d'images, de vidéos et de sons
 - **Variables d'environnement** (tableau ou collage d'un fichier `.env`) pour garder vos tokens hors du code
 - **Déploiement** depuis Git en un clic (pull + `npm install` + build + redémarrage), import d'archive ZIP, webhook
   pour redéployer à chaque `git push`
@@ -50,8 +50,9 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Onglet Hardware** : informations sur la machine et redémarrage de la machine depuis le panel, avec validation
 - **Gestion de son compte** : pseudo, photo de profil (recadrée dans le navigateur), mot de passe avec jauge de force,
   déconnexion des autres appareils, dernières connexions, tentatives échouées et activité récente
-- **Bureau façon système d'exploitation** : barre du haut (fenêtres ouvertes, recherche Ctrl+K, notifications, thème,
-  heure, menu du compte), pages ouvertes dans des fenêtres (fermer, réduire, agrandir) sur un fond d'écran
+- **Bureau façon système d'exploitation** : barre du haut (recherche Ctrl+K au centre, notifications, thème, heure,
+  menu du compte), pages en plein écran sur un fond d'écran (seul le contenu défile), menu clic droit sur tout le site
+- **Statistiques par application** : historique processeur et mémoire vive (1 h, 24 h, 15 jours, 30 jours) en graphiques
 - **Interface** : logo « planète en orbite », panneau latéral flottant, onglets en pastilles ;
   thème sombre et thème clair (automatique selon l'appareil, ou au choix) et cinq couleurs d'accent (Solaire par
   défaut, Océan, Aurore, Nébuleuse, Framboise), enregistrés avec chaque compte ; écran de connexion façon écran de

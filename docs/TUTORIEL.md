@@ -191,19 +191,22 @@ panel se présente comme le **bureau d'un système d'exploitation** :
 - la **barre du haut**, toujours visible :
   - tout à gauche, le bouton du **panneau latéral** : il le **cache sur la gauche** pour laisser toute la place au
     contenu, puis le fait revenir (sur téléphone, il ouvre le menu) ;
-  - le logo (retour au bureau) et les **fenêtres ouvertes** : un clic revient sur une application ou une page ;
-  - **Rechercher** (ou **Ctrl + K**) : tapez quelques lettres pour ouvrir une application, une page des paramètres,
-    un tutoriel, ou changer de thème ; flèches puis **Entrée** pour choisir ;
+  - le logo, qui ramène au bureau ;
+  - au centre, **Rechercher** (ou **Ctrl + K**) : tapez quelques lettres pour ouvrir une application, une page des
+    paramètres, un tutoriel, ou changer de thème ; flèches puis **Entrée** pour choisir ;
   - la **cloche** : les notifications (application plantée, déploiement en échec, mise à jour disponible, tunnel
     Cloudflare déconnecté) ; un clic ouvre la page concernée ;
   - le bouton **soleil / lune** (thème clair ou sombre), la date et l'heure, et votre **photo** : menu du compte
-    (**Mon compte**, thème, aide, **Se déconnecter**) ;
-- chaque page s'ouvre dans une **fenêtre** posée sur le fond d'écran, avec sa barre de titre et trois boutons :
-  **rouge** ferme la fenêtre (retour au bureau), **jaune** la réduit (elle reste dans la barre du haut pour y revenir),
-  **vert** l'agrandit sur toute la largeur (un double-clic sur la barre de titre fait de même) ;
-- le panel a un **thème sombre et un thème clair** : par défaut il suit le réglage de votre appareil ;
-  **Paramètres → Mon compte → Apparence** permet aussi de choisir la couleur du panel et du fond d'écran (voir
-  l'étape 12).
+    (**Mon compte**, thème **Automatique / Clair / Sombre**, aide, **Se déconnecter**) ;
+- chaque page s'ouvre en **plein écran** dans une fenêtre posée sur le fond d'écran : la page elle-même ne défile
+  jamais, seul le contenu de la fenêtre défile quand il est long (la console, elle, remplit exactement la fenêtre) ;
+- le **clic droit** ouvre le menu du panel : sur une application (panneau latéral ou bureau) pour l'ouvrir, aller
+  à sa console, ses statistiques, ses fichiers, la démarrer, l'arrêter ou la redémarrer ; ailleurs pour rechercher,
+  créer une application, actualiser, changer de thème ou masquer le panneau latéral. Dans les champs de saisie, et
+  avec **Maj + clic droit**, c'est le menu habituel du navigateur ;
+- le panel a un **thème sombre et un thème clair** : par défaut (et pour tout nouveau compte) il est en
+  **automatique** et suit le réglage de votre appareil ; **Paramètres → Mon compte → Apparence** permet aussi de
+  choisir la couleur du panel et du fond d'écran (voir l'étape 12).
 
 Le **tableau de bord** est le bureau lui-même, sans fenêtre : ses widgets sont posés sur le fond d'écran :
 
@@ -225,8 +228,16 @@ Le **tableau de bord** est le bureau lui-même, sans fenêtre : ses widgets sont
 
 Vos applications sont aussi listées dans le **panneau latéral**, sous **Tableau de bord** et **Paramètres** ; le petit
 **+** à côté du mot **Applications** en crée une nouvelle (comme la tuile **Ajouter** du tableau de bord). Chaque application a
-ses onglets (Console, Fichiers, Variables, Déploiement, Paramètres, Utilisateurs) ; quand vous passez d'une
-application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
+ses onglets (Console, Statistiques, Fichiers, Variables, Déploiement, Paramètres, Utilisateurs) ; quand vous passez
+d'une application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
+
+L'onglet **Statistiques** d'une application montre sa charge **processeur** et sa **mémoire vive** : valeurs actuelles,
+pics de la période, durée depuis le démarrage, puis deux **graphiques** sur **1 h, 24 h, 15 j ou 30 j** (survolez une
+courbe pour lire une valeur ; « Voir les données » affiche le tableau). Les mesures (tous les processus de
+l'application, toutes les 10 secondes) sont enregistrées pendant qu'elle tourne et gardées 30 jours ; un arrêt laisse un
+vide dans les courbes. 100 % correspond à un cœur de processeur entièrement occupé.
+
+![Statistiques d'une application](images/statistiques.png)
 
 ![Tableau de bord](images/tableau-de-bord.png)
 
@@ -350,10 +361,18 @@ cachés (`.git`, `.env`…) ne sont jamais servis.
 
 L'onglet **Fichiers** de chaque application est un gestionnaire de fichiers complet :
 
-- **Naviguer** : cliquez sur un dossier (ou sur le fil d'Ariane en haut) ; le champ « Filtrer » cherche dans le
-  dossier affiché ; cliquez sur un titre de colonne pour trier par nom, taille ou date.
-- **Sélectionner** : un clic sur une ligne la sélectionne, le rond à gauche ajoute ou retire un élément, Maj+clic
-  sélectionne une plage, Ctrl+A tout le dossier.
+- **Ouvrir** : comme sur un ordinateur, un **clic sélectionne** et un **double-clic ouvre** (un dossier, un fichier, ou
+  « .. » pour remonter) ; sur téléphone, touchez deux fois. **Entrée** ouvre aussi l'élément sélectionné. Le fil
+  d'Ariane en haut ramène en un clic à un dossier parent ; le champ « Filtrer » cherche dans le dossier affiché ;
+  cliquez sur un titre de colonne pour trier par nom, taille ou date.
+- **Sélectionner** : Ctrl+clic (ou le rond à gauche) ajoute ou retire un élément, Maj+clic sélectionne une plage,
+  Ctrl+A tout le dossier ; un clic dans le vide désélectionne.
+- **Clic droit** sur un élément (ou sur la sélection) : **Ouvrir**, Ouvrir dans un nouvel onglet (images, vidéos,
+  sons, PDF), **Renommer**, Copier vers…, Déplacer vers…, **Compresser en ZIP** (plusieurs éléments sélectionnés vont
+  dans **la même archive**), Extraire ici (archives), Télécharger, Copier le chemin, **Supprimer** et **Propriétés**
+  (type, emplacement, taille — pour un dossier, la taille totale et le nombre de fichiers et de dossiers —, dates de
+  modification et de création, permissions, chemin complet ; Alt+Entrée). Clic droit dans le vide : nouveau fichier,
+  nouveau dossier, téléverser, tout sélectionner, actualiser, propriétés du dossier.
 - **Créer** : « Nouveau fichier », « Nouveau dossier ».
 - **Téléverser** : bouton « Téléverser » (plusieurs fichiers), « Envoyer un dossier », ou glisser-déposer des
   fichiers et des dossiers directement dans la liste.

@@ -53,6 +53,57 @@ function validateName(name) {
   if (name.length > 255) throw new HttpError(400, 'Nom trop long');
 }
 
+// Propriétés d'un fichier ou d'un dossier (pour un dossier : taille totale et nombre d'éléments, parcours limité).
+const STAT_LIMIT = 20_000;
+export async function statPath(root, rel) {
+  const { target, rel: cleanRel } = await resolveInside(root, rel, { mustExist: true });
+  const l = await lstat(target);
+  const info = l.isSymbolicLink() ? await stat(target).catch(() => l) : l;
+  const out = {
+    name: cleanRel ? path.basename(cleanRel) : '',
+    path: cleanRel,
+    type: info.isDirectory() ? 'dir' : 'file',
+    link: l.isSymbolicLink(),
+    size: info.isDirectory() ? 0 : info.size,
+    mtime: info.mtimeMs,
+    ctime: info.birthtimeMs || info.ctimeMs,
+    mode: (info.mode & 0o777).toString(8).padStart(3, '0'),
+  };
+  if (out.type === 'dir') {
+    let files = 0;
+    let dirs = 0;
+    let seen = 0;
+    let partial = false;
+    const walk = async (dir) => {
+      let names;
+      try {
+        names = await readdir(dir);
+      } catch {
+        return;
+      }
+      for (const name of names) {
+        if (++seen > STAT_LIMIT) {
+          partial = true;
+          return;
+        }
+        const s = await lstat(path.join(dir, name)).catch(() => null);
+        if (!s) continue;
+        if (s.isDirectory()) {
+          dirs++;
+          await walk(path.join(dir, name));
+          if (partial) return;
+        } else {
+          files++;
+          out.size += s.size;
+        }
+      }
+    };
+    await walk(target);
+    Object.assign(out, { files, dirs, partial });
+  }
+  return out;
+}
+
 export async function listDir(root, rel) {
   const { target, rel: cleanRel } = await resolveInside(root, rel, { mustExist: true });
   const info = await stat(target);

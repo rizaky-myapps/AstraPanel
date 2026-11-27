@@ -8,6 +8,7 @@ import { Store } from './store.js';
 import { Auth } from './auth.js';
 import { AppManager } from './apps/manager.js';
 import { Metrics } from './metrics.js';
+import { AppMetrics } from './app-metrics.js';
 import { Tunnel } from './tunnel.js';
 import { Updater } from './update.js';
 import { AuditLog } from './audit.js';
@@ -46,12 +47,13 @@ export function createPanel(cfg = config) {
   const publish = async () => ({ tunnel: await tunnel.sync() });
   const apps = new AppManager({ store, config: cfg, publish });
   const metrics = new Metrics(path.join(cfg.dataDir, 'metrics.json'));
+  const appMetrics = new AppMetrics(path.join(cfg.dataDir, 'app-metrics.json'), apps);
   const updater = new Updater({ store, config: cfg });
   const audit = new AuditLog({ file: path.join(cfg.dataDir, 'audit.log'), store });
   const hardware = new Hardware({ config: cfg });
 
   const router = new Router();
-  const deps = { store, auth, apps, config: cfg, metrics, tunnel, updater, publish, audit, hardware };
+  const deps = { store, auth, apps, config: cfg, metrics, appMetrics, tunnel, updater, publish, audit, hardware };
   authRoutes(router, deps);
   accountRoutes(router, deps);
   appRoutes(router, deps);
@@ -121,12 +123,12 @@ export function createPanel(cfg = config) {
   server.requestTimeout = 60 * 60 * 1000; // gros téléversements sur une connexion lente
   server.headersTimeout = 60 * 1000;
 
-  return { server, store, auth, apps, metrics, tunnel, updater, audit, hardware };
+  return { server, store, auth, apps, metrics, appMetrics, tunnel, updater, audit, hardware };
 }
 
 async function main() {
   const panel = createPanel();
-  const { server, store, auth, apps, metrics, tunnel, updater } = panel;
+  const { server, store, auth, apps, metrics, appMetrics, tunnel, updater } = panel;
 
   // Premier lancement depuis le démarrage de la machine ? (sans identifiant connu, on considère un simple redémarrage)
   const currentBoot = bootId();
@@ -150,6 +152,7 @@ async function main() {
       console.log('──────────────────────────────────────────────');
     }
     metrics.start();
+    appMetrics.start();
     updater.start();
     apps.bootstrap({ systemBoot });
   });
@@ -165,6 +168,7 @@ async function main() {
     console.log(`${signal} reçu : arrêt des applications…`);
     server.close();
     metrics.stop();
+    appMetrics.stop();
     updater.stop();
     await Promise.all([apps.shutdown(), tunnel.shutdown()]);
     process.exit(0);

@@ -14,6 +14,7 @@ import {
   removePath,
   removePaths,
   renamePath,
+  statPath,
   transferPaths,
   uploadTarget,
   writeTextFile,
@@ -75,6 +76,7 @@ export function fileRoutes(router, { apps, config }) {
 
   router.get(base, (ctx) => listDir(appDir(ctx), q(ctx, 'path')));
 
+  router.get(`${base}/stat`, (ctx) => statPath(appDir(ctx), q(ctx, 'path')));
   router.get(`${base}/content`, (ctx) => readTextFile(appDir(ctx), q(ctx, 'path'), config.limits.editableFile));
   router.put(`${base}/content`, async (ctx) => {
     const { path: rel, content } = await ctx.json(config.limits.editableFile * 4);

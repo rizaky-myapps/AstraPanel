@@ -1117,3 +1117,65 @@ test('compte : pseudo, photo de profil, autres appareils, activité', async (t) 
   assert.equal(res.status, 200);
   assert.equal(existsSync(file), false);
 });
+
+test('statistiques des applications : historique CPU / RAM par palier, API, thème automatique des nouveaux comptes', async (t) => {
+  const { AppMetrics } = await import('../src/app-metrics.js');
+  // --- historique : agrégation, sauvegarde (sans le palier 1 h), application supprimée oubliée
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'astra-appmetrics-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const fakeApps = { apps: [{ id: 'a1' }, { id: 'a2' }], runtime: new Map() };
+  const m = new AppMetrics(path.join(dir, 'app-metrics.json'), fakeApps);
+  const t0 = Math.floor(Date.now() / 60_000) * 60_000 - 5 * 60_000;
+  m.add('a1', { cpu: 10, mem: 100 }, t0);
+  m.add('a1', { cpu: 30, mem: 300 }, t0 + 5000);
+  m.add('a1', { cpu: 50, mem: 200 }, t0 + 15_000);
+  m.add('a2', { cpu: 1, mem: 20 }, t0);
+  m.add('gone', { cpu: 5, mem: 5 }, t0);
+  const h = m.query('a1', '1h');
+  assert.equal(h.step, 10_000);
+  assert.deepEqual(h.points[0], [t0, 20, 200]);
+  assert.deepEqual(h.points.at(-1), [t0 + 10_000, 50, 200]);
+  assert.deepEqual(m.query('a1', '24h').points, [[t0, 30, 200]]);
+  assert.equal(m.query('a1', '2ans'), null);
+  assert.deepEqual(m.query('inconnue', '1h').points, []);
+  m.add('a1', { cpu: 0, mem: 0 }, t0 + 3 * 60_000); // ferme les intervalles en cours
+  m.save();
+  const saved = JSON.parse(readFileSync(path.join(dir, 'app-metrics.json'), 'utf8'));
+  assert.deepEqual(Object.keys(saved.apps).sort(), ['a1', 'a2']);
+  assert.equal(saved.apps.a1['1h'], undefined);
+  const reloaded = new AppMetrics(path.join(dir, 'app-metrics.json'), fakeApps);
+  assert.deepEqual(reloaded.query('a1', '24h').points[0], [t0, 30, 200]);
+  reloaded.forget('a1');
+  assert.deepEqual(reloaded.query('a1', '24h').points, []);
+
+  // --- API (réservée aux comptes qui ont accès à l'application)
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const adminCookie = ctx.getCookie();
+  const app = (await ctx.request('POST', '/api/apps', { body: { name: 'Site stats', type: 'static', source: 'empty' } })).data.app;
+  ctx.panel.appMetrics.add(app.id, { cpu: 12.5, mem: 48.2 });
+  let res = await ctx.request('GET', `/api/apps/${app.id}/metrics?range=1h`);
+  assert.equal(res.status, 200);
+  assert.equal(res.data.points.length, 1);
+  assert.equal(res.data.points[0][1], 12.5);
+  assert.equal(res.data.points[0][2], 48.2);
+  assert.ok(res.data.memTotal > 0);
+  assert.equal(res.data.runtime.status, 'stopped');
+  res = await ctx.request('GET', `/api/apps/${app.id}/metrics?range=99j`);
+  assert.equal(res.status, 400);
+
+  // nouveau compte : thème automatique enregistré dès la création ; pas d'accès aux applis des autres
+  const carol = (await ctx.request('POST', '/api/users', { body: { username: 'carol', password: 'motdepasse123', role: 'user' } })).data;
+  assert.deepEqual(ctx.panel.store.data.users.find((u) => u.id === carol.id).prefs, { theme: 'auto', accent: 'solaire' });
+  ctx.setCookie('');
+  res = await ctx.request('POST', '/api/auth/login', { body: { username: 'carol', password: 'motdepasse123' } });
+  assert.deepEqual(res.data.user.prefs, { theme: 'auto', accent: 'solaire' });
+  res = await ctx.request('GET', `/api/apps/${app.id}/metrics?range=1h`);
+  assert.equal(res.status, 404);
+
+  // suppression : l'historique part avec l'application
+  ctx.setCookie(adminCookie);
+  await ctx.request('DELETE', `/api/apps/${app.id}`);
+  assert.deepEqual(ctx.panel.appMetrics.query(app.id, '1h').points, []);
+});

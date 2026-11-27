@@ -99,6 +99,8 @@ export class Auth {
       hash: await hashPassword(password),
       tokenVersion: 1,
       createdAt: Date.now(),
+      // nouveau compte : thème automatique (clair ou sombre selon l'appareil) et couleur par défaut
+      prefs: { theme: 'auto', accent: 'solaire' },
     };
     this.store.data.users.push(user);
     this.store.save();

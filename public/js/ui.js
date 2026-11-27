@@ -486,3 +486,78 @@ export async function copyText(text) {
   }
   toast('Copié dans le presse-papiers');
 }
+
+// ---- Menu contextuel (clic droit) ----------------------------------------------------------------
+// openContextMenu(x, y, items) ; un élément : { label, icon, hint (raccourci), danger, disabled, onClick } ; '-' = séparateur.
+let ctxMenu = null;
+
+export function closeContextMenu() {
+  ctxMenu?.remove();
+  ctxMenu = null;
+}
+
+export function openContextMenu(x, y, items) {
+  listenForClose();
+  closeContextMenu();
+  // pas de séparateur en début, en fin ou en double
+  const list = [];
+  for (const item of items.filter(Boolean)) {
+    if (item === '-' && (!list.length || list.at(-1) === '-')) continue;
+    list.push(item);
+  }
+  while (list.at(-1) === '-') list.pop();
+  if (!list.length) return;
+  const el = document.createElement('div');
+  el.className = 'ctx-menu';
+  el.setAttribute('role', 'menu');
+  setHTML(
+    el,
+    list.map((item, i) =>
+      item === '-'
+        ? html`<div class="ctx-sep" role="separator"></div>`
+        : html`<button type="button" role="menuitem" class="ctx-item ${item.danger ? 'danger' : ''}" data-i="${i}" ${item.disabled ? 'disabled' : ''}>
+            ${item.icon ? icon(item.icon) : html`<span class="ctx-noicon"></span>`}<span class="ctx-label">${item.label}</span>${item.hint ? html`<kbd>${item.hint}</kbd>` : ''}
+          </button>`,
+    ),
+  );
+  document.body.append(el);
+  const r = el.getBoundingClientRect();
+  el.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
+  el.style.top = `${y + r.height > window.innerHeight - 8 ? Math.max(8, y - r.height) : y}px`;
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-i]');
+    if (!b || b.disabled) return;
+    const item = list[Number(b.dataset.i)];
+    closeContextMenu();
+    Promise.resolve()
+      .then(() => item.onClick?.())
+      .catch((err) => toast(err.message, 'err'));
+  });
+  el.addEventListener('keydown', (e) => {
+    const buttons = [...el.querySelectorAll('.ctx-item:not(:disabled)')];
+    const i = buttons.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      buttons[(i + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      e.preventDefault();
+      closeContextMenu();
+    }
+  });
+  ctxMenu = el;
+  el.querySelector('.ctx-item:not(:disabled)')?.focus({ preventScroll: true });
+}
+
+// fermeture : clic ailleurs, défilement, redimensionnement, perte du focus de la fenêtre (écouteurs posés une fois)
+let ctxListeners = false;
+function listenForClose() {
+  if (ctxListeners) return;
+  ctxListeners = true;
+  document.addEventListener('mousedown', (e) => {
+    if (ctxMenu && !ctxMenu.contains(e.target)) closeContextMenu();
+  });
+  window.addEventListener('scroll', () => ctxMenu && closeContextMenu(), true);
+  window.addEventListener('resize', () => ctxMenu && closeContextMenu());
+  window.addEventListener('blur', () => ctxMenu && closeContextMenu());
+  window.addEventListener('hashchange', () => ctxMenu && closeContextMenu());
+}

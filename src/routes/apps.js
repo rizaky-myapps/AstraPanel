@@ -1,3 +1,4 @@
+import os from 'node:os';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
@@ -14,7 +15,7 @@ export function sendDownload(res, file, size, name, type = 'application/octet-st
   createReadStream(file).pipe(res);
 }
 
-export function appRoutes(router, { apps, config }) {
+export function appRoutes(router, { apps, appMetrics, config }) {
   const q = (ctx, key) => ctx.query.get(key) ?? '';
 
   // --- Applications -------------------------------------------------------
@@ -23,7 +24,29 @@ export function appRoutes(router, { apps, config }) {
   router.post('/api/apps', async (ctx) => apps.create(await ctx.json(), ctx.user));
   router.get('/api/apps/:id', (ctx) => apps.serialize(apps.get(ctx.params.id)));
   router.patch('/api/apps/:id', async (ctx) => apps.update(ctx.params.id, await ctx.json()));
-  router.delete('/api/apps/:id', (ctx) => apps.remove(ctx.params.id), { admin: true });
+  router.delete(
+    '/api/apps/:id',
+    async (ctx) => {
+      const result = await apps.remove(ctx.params.id);
+      appMetrics?.forget(ctx.params.id);
+      return result;
+    },
+    { admin: true },
+  );
+
+  // Historique processeur / mémoire de l'application (onglet Statistiques)
+  router.get('/api/apps/:id/metrics', (ctx) => {
+    const app = apps.get(ctx.params.id);
+    const data = appMetrics.query(app.id, ctx.query.get('range') || '1h');
+    if (!data) throw new HttpError(400, 'Période inconnue (1h, 24h, 15j ou 30j)');
+    const rt = apps.rt(app.id);
+    return {
+      ...data,
+      memTotal: Math.round(os.totalmem() / 1024 / 1024),
+      cpus: os.cpus().length,
+      runtime: { status: rt.status, startedAt: rt.child ? rt.startedAt : null, restarts: rt.crashCount, cpu: rt.cpu, memory: rt.memory },
+    };
+  });
 
   router.post('/api/apps/:id/start', (ctx) => apps.start(ctx.params.id));
   router.post('/api/apps/:id/stop', (ctx) => apps.stop(ctx.params.id));

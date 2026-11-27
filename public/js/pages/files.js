@@ -2,11 +2,13 @@ import { api, qs, upload } from '../api.js';
 import {
   $,
   confirmDialog,
+  copyText,
   formatBytes,
   formatDate,
   html,
   icon,
   modal,
+  openContextMenu,
   promptDialog,
   setHTML,
   tip,
@@ -126,7 +128,7 @@ export function filesTab(el, page, app) {
     if (!box) return;
     setHTML(
       box,
-      html`${st.cwd ? html`<tr class="fm-up"><td></td><td colspan="4"><a class="file-name dir" data-dir="${st.cwd.split('/').slice(0, -1).join('/')}">${icon('up')} ..</a></td></tr>` : ''}
+      html`${st.cwd ? html`<tr class="fm-up" data-up="${st.cwd.split('/').slice(0, -1).join('/')}"><td></td><td colspan="4"><span class="file-name dir">${icon('up')} ..</span></td></tr>` : ''}
         ${rows.length
           ? rows.map((e) => {
               const kind = kindOf(e);
@@ -134,7 +136,7 @@ export function filesTab(el, page, app) {
               return html`<tr class="fm-row ${sel ? 'selected' : ''}" data-name="${e.name}">
                 <td class="sel-col"><button type="button" class="sel ${sel ? 'on' : ''}" data-toggle aria-label="Sélectionner ${e.name}" aria-pressed="${sel}"></button></td>
                 <td>
-                  <a class="file-name ${kind}" data-open title="${kind === 'dir' ? 'Ouvrir le dossier' : 'Ouvrir'}">${icon(KIND_ICON[kind])}<span class="truncate">${e.name}</span></a>
+                  <span class="file-name ${kind}">${icon(KIND_ICON[kind])}<span class="truncate">${e.name}</span></span>
                 </td>
                 <td class="muted hide-sm nowrap">${e.type === 'dir' ? '—' : formatBytes(e.size)}</td>
                 <td class="muted hide-sm nowrap">${formatDate(e.mtime)}</td>
@@ -469,12 +471,100 @@ export function filesTab(el, page, app) {
       else st.selected.add(name);
       st.anchor = name;
     } else {
-      const only = st.selected.size === 1 && st.selected.has(name);
-      st.selected.clear();
-      if (!only) st.selected.add(name);
+      st.selected = new Set([name]);
       st.anchor = name;
     }
     renderRows();
+  }
+
+  // Double-clic (ou double toucher sur téléphone) : deux clics rapides sur la même ligne
+  let lastClick = null;
+  const isDouble = (key, e) => {
+    const now = Date.now();
+    const double = !e.shiftKey && !e.ctrlKey && !e.metaKey && lastClick?.key === key && now - lastClick.t < 450;
+    lastClick = double ? null : { key, t: now };
+    return double;
+  };
+
+  // ---- Propriétés ------------------------------------------------------------------
+  const MODE = (m) =>
+    [...m]
+      .map((d) => {
+        const n = Number(d);
+        return `${n & 4 ? 'r' : '-'}${n & 2 ? 'w' : '-'}${n & 1 ? 'x' : '-'}`;
+      })
+      .join('');
+  async function properties(entries) {
+    const paths = entries.length ? entries.map((e) => join(st.cwd, e.name)) : [st.cwd];
+    const infos = await Promise.all(paths.slice(0, 50).map((p) => api.get(`${base}/stat?${qs({ path: p })}`)));
+    const row = (label, value) => html`<tr><td class="muted">${label}</td><td>${value}</td></tr>`;
+    let body;
+    if (infos.length === 1) {
+      const i = infos[0];
+      const kindLabel = i.type === 'dir' ? 'Dossier' : { image: 'Image', video: 'Vidéo', audio: 'Son', pdf: 'Document PDF', archive: 'Archive', code: 'Code source', file: 'Fichier' }[kindOf(i)];
+      body = html`<div class="props-head">${icon(i.type === 'dir' ? 'folder' : KIND_ICON[kindOf(i)])}<b>${i.name || app.name}</b></div>
+        <table class="table kv-table compact props"><tbody>
+          ${row('Type', `${kindLabel}${i.link ? ' (lien symbolique)' : ''}`)}
+          ${row('Emplacement', html`<span class="mono">/${i.path}</span>`)}
+          ${row('Taille', i.type === 'dir' ? `${formatBytes(i.size)}${i.partial ? ' (au moins)' : ''}` : `${formatBytes(i.size)} (${i.size.toLocaleString('fr-FR')} octets)`)}
+          ${i.type === 'dir' ? row('Contenu', `${i.files.toLocaleString('fr-FR')} fichier${i.files > 1 ? 's' : ''}, ${i.dirs.toLocaleString('fr-FR')} dossier${i.dirs > 1 ? 's' : ''}${i.partial ? ' (au moins)' : ''}`) : ''}
+          ${row('Modifié', formatDate(i.mtime))}
+          ${row('Créé', formatDate(i.ctime))}
+          ${row('Permissions', html`<span class="mono">${MODE(i.mode)}</span> <span class="muted">(${i.mode})</span>`)}
+          ${row('Chemin complet', html`<span class="mono props-path">${app.dir}/${i.path}</span>`)}
+        </tbody></table>`;
+    } else {
+      const files = infos.reduce((n, i) => n + (i.type === 'dir' ? i.files : 1), 0);
+      const dirs = infos.reduce((n, i) => n + (i.type === 'dir' ? 1 + i.dirs : 0), 0);
+      const size = infos.reduce((n, i) => n + i.size, 0);
+      body = html`<div class="props-head">${icon('copy')}<b>${entries.length} éléments</b></div>
+        <table class="table kv-table compact props"><tbody>
+          ${row('Emplacement', html`<span class="mono">/${st.cwd}</span>`)}
+          ${row('Taille totale', formatBytes(size))}
+          ${row('Contenu', `${files.toLocaleString('fr-FR')} fichier${files > 1 ? 's' : ''}, ${dirs.toLocaleString('fr-FR')} dossier${dirs > 1 ? 's' : ''}`)}
+          ${row('Éléments', entries.map((e) => e.name).join(', '))}
+        </tbody></table>`;
+    }
+    await modal({ title: 'Propriétés', body, confirmLabel: 'Fermer', cancelLabel: '', cls: 'props-modal' });
+  }
+
+  // ---- Menu clic droit ---------------------------------------------------------------
+  const PREVIEW = new Set(['image', 'video', 'audio', 'pdf']);
+  function fileMenu(sel) {
+    const one = sel.length === 1 ? sel[0] : null;
+    const kind = one && kindOf(one);
+    const run = (act) => () => action(act);
+    return [
+      one && { label: one.type === 'dir' ? 'Ouvrir le dossier' : 'Ouvrir', icon: one.type === 'dir' ? 'folder' : 'eye', hint: 'Entrée', onClick: () => open(one) },
+      one && PREVIEW.has(kind) && { label: 'Ouvrir dans un nouvel onglet', icon: 'external', onClick: () => window.open(rawUrl(join(st.cwd, one.name)), '_blank', 'noopener') },
+      '-',
+      one && { label: 'Renommer', icon: 'edit', hint: 'F2', onClick: run('rename') },
+      { label: 'Copier vers…', icon: 'copy', onClick: run('copy') },
+      { label: 'Déplacer vers…', icon: 'move', onClick: run('move') },
+      '-',
+      { label: one ? 'Compresser en ZIP' : `Compresser les ${sel.length} éléments en ZIP`, icon: 'fileArchive', onClick: run('compress') },
+      one && kind === 'archive' && { label: 'Extraire ici', icon: 'archive', onClick: run('extract') },
+      { label: one && one.type === 'file' ? 'Télécharger' : 'Télécharger (ZIP)', icon: 'download', onClick: run('download') },
+      one && { label: 'Copier le chemin', icon: 'link', onClick: async () => { await copyText(`${app.dir}/${join(st.cwd, one.name)}`); toast('Chemin copié'); } },
+      '-',
+      { label: one ? 'Supprimer' : `Supprimer les ${sel.length} éléments`, icon: 'trash', hint: 'Suppr', danger: true, onClick: run('delete') },
+      '-',
+      { label: 'Propriétés', icon: 'info', hint: 'Alt+Entrée', onClick: () => properties(sel) },
+    ];
+  }
+  function folderMenu() {
+    return [
+      { label: 'Nouveau fichier', icon: 'filePlus', onClick: () => action('new-file') },
+      { label: 'Nouveau dossier', icon: 'folderPlus', onClick: () => action('new-dir') },
+      { label: 'Téléverser des fichiers…', icon: 'upload', onClick: () => el.querySelector('input[data-upload]:not([webkitdirectory])')?.click() },
+      { label: 'Téléverser un dossier…', icon: 'folder', onClick: () => el.querySelector('input[data-upload][webkitdirectory]')?.click() },
+      '-',
+      st.cwd && { label: 'Dossier parent', icon: 'up', onClick: () => load(st.cwd.split('/').slice(0, -1).join('/')) },
+      { label: 'Tout sélectionner', icon: 'check', hint: 'Ctrl+A', onClick: () => { st.selected = new Set(visible().map((x) => x.name)); renderRows(); } },
+      { label: 'Actualiser', icon: 'refresh', onClick: () => load() },
+      '-',
+      { label: 'Propriétés du dossier', icon: 'info', onClick: () => properties([]) },
+    ];
   }
 
   // ---- Téléversement (fichiers, dossiers, glisser-déposer) --------------------
@@ -545,11 +635,19 @@ export function filesTab(el, page, app) {
       }
       const act = target.closest('[data-act]');
       if (act) return await action(act.dataset.act, act);
+      const up = target.closest('[data-up]');
+      if (up) return isDouble('..', e) ? await load(up.dataset.up) : undefined;
       const row = target.closest('.fm-row');
-      if (!row) return;
+      if (!row) {
+        // clic dans le vide de la liste : on désélectionne
+        if (target.closest('.fm-scroll') && st.selected.size) {
+          st.selected.clear();
+          renderRows();
+        }
+        return undefined;
+      }
       const entry = st.entries.find((x) => x.name === row.dataset.name);
       if (target.closest('[data-toggle]')) return select(entry.name, e, true);
-      if (target.closest('[data-open]')) return await open(entry);
       const rowAct = target.closest('[data-row-act]');
       if (rowAct) {
         st.selected = new Set([entry.name]);
@@ -557,6 +655,8 @@ export function filesTab(el, page, app) {
         return await action(rowAct.dataset.rowAct, rowAct);
       }
       if (target.closest('a')) return undefined;
+      // un clic sélectionne, un double-clic ouvre
+      if (isDouble(entry.name, e)) return await open(entry);
       return select(entry.name, e);
     } catch (err) {
       toast(err.message, 'err');
@@ -564,11 +664,21 @@ export function filesTab(el, page, app) {
     return undefined;
   });
 
-  el.addEventListener('dblclick', (e) => {
+  // Menu clic droit : sur un élément (ou la sélection), ou dans le vide du dossier
+  el.addEventListener('contextmenu', (e) => {
+    if (!$('#fm', el) || e.shiftKey || e.target.closest('input, textarea') || !e.target.closest('#fm')) return;
+    e.preventDefault();
     const row = e.target.closest('.fm-row');
-    if (!row || e.target.closest('button, a')) return;
-    const entry = st.entries.find((x) => x.name === row.dataset.name);
-    if (entry) open(entry).catch((err) => toast(err.message, 'err'));
+    if (row) {
+      if (!st.selected.has(row.dataset.name)) {
+        st.selected = new Set([row.dataset.name]);
+        st.anchor = row.dataset.name;
+        renderRows();
+      }
+      openContextMenu(e.clientX, e.clientY, fileMenu(selectedEntries()));
+    } else {
+      openContextMenu(e.clientX, e.clientY, folderMenu());
+    }
   });
 
   el.addEventListener('input', (e) => {
@@ -589,6 +699,10 @@ export function filesTab(el, page, app) {
       renderRows();
     } else if (e.key === 'Delete' && st.selected.size) {
       action('delete').catch((err) => toast(err.message, 'err'));
+    } else if (e.key === 'Enter' && e.altKey && st.selected.size) {
+      properties(selectedEntries()).catch((err) => toast(err.message, 'err'));
+    } else if (e.key === 'Enter' && st.selected.size === 1) {
+      open(selectedEntries()[0]).catch((err) => toast(err.message, 'err'));
     } else if (e.key === 'F2' && st.selected.size === 1) {
       action('rename').catch((err) => toast(err.message, 'err'));
     } else if (e.key === 'Escape' && st.selected.size) {

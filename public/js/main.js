@@ -20,7 +20,6 @@ import {
   setWindow,
   sidebarIcon,
   stopDesktop,
-  windowBarHTML,
 } from './desktop.js';
 
 initAppearance();
@@ -133,7 +132,8 @@ function route() {
   renderBanner();
   setActiveNav(match.r.nav, params[0]);
   const view = $('#view');
-  if (match.r.nav !== 'app' || view.dataset.app !== params[0]) window.scrollTo(0, 0);
+  // le contenu défile dans la fenêtre : on revient en haut en changeant de page (pas d'onglet d'une même application)
+  if (match.r.nav !== 'app' || view.dataset.app !== params[0]) $('#window-body')?.scrollTo(0, 0);
   view.dataset.app = match.r.nav === 'app' ? params[0] : '';
   setWindow(match.r.nav, params);
   Promise.resolve(match.r.render(view, page, ...params)).catch((err) => {
@@ -177,6 +177,7 @@ async function logout() {
 }
 
 function renderShell() {
+  document.body.classList.add('os');
   setHTML(
     $('#app'),
     html`<div class="shell ${sidebarHidden() ? 'side-hidden' : ''}">
@@ -195,8 +196,7 @@ function renderShell() {
       <main class="main">
         <div id="banner"></div>
         <section class="window" id="window">
-          <div class="window-bar" id="window-bar">${windowBarHTML()}</div>
-          <div class="window-body"><div class="view"><div id="view"></div></div></div>
+          <div class="window-body" id="window-body"><div class="view"><div id="view"></div></div></div>
         </section>
       </main>
     </div>`,
@@ -248,6 +248,7 @@ async function startSession(user) {
 }
 
 function endSession(setupRequired = false) {
+  document.body.classList.remove('os');
   state.user = null;
   state.apps = [];
   clearInterval(poller);

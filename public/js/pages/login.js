@@ -8,6 +8,18 @@ export function renderLogin(root, { setupRequired, onSuccess }) {
   setHTML(
     root,
     html`<div class="auth">
+      <div class="auth-glow" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="auth-waves" aria-hidden="true">
+        <svg class="waves" viewBox="0 24 150 28" preserveAspectRatio="none" focusable="false">
+          <defs><path id="auth-wave" d="M-160 44c30 0 58-18 88-18s58 18 88 18 58-18 88-18 58 18 88 18v44h-352z" /></defs>
+          <g class="wave-layers">
+            <use href="#auth-wave" x="48" y="0" />
+            <use href="#auth-wave" x="48" y="3" />
+            <use href="#auth-wave" x="48" y="5" />
+            <use href="#auth-wave" x="48" y="7" />
+          </g>
+        </svg>
+      </div>
       <div class="lock-clock" aria-hidden="true">
         <div class="desk-time" id="lock-time">--:--</div>
         <div class="desk-date" id="lock-date"></div>

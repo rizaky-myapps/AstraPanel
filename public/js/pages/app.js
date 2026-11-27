@@ -2,6 +2,7 @@ import { api, qs, upload } from '../api.js';
 import { findApp, isAdmin, onAppsChange, refreshApps, state } from '../state.js';
 import { envEditor } from '../env-editor.js';
 import { filesTab } from './files.js';
+import { formatWhen, renderLineChart } from '../chart.js';
 import {
   $,
   avatar,
@@ -23,6 +24,7 @@ import {
   routingWarnings,
   setHTML,
   statusBadge,
+  statusOf,
   tip,
   toast,
   toggle,
@@ -31,6 +33,7 @@ import {
 
 const TABS = [
   { id: 'console', label: 'Console', icon: 'terminal' },
+  { id: 'stats', label: 'Statistiques', icon: 'activity' },
   { id: 'files', label: 'Fichiers', icon: 'folder' },
   { id: 'env', label: 'Variables', icon: 'key' },
   { id: 'deploy', label: 'Déploiement', icon: 'upload' },
@@ -112,7 +115,7 @@ export function renderApp(view, page, id, tab) {
     if (button) withBusy(button, () => api.post(`/apps/${id}/tasks/cancel`));
   });
 
-  const renderers = { console: consoleTab, files: filesTab, env: envTab, deploy: deployTab, settings: settingsTab, users: usersTab };
+  const renderers = { console: consoleTab, stats: statsTab, files: filesTab, env: envTab, deploy: deployTab, settings: settingsTab, users: usersTab };
   renderers[tab]($('#tab', root), page, app);
 }
 
@@ -204,6 +207,19 @@ function consoleTab(el, page, app) {
   const autoscroll = $('#autoscroll', el);
   const MAX_NODES = 2000;
 
+  // La console remplit exactement la fenêtre : rien d'autre ne défile (sauf sur un écran trop bas)
+  const fit = () => {
+    const body = document.getElementById('window-body');
+    if (!body || !out.isConnected) return;
+    const pad = parseFloat(getComputedStyle(body).paddingBottom) || 0;
+    const below = out.parentElement.getBoundingClientRect().bottom - out.getBoundingClientRect().bottom;
+    const room = body.getBoundingClientRect().bottom - pad - out.getBoundingClientRect().top - below + body.scrollTop;
+    out.style.height = `${Math.max(240, Math.floor(room))}px`;
+  };
+  requestAnimationFrame(fit);
+  window.addEventListener('resize', fit);
+  page.onCleanup(() => window.removeEventListener('resize', fit));
+
   const showEmpty = () => {
     out.textContent = '';
     const div = document.createElement('div');
@@ -294,6 +310,171 @@ function envTab(el, page, app) {
       await refreshApps();
     });
   });
+}
+
+// ---- Statistiques : historique processeur / mémoire de l'application ----------------------
+const STAT_RANGES = [
+  { id: '1h', label: '1 h', refresh: 10_000 },
+  { id: '24h', label: '24 h', refresh: 60_000 },
+  { id: '15j', label: '15 j', refresh: 120_000 },
+  { id: '30j', label: '30 j', refresh: 120_000 },
+];
+const STAT_RANGE_KEY = 'astra.app-range';
+const mo = (v, tick) => (v >= 1024 ? `${(v / 1024).toLocaleString('fr-FR', { maximumFractionDigits: tick ? 1 : 2 })} Go` : `${Math.round(v).toLocaleString('fr-FR')} Mo`);
+const pct = (v, tick) => (tick ? `${v} %` : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`);
+const niceMax = (v) => {
+  if (v <= 0) return 1;
+  const mag = 10 ** Math.floor(Math.log10(v));
+  return [1, 2, 2.5, 5, 10].map((f) => f * mag).find((c) => c >= v) || 10 * mag;
+};
+const APP_SERIES = [
+  { id: 'cpu', title: 'Processeur', icon: 'cpu', index: 1, format: pct, domain: (values) => [0, Math.max(100, niceMax(Math.max(0, ...values) * 1.1))] },
+  { id: 'mem', title: 'Mémoire vive', icon: 'memory', index: 2, format: mo, domain: (values) => [0, niceMax(Math.max(16, ...values) * 1.25)] },
+];
+
+function statsTab(el, page, app) {
+  let range = null;
+  try {
+    range = localStorage.getItem(STAT_RANGE_KEY);
+  } catch {
+    range = null;
+  }
+  if (!STAT_RANGES.some((r) => r.id === range)) range = '1h';
+  let data = null;
+
+  setHTML(
+    el,
+    html`<div class="stack">
+      <div class="grid stats app-stats" id="app-stat-tiles"></div>
+      <div class="section-title">
+        <h2>Historique ${tip('Charge du processeur et mémoire vive utilisées par l’application (tous ses processus, enfants compris), mesurées toutes les 10 secondes pendant qu’elle tourne. Un arrêt laisse un vide dans les courbes. Conservé 30 jours. 100 % = un cœur de processeur entièrement occupé.')}</h2>
+        <div class="segmented" role="group" aria-label="Période affichée">
+          ${STAT_RANGES.map((r) => html`<button type="button" data-range="${r.id}" aria-pressed="${r.id === range}">${r.label}</button>`)}
+        </div>
+      </div>
+      <div class="grid charts app-charts" id="app-charts">
+        ${APP_SERIES.map(
+          (s) => html`<div class="card chart-card" data-series="${s.id}">
+            <div class="chart-head"><h3>${icon(s.icon)} ${s.title}</h3><span class="chart-summary"></span></div>
+            <div class="chart-body"></div>
+            <details class="chart-data"><summary>Voir les données</summary><div class="table-scroll"></div></details>
+          </div>`,
+        )}
+      </div>
+    </div>`,
+  );
+
+  const charts = $('#app-charts', el);
+  const seriesPoints = (s) => (data ? data.points.map((p) => [p[0], p[s.index]]) : []);
+
+  // Cartes du haut : valeurs actuelles et pics de la période
+  function drawTiles() {
+    const current = findApp(app.id) || app;
+    const rt = current.runtime;
+    const running = rt.status === 'running';
+    const values = (s) => seriesPoints(s).map((p) => p[1]).filter((v) => v !== null && v !== undefined);
+    const cpuValues = values(APP_SERIES[0]);
+    const memValues = values(APP_SERIES[1]);
+    const label = STAT_RANGES.find((r) => r.id === range).label;
+    const tile = (ic, title, value, detail) => html`<div class="card stat"><div class="label">${icon(ic)} ${title}</div><div class="value">${value}</div><div class="detail">${detail}</div></div>`;
+    setHTML($('#app-stat-tiles', el), [
+      tile('cpu', 'Processeur', running && rt.cpu !== null ? pct(rt.cpu) : '—', running ? 'en ce moment' : statusOf(current).label),
+      tile('memory', 'Mémoire vive', running && rt.memory ? formatBytes(rt.memory) : '—', running ? 'en ce moment' : statusOf(current).label),
+      tile('zap', `Pics sur ${label}`, cpuValues.length ? pct(Math.max(...cpuValues)) : '—', memValues.length ? `mémoire max ${mo(Math.max(...memValues))}` : 'pas encore de mesure'),
+      tile('clock', running ? 'En ligne depuis' : 'Arrêtée', running && rt.startedAt ? formatDuration(Date.now() - rt.startedAt) : '—', `${rt.restarts || 0} redémarrage${rt.restarts > 1 ? 's' : ''} automatique${rt.restarts > 1 ? 's' : ''}`),
+    ]);
+  }
+
+  function drawCharts() {
+    if (!data || !page.active) return;
+    charts.classList.remove('loading');
+    const end = data.now;
+    const start = end - data.span;
+    for (const s of APP_SERIES) {
+      const card = charts.querySelector(`[data-series="${s.id}"]`);
+      const points = seriesPoints(s);
+      const values = points.map((p) => p[1]).filter((v) => v !== null && v !== undefined);
+      card.querySelector('.chart-summary').textContent = values.length
+        ? `Actuel ${s.format(values.at(-1))} · moy. ${s.format(values.reduce((a, b) => a + b, 0) / values.length)} · max ${s.format(Math.max(...values))}`
+        : '';
+      renderLineChart(card.querySelector('.chart-body'), {
+        points,
+        start,
+        end,
+        step: data.step,
+        domain: s.domain(values),
+        format: s.format,
+        label: `${s.title} de ${app.name} sur ${STAT_RANGES.find((r) => r.id === range).label}`,
+      });
+      if (card.querySelector('details').open) fillTable(card, s, points);
+    }
+    drawTiles();
+  }
+
+  function fillTable(card, s, points) {
+    const rows = points.filter((p) => p[1] !== null && p[1] !== undefined).reverse();
+    setHTML(
+      card.querySelector('.table-scroll'),
+      html`<table class="table compact">
+        <thead><tr><th>Moment</th><th class="num">${s.title}</th></tr></thead>
+        <tbody>${rows.map((p) => html`<tr><td>${formatWhen(p[0], data.step)}</td><td class="num">${s.format(p[1])}</td></tr>`)}</tbody>
+      </table>`,
+    );
+  }
+
+  charts.addEventListener(
+    'toggle',
+    (e) => {
+      const card = e.target.closest('[data-series]');
+      if (!card || !e.target.open || !data) return;
+      const s = APP_SERIES.find((x) => x.id === card.dataset.series);
+      fillTable(card, s, seriesPoints(s));
+    },
+    true,
+  );
+
+  let timer = null;
+  async function load() {
+    clearTimeout(timer);
+    const asked = range;
+    try {
+      const result = await api.get(`/apps/${app.id}/metrics?range=${asked}`);
+      if (!page.active || asked !== range) return;
+      data = result;
+      drawCharts();
+    } catch {
+      // nouvel essai au prochain rafraîchissement
+    }
+    if (page.active) timer = setTimeout(load, STAT_RANGES.find((r) => r.id === range).refresh);
+  }
+
+  el.querySelector('.segmented').addEventListener('click', (e) => {
+    const button = e.target.closest('[data-range]');
+    if (!button || button.dataset.range === range) return;
+    range = button.dataset.range;
+    try {
+      localStorage.setItem(STAT_RANGE_KEY, range);
+    } catch {
+      // stockage indisponible
+    }
+    el.querySelectorAll('[data-range]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.range === range)));
+    charts.classList.add('loading');
+    load();
+  });
+
+  let resizeTimer = null;
+  const onResize = () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(drawCharts, 150);
+  };
+  window.addEventListener('resize', onResize);
+  page.onCleanup(onAppsChange(drawTiles));
+  page.onCleanup(() => {
+    clearTimeout(timer);
+    window.removeEventListener('resize', onResize);
+  });
+  drawTiles();
+  load();
 }
 
 // ---- Déploiement -------------------------------------------------------------
