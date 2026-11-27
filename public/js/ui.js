@@ -305,6 +305,20 @@ export const TYPE_INFO = {
   minecraft: { label: 'Serveur Minecraft', icon: 'cube' },
 };
 
+// Catégories de la liste des applications, dans l'ordre d'affichage
+export const APP_GROUPS = [
+  { id: 'bots', label: 'Bots', icon: 'bot', types: ['bot'] },
+  { id: 'sites', label: 'Sites', icon: 'globe', types: ['node', 'static'] },
+  { id: 'servers', label: 'Serveurs', icon: 'cube', types: ['minecraft'] },
+];
+const OTHER_GROUP = { id: 'other', label: 'Autres', icon: 'box', types: [] };
+export const appGroup = (app) => APP_GROUPS.find((g) => g.types.includes(app.type)) || OTHER_GROUP;
+
+// Applications rangées par catégorie : [{ group, apps }], sans les catégories vides
+export function groupApps(apps) {
+  return [...APP_GROUPS, OTHER_GROUP].map((group) => ({ group, apps: apps.filter((a) => appGroup(a) === group) })).filter((g) => g.apps.length);
+}
+
 const STATUS = {
   running: 'En ligne',
   stopped: 'Arrêté',

@@ -60,6 +60,11 @@ sécurité. Pour l'installer, suivez le [README](../README.md) ; pour l'utiliser
   `/apps/<id>/<onglet>`, `/settings/<onglet>`, `/storage/…`, `/aide/…` ; le serveur renvoie `index.html` pour ces
   adresses (`src/http/panel-assets.js`) et `public/js/router.js` affiche la bonne page. Les anciennes adresses
   `/#/…` sont converties.
+- Liste des applications : rangée par catégorie (`APP_GROUPS` dans `public/js/ui.js` : bots, sites, serveurs), puis
+  dans l'ordre choisi par glisser-déposer (`public/js/sortable.js` : souris, appui long au toucher, Alt + flèches).
+  Cet ordre est propre à chaque compte : `prefs.appOrder` (identifiants des applications), enregistré par
+  `PATCH /api/account/preferences` ; `sortedApps()` de `public/js/state.js` l'applique partout (panneau latéral,
+  tuiles du tableau de bord, recherche).
 - Les données sont dans `/opt/astrapanel/data` : `db.json` (configuration), `apps/<id>/` (fichiers des applis),
   `logs/` (journaux avec rotation, couleurs des applications comprises), `metrics.json` et `app-metrics.json`
   (historique des graphiques), `bin/cloudflared`.

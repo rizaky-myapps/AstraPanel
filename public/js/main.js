@@ -1,5 +1,6 @@
 import { api, setUnauthorizedHandler } from './api.js';
-import { $, html, icon, initTooltips, setHTML, statusOf } from './ui.js';
+import { $, Safe, groupApps, html, icon, initTooltips, setHTML, statusOf, tip, toast } from './ui.js';
+import { makeSortable } from './sortable.js';
 import { renderLogin } from './pages/login.js';
 import { startUpdateWatch, stopUpdateWatch } from './update-overlay.js';
 import { renderDashboard } from './pages/dashboard.js';
@@ -8,7 +9,7 @@ import { renderApp } from './pages/app.js';
 import { renderSettings } from './pages/settings.js';
 import { renderStorage } from './pages/storage.js';
 import { renderHelp } from './pages/help.js';
-import { isAdmin, onAppsChange, refreshApps, state } from './state.js';
+import { isAdmin, onAppsChange, refreshApps, saveAppOrder, sortedApps, state } from './state.js';
 import { applyAppearance, initAppearance } from './theme.js';
 import {
   initDesktopGlobals,
@@ -143,7 +144,7 @@ function renderShell() {
           <a href="/settings" data-nav="settings">${icon('sliders')} Paramètres</a>
         </nav>
         <div class="side-title">
-          <span>Applications</span>
+          <span>Applications ${tip('Rangées par catégorie. Glissez une application pour changer sa place dans sa catégorie (appui long sur téléphone, Alt + flèches au clavier) : l’ordre est gardé avec votre compte.')}</span>
           <a class="side-add" href="/new" data-nav="new" title="Nouvelle application" aria-label="Nouvelle application">${icon('plus')}</a>
         </div>
         <div id="side-apps"></div>
@@ -168,21 +169,42 @@ function renderShell() {
   });
 }
 
+// Liste des applications, rangées par catégorie (bots, sites, serveurs) puis dans l'ordre choisi par glisser-déposer
+function sideAppsHTML(activeId) {
+  if (!state.apps.length) {
+    return html`<div class="side-empty faint">${isAdmin() ? 'Aucune application' : 'Aucune application pour l’instant : créez-en une, ou demandez à un administrateur de vous donner accès.'}</div>`;
+  }
+  return html`${groupApps(sortedApps()).map(
+    ({ group, apps }) => html`<section class="side-group" aria-label="${group.label}">
+      <div class="side-group-title">${icon(group.icon)}<span>${group.label}</span><span class="side-group-count">${apps.length}</span></div>
+      <div class="side-group-list sort-list">
+        ${apps.map((app) => {
+          const s = statusOf(app);
+          return html`<a class="side-app ${app.id === activeId ? 'active' : ''}" data-id="${app.id}" data-group="${group.id}" href="/apps/${app.id}" draggable="false" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+            ><span class="dot ${s.cls}"></span><span class="truncate">${app.name}</span></a
+          >`;
+        })}
+      </div>
+    </section>`,
+  )}`;
+}
+
+let sideSort = null;
+let sideShown = '';
 function renderSidebarApps() {
   const box = $('#side-apps');
   if (!box) return;
-  const activeId = $('#view')?.dataset.app;
-  setHTML(
-    box,
-    state.apps.length
-      ? state.apps.map((app) => {
-          const s = statusOf(app);
-          return html`<a class="side-app ${app.id === activeId ? 'active' : ''}" data-id="${app.id}" href="/apps/${app.id}"
-            ><span class="dot ${s.cls}"></span><span class="truncate">${app.name}</span></a
-          >`;
-        })
-      : html`<div class="side-empty faint">${isAdmin() ? 'Aucune application' : 'Aucune application pour l’instant : créez-en une, ou demandez à un administrateur de vous donner accès.'}</div>`,
-  );
+  if (sideSort?.box !== box) {
+    sideSort = { box, ...makeSortable(box, { item: '.side-app', onSort: (ids) => saveAppOrder(ids).catch((err) => toast(err.message, 'err')) }) };
+  }
+  if (sideSort.busy()) return; // pas pendant un glissement
+  const content = String(sideAppsHTML($('#view')?.dataset.app));
+  // redessinée seulement si quelque chose a changé (garde le focus clavier et le survol)
+  if (content === sideShown && box.childElementCount) return;
+  sideShown = content;
+  const focused = document.activeElement?.closest?.('.side-app')?.dataset.id;
+  setHTML(box, new Safe(content));
+  if (focused) [...box.querySelectorAll('.side-app')].find((a) => a.dataset.id === focused)?.focus();
 }
 
 async function startSession(user) {

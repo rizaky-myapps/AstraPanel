@@ -19,6 +19,7 @@ export const avatarPath = (dataDir, userId) => path.join(dataDir, 'avatars', use
 export const THEMES = ['auto', 'light', 'dark'];
 export const ACCENTS = ['solaire', 'ocean', 'aurore', 'nebuleuse', 'framboise', 'crepuscule', 'lagon', 'foret', 'lave', 'glacier', 'graphite', 'custom'];
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const APP_ORDER_MAX = 1000;
 
 // Gestion de son propre compte, pour tous les comptes : pseudo, photo, sessions, activité.
 export function accountRoutes(router, { auth, store, apps, audit, config }) {
@@ -59,6 +60,15 @@ export function accountRoutes(router, { auth, store, apps, audit, config }) {
       const { from, to } = body.custom || {};
       if (!HEX_COLOR.test(from || '') || !HEX_COLOR.test(to || '')) throw new HttpError(400, 'Couleurs personnalisées invalides (#rrggbb)');
       prefs.custom = { from: from.toLowerCase(), to: to.toLowerCase() };
+    }
+    // ordre des applications dans la liste (glisser-déposer) : identifiants, du premier au dernier.
+    // Les applications supprimées depuis sont retirées au passage (la liste ne grossit pas avec le temps).
+    if ('appOrder' in body) {
+      const order = body.appOrder;
+      if (!Array.isArray(order) || order.length > APP_ORDER_MAX || order.some((id) => typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id))) {
+        throw new HttpError(400, 'Ordre des applications invalide');
+      }
+      prefs.appOrder = [...new Set(order)].filter((id) => apps.find(id));
     }
     ctx.user.prefs = prefs;
     store.save();

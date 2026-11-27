@@ -236,7 +236,12 @@ d'écran :
   léger**. Cliquez sur un dossier pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les
   journaux, une vieille archive…).
 
-Vos applications sont aussi listées dans le **panneau latéral**, sous **Tableau de bord** et **Paramètres** ; le petit
+Vos applications sont aussi listées dans le **panneau latéral**, sous **Tableau de bord** et **Paramètres**, rangées par
+catégorie : **Bots**, **Sites** (Node.js et statiques) et **Serveurs** (Minecraft). Pour changer l'ordre, **glissez** une
+application à la place voulue dans sa catégorie (sur téléphone : **appui long**, puis glissez ; au clavier : **Alt + ↑ / ↓**
+sur l'application sélectionnée ; **Échap** pendant le glissement annule). Les tuiles du tableau de bord suivent le même
+ordre et se déplacent de la même façon. L'ordre est enregistré avec votre compte : chacun range ses applications comme il
+veut, sur tous ses appareils. Le petit
 **+** à côté du mot **Applications** en crée une nouvelle (comme la tuile **Ajouter** du tableau de bord). Chaque application a
 ses onglets (Console, Statistiques, Fichiers, Variables, Déploiement, Paramètres, Utilisateurs) ; quand vous passez
 d'une application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
@@ -557,7 +562,8 @@ d'arrivée et le nombre de vos applications :
 - **Apparence** : le thème (**Automatique**, qui suit le réglage clair ou sombre de l'appareil, **Clair** ou
   **Sombre**) et la couleur du panel (**Solaire**, orange et rose, par défaut ; **Océan**, **Aurore**, **Nébuleuse**,
   **Framboise**, **Crépuscule**, **Lagon**, **Forêt**, **Lave**, **Glacier** ou **Graphite**), ou un dégradé
-  **Personnalisé** : choisissez ses deux couleurs, l'aperçu s'applique en direct. Le changement est immédiat et suit
+  **Personnalisé** : choisissez ses deux couleurs (toujours visibles sous les pastilles ; en choisir une passe en
+  **Personnalisé**), l'aperçu s'applique en direct. Le changement est immédiat et suit
   votre compte sur tous vos appareils. Les consoles et l'éditeur de
   fichiers restent sombres dans les deux thèmes, pour la lisibilité du code.
 

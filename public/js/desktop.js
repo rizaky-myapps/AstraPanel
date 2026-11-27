@@ -3,7 +3,7 @@
 // - chaque page s'affiche en plein écran dans une fenêtre posée sur le fond d'écran (le contenu défile dans la fenêtre) ;
 // - le tableau de bord est le « bureau » : ses widgets sont posés directement sur le fond d'écran.
 import { api } from './api.js';
-import { isAdmin, refreshApps, state } from './state.js';
+import { isAdmin, refreshApps, sortedApps, state } from './state.js';
 import { THEMES, applyAppearance, effectiveTheme } from './theme.js';
 import { $, ROLE_LABEL, TYPE_INFO, avatar, copyText, html, icon, localUrl, openContextMenu, setHTML, statusOf, toast } from './ui.js';
 import { currentPath, navigate, refreshRoute } from './router.js';
@@ -399,7 +399,7 @@ const normalize = (s) =>
 
 function searchItems() {
   const items = [];
-  for (const app of state.apps) {
+  for (const app of sortedApps()) {
     const type = TYPE_INFO[app.type] || { icon: 'box', label: app.type };
     items.push({ group: 'Applications', icon: type.icon, tone: app.type, title: app.name, sub: `${type.label} · ${statusOf(app).label}`, href: `/apps/${app.id}` });
   }

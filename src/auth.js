@@ -244,7 +244,13 @@ export function publicUser(user) {
     role: user.role,
     createdAt: user.createdAt,
     avatar: user.avatar?.v || null,
-    // apparence choisie par le compte (thème clair / sombre / automatique, couleur d'accent)
-    prefs: { theme: user.prefs?.theme || 'auto', accent: user.prefs?.accent || 'solaire', ...(user.prefs?.custom ? { custom: user.prefs.custom } : {}) },
+    // apparence choisie par le compte (thème clair / sombre / automatique, couleur d'accent) et ordre des applications
+    prefs: {
+      theme: user.prefs?.theme || 'auto',
+      accent: user.prefs?.accent || 'solaire',
+      ...(user.prefs?.custom ? { custom: user.prefs.custom } : {}),
+      // ordre choisi pour la liste des applications (glisser-déposer)
+      ...(user.prefs?.appOrder?.length ? { appOrder: user.prefs.appOrder } : {}),
+    },
   };
 }

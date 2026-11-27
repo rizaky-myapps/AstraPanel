@@ -1,7 +1,8 @@
 import { api } from '../api.js';
-import { isAdmin, onAppsChange, state } from '../state.js';
+import { isAdmin, onAppsChange, saveAppOrder, sortedApps, state } from '../state.js';
+import { makeSortable } from '../sortable.js';
 import { renderLineChart } from '../chart.js';
-import { $, TYPE_INFO, formatBytes, formatDuration, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
+import { $, TYPE_INFO, appGroup, formatBytes, formatDuration, formatPercent, html, icon, setHTML, statusOf, toast } from '../ui.js';
 
 const RANGES = [
   { id: '1h', label: '1 h', refresh: 10_000 },
@@ -173,7 +174,7 @@ function appTile(app, maxMem) {
   const cpu = running && rt.cpu !== null ? rt.cpu : null;
   const mem = running && rt.memory ? rt.memory : null;
   const where = app.domains?.[0] || (app.port ? `port ${app.port}` : type.label);
-  return html`<a class="dash-app" href="/apps/${app.id}" title="${app.name} — ${type.label}">
+  return html`<a class="dash-app" href="/apps/${app.id}" data-id="${app.id}" data-group="${appGroup(app).id}" draggable="false" title="${app.name} — ${type.label}">
     <span class="dash-app-head">
       <span class="app-tile-icon type-${app.type}">${icon(type.icon)}</span>
       <span class="dash-app-name"><b>${app.name}</b><span class="dash-app-sub"><span class="dot ${s.cls}"></span><span class="dash-app-state ${s.cls}">${s.label}</span> · ${where}</span></span>
@@ -192,7 +193,7 @@ function launcher(apps) {
       <h2>${icon('grid')} Applications</h2>
       <span class="dash-count">${apps.length ? html`<b>${running}</b> / ${apps.length} en ligne` : ''}</span>
     </div>
-    <div class="dash-apps">
+    <div class="dash-apps sort-list">
       ${apps.map((app) => appTile(app, maxMem))}
       <a class="dash-app dash-app-new" href="/new">
         <span class="dash-app-plus">${icon('plus')}</span>
@@ -342,13 +343,18 @@ export function renderDashboard(view, page) {
   tick();
 
 
-  // Lanceur : redessiné seulement quand une application change
+  // Lanceur : redessiné seulement quand une application change. Même ordre que la barre latérale
+  // (par catégorie, puis glisser-déposer : une tuile se déplace parmi celles de sa catégorie).
   let shownApps = null;
+  const sorter = makeSortable($('#launcher', root), { item: '.dash-app[data-id]', onSort: (ids) => saveAppOrder(ids).catch((err) => toast(err.message, 'err')) });
+  page.onCleanup(() => sorter.destroy());
   const drawLauncher = () => {
-    const key = launcherKey(state.apps);
+    if (sorter.busy()) return;
+    const apps = sortedApps();
+    const key = launcherKey(apps);
     if (key === shownApps) return;
     shownApps = key;
-    setHTML($('#launcher', root), launcher(state.apps));
+    setHTML($('#launcher', root), launcher(apps));
   };
   drawLauncher();
   page.onCleanup(onAppsChange(drawLauncher));

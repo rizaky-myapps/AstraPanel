@@ -228,7 +228,7 @@ async function accountTab(el, page) {
             <div class="swatches" role="group" aria-label="Couleur d’accent">
               ${ACCENTS.map((a) => html`<button type="button" class="swatch swatch-${a.id}" data-accent-choice="${a.id}" aria-pressed="${a.id === u.prefs.accent}" title="${a.label}"><span class="swatch-dot">${icon(a.id === 'custom' ? 'palette' : 'check')}</span>${a.label}</button>`)}
             </div>
-            <div class="custom-colors" id="custom-colors" ${u.prefs.accent === 'custom' ? '' : 'hidden'}>
+            <div class="custom-colors ${u.prefs.accent === 'custom' ? '' : 'inactive'}" id="custom-colors" style="--c1: ${(u.prefs.custom || DEFAULT_CUSTOM).from}; --c2: ${(u.prefs.custom || DEFAULT_CUSTOM).to}">
               <label class="color-pick"><input type="color" data-custom="from" value="${(u.prefs.custom || DEFAULT_CUSTOM).from}" aria-label="Première couleur du dégradé" /><span>Couleur 1</span></label>
               <span class="custom-preview" aria-hidden="true"></span>
               <label class="color-pick"><input type="color" data-custom="to" value="${(u.prefs.custom || DEFAULT_CUSTOM).to}" aria-label="Seconde couleur du dégradé" /><span>Couleur 2</span></label>
@@ -399,13 +399,24 @@ async function accountTab(el, page) {
   // --- Apparence : appliquée tout de suite, puis enregistrée avec le compte
   const customBox = $('#custom-colors', root);
   const customValue = () => ({ from: customBox.querySelector('[data-custom=from]').value, to: customBox.querySelector('[data-custom=to]').value });
-  // dégradé personnalisé : aperçu en direct pendant le choix, enregistré une fois la couleur choisie
+  // boutons enfoncés selon les préférences ; les deux couleurs du dégradé restent affichées (la carte garde sa taille),
+  // estompées tant qu'une autre couleur est choisie
+  const press = (prefs) => {
+    root.querySelectorAll('[data-theme-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === prefs.theme)));
+    root.querySelectorAll('[data-accent-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.accentChoice === prefs.accent)));
+    customBox.classList.toggle('inactive', prefs.accent !== 'custom');
+  };
+  // dégradé personnalisé : aperçu en direct pendant le choix (choisir une couleur passe en « Personnalisé »),
+  // enregistré une fois la couleur choisie
   let customTimer = null;
   page.onCleanup(() => clearTimeout(customTimer));
   customBox.addEventListener('input', () => {
     const custom = customValue();
+    customBox.style.setProperty('--c1', custom.from);
+    customBox.style.setProperty('--c2', custom.to);
     applyAppearance({ ...state.user.prefs, accent: 'custom', custom });
     state.user = { ...state.user, prefs: { ...state.user.prefs, accent: 'custom', custom } };
+    press(state.user.prefs);
     clearTimeout(customTimer);
     customTimer = setTimeout(() => {
       api.patch('/account/preferences', { accent: 'custom', custom }).catch((err) => toast(err.message, 'err'));
@@ -417,16 +428,9 @@ async function accountTab(el, page) {
     const change = button.dataset.themeChoice
       ? { theme: button.dataset.themeChoice }
       : { accent: button.dataset.accentChoice, ...(button.dataset.accentChoice === 'custom' ? { custom: customValue() } : {}) };
-    if (change.accent) {
-      clearTimeout(customTimer); // un dégradé en attente d'enregistrement ne doit pas revenir par-dessus ce choix
-      customBox.hidden = change.accent !== 'custom';
-    }
+    if (change.accent) clearTimeout(customTimer); // un dégradé en attente d'enregistrement ne doit pas revenir par-dessus ce choix
     const before = { ...state.user.prefs };
     const group = button.parentElement;
-    const press = (prefs) => {
-      root.querySelectorAll('[data-theme-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === prefs.theme)));
-      root.querySelectorAll('[data-accent-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.accentChoice === prefs.accent)));
-    };
     const next = { ...before, ...change };
     applyAppearance(next);
     press(next);

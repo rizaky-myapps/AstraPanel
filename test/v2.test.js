@@ -1163,6 +1163,23 @@ test('compte : pseudo, photo de profil, autres appareils, activité', async (t) 
   assert.deepEqual(res.data.user.prefs, { theme: 'dark', accent: 'ocean' });
   assert.deepEqual((await ctx.request('GET', '/api/auth/status')).data.user.prefs, { theme: 'dark', accent: 'ocean' });
 
+  // --- ordre des applications (glisser-déposer) : gardé avec le compte, sans doublon ni application supprimée,
+  // identifiants valides seulement
+  ctx.setCookie(adminCookie);
+  const site = (await ctx.request('POST', '/api/apps', { body: { name: 'Site B', type: 'static', source: 'empty' } })).data.app;
+  const bot = (await ctx.request('POST', '/api/apps', { body: { name: 'Bot A', type: 'bot', source: 'empty' } })).data.app;
+  ctx.setCookie(bobCookie);
+  res = await ctx.request('PATCH', '/api/account/preferences', { body: { appOrder: [site.id, 'supprimee-12ab', bot.id, site.id] } });
+  assert.deepEqual(res.data.user.prefs.appOrder, [site.id, bot.id]);
+  assert.equal(res.data.user.prefs.theme, 'dark');
+  for (const appOrder of ['bot-a', [42], ['<script>'], ['a'.repeat(65)], Array.from({ length: 1001 }, (_, i) => `app-${i}`)]) {
+    res = await ctx.request('PATCH', '/api/account/preferences', { body: { appOrder } });
+    assert.equal(res.status, 400, JSON.stringify(appOrder).slice(0, 40));
+  }
+  assert.deepEqual((await ctx.request('GET', '/api/auth/status')).data.user.prefs.appOrder, [site.id, bot.id]);
+  res = await ctx.request('PATCH', '/api/account/preferences', { body: { appOrder: [] } });
+  assert.deepEqual(res.data.user.prefs, { theme: 'dark', accent: 'ocean' });
+
   // --- pseudo : confirmé par le mot de passe, unique, valide
   res = await ctx.request('PATCH', '/api/account', { body: { username: 'bobby', password: 'mauvais-mdp' } });
   assert.equal(res.status, 400);
