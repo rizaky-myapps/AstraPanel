@@ -1027,6 +1027,18 @@ test('compte : pseudo, photo de profil, autres appareils, activité', async (t) 
   assert.equal(res.data.user.username, 'bob');
   assert.equal(res.data.user.avatar, null);
   assert.deepEqual(res.data.apps, { owned: 0, shared: 0 });
+  assert.deepEqual(res.data.user.prefs, { theme: 'auto', accent: 'solaire' });
+
+  // --- apparence : thème et couleur d'accent enregistrés avec le compte
+  res = await ctx.request('PATCH', '/api/account/preferences', { body: { theme: 'light', accent: 'ocean' } });
+  assert.deepEqual(res.data.user.prefs, { theme: 'light', accent: 'ocean' });
+  res = await ctx.request('PATCH', '/api/account/preferences', { body: { theme: 'rose' } });
+  assert.equal(res.status, 400);
+  res = await ctx.request('PATCH', '/api/account/preferences', { body: { accent: '<script>' } });
+  assert.equal(res.status, 400);
+  res = await ctx.request('PATCH', '/api/account/preferences', { body: { theme: 'dark' } });
+  assert.deepEqual(res.data.user.prefs, { theme: 'dark', accent: 'ocean' });
+  assert.deepEqual((await ctx.request('GET', '/api/auth/status')).data.user.prefs, { theme: 'dark', accent: 'ocean' });
 
   // --- pseudo : confirmé par le mot de passe, unique, valide
   res = await ctx.request('PATCH', '/api/account', { body: { username: 'bobby', password: 'mauvais-mdp' } });

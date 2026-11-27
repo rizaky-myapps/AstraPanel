@@ -38,12 +38,16 @@ export function setHTML(el, content) {
 }
 
 const ICONS = {
-  logo: '<path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" fill="url(#astra-g)" stroke="none"/>',
+  logo: '', // dessiné par logoSvg()
   grid: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
   menu: '<line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  palette: '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.83-.44-1.12-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   eyeOff: '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>',
   devices: '<path d="M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8"/><path d="M10 19v-3.96"/><path d="M7 19h5"/><rect width="6" height="10" x="16" y="12" rx="2"/>',
@@ -115,11 +119,21 @@ const ICONS = {
   fan: '<path d="M10.83 2.38C17.73.47 20.56 7.03 18.65 10H12z"/><path d="M21.62 10.83c1.91 6.9-4.65 9.73-7.62 7.82V12z"/><path d="M13.17 21.62C6.27 23.53 3.44 16.97 5.35 14H12z"/><path d="M2.38 13.17C.47 6.27 7.03 3.44 10 5.35V12z"/>',
 };
 
-const GRADIENT = '<defs><linearGradient id="astra-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>';
+// Logo : une planète et son anneau d'orbite, avec une étoile, sur une tuile en dégradé (couleurs de l'accent).
+let logoCount = 0;
+function logoSvg() {
+  const id = `astra-logo-${++logoCount}`;
+  return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-2)"/></linearGradient></defs>`
+    + `<rect x="1.5" y="1.5" width="21" height="21" rx="6.5" fill="url(#${id})" stroke="none"/>`
+    + '<ellipse cx="12" cy="12.6" rx="8" ry="3.1" transform="rotate(-22 12 12.6)" fill="none" stroke="#fff" stroke-width="1.4" stroke-opacity=".55"/>'
+    + '<circle cx="12" cy="12.6" r="3.6" fill="#fff" stroke="none"/>'
+    + '<path d="M4.58 15.6A8 3.1 -22 0 0 19.42 9.6" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>'
+    + '<path d="M17.4 3.9l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5z" fill="#fff" stroke="none"/>';
+}
 
 export function icon(name) {
   const body = ICONS[name] || '';
-  return new Safe(`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${name === 'logo' ? GRADIENT : ''}${body}</svg>`);
+  return new Safe(`<svg class="icon${name === 'logo' ? ' logo' : ''}" viewBox="0 0 24 24" aria-hidden="true">${name === 'logo' ? logoSvg() : body}</svg>`);
 }
 
 // Interrupteur ON / OFF : une vraie case à cocher (formulaires, accessibilité) habillée en curseur.
@@ -255,8 +269,8 @@ export function routingWarnings(result = {}) {
 export const ROLE_LABEL = { admin: 'Administrateur', user: 'Utilisateur' };
 
 // Bandeau de titre d'une page, dans le style du tableau de bord : tuile d'icône en dégradé, titre, indicateurs.
-// tone : couleur de la tuile (violet, vert, bleu, cyan, ou le type d'une application : bot, node, static).
-export function pageHero({ icon: name, tone = 'violet', title, info = '', badge = '', meta = '', actions = '', cls = '' }) {
+// tone : couleur de la tuile (accent, vert, bleu, cyan, ou le type d'une application : bot, node, static).
+export function pageHero({ icon: name, tone = 'accent', title, info = '', badge = '', meta = '', actions = '', cls = '' }) {
   return html`<section class="page-hero ${cls}">
     <span class="hero-icon tone-${tone}" aria-hidden="true">${icon(name)}</span>
     <div class="hero-text">

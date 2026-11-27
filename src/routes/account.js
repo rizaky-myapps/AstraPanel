@@ -16,6 +16,9 @@ export function imageType(buf) {
 
 export const avatarPath = (dataDir, userId) => path.join(dataDir, 'avatars', userId);
 
+export const THEMES = ['auto', 'light', 'dark'];
+export const ACCENTS = ['solaire', 'ocean', 'aurore', 'nebuleuse', 'framboise'];
+
 // Gestion de son propre compte, pour tous les comptes : pseudo, photo, sessions, activité.
 export function accountRoutes(router, { auth, store, apps, audit, config }) {
   router.get('/api/account', (ctx) => {
@@ -36,6 +39,23 @@ export function accountRoutes(router, { auth, store, apps, audit, config }) {
     const previous = ctx.user.username;
     await auth.renameUser(ctx.user, String(username || '').trim(), { password });
     return { user: publicUser(ctx.user), previous };
+  });
+
+  // Apparence du panel pour ce compte (suit le compte d'un appareil à l'autre)
+  router.patch('/api/account/preferences', async (ctx) => {
+    const body = await ctx.json();
+    const prefs = { ...(ctx.user.prefs || {}) };
+    if ('theme' in body) {
+      if (!THEMES.includes(body.theme)) throw new HttpError(400, 'Thème inconnu');
+      prefs.theme = body.theme;
+    }
+    if ('accent' in body) {
+      if (!ACCENTS.includes(body.accent)) throw new HttpError(400, 'Couleur inconnue');
+      prefs.accent = body.accent;
+    }
+    ctx.user.prefs = prefs;
+    store.save();
+    return { user: publicUser(ctx.user) };
   });
 
   router.put('/api/account/avatar', async (ctx) => {

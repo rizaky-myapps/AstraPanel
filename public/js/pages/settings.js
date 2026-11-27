@@ -1,6 +1,7 @@
 import { api, qs, sendBlob } from '../api.js';
 import { isAdmin, state } from '../state.js';
 import { helpHref } from './help.js';
+import { ACCENTS, THEMES, applyAppearance } from '../theme.js';
 import { clearCacheAndReload, openRebootOverlay, openUpdateOverlay } from '../update-overlay.js';
 import {
   $,
@@ -232,6 +233,23 @@ async function accountTab(el, page) {
           </div>
           <div class="card-foot"><button class="btn btn-primary" type="submit">${icon('check')} Changer le mot de passe</button></div>
         </form>
+        <section class="card" id="appearance-card">
+          <div class="card-header"><h2>${icon('palette')} Apparence ${tip('Le thème et la couleur du panel pour votre compte, sur tous vos appareils. « Automatique » suit le réglage clair ou sombre de l’appareil.')}</h2></div>
+          <div class="card-body stack-sm">
+            <div class="field">
+              <label>Thème</label>
+              <div class="segmented theme-choice" role="group" aria-label="Thème">
+                ${THEMES.map((t) => html`<button type="button" data-theme-choice="${t.id}" aria-pressed="${t.id === u.prefs.theme}">${icon(t.icon)} ${t.label}</button>`)}
+              </div>
+            </div>
+            <div class="field">
+              <label>Couleur</label>
+              <div class="swatches" role="group" aria-label="Couleur d’accent">
+                ${ACCENTS.map((a) => html`<button type="button" class="swatch swatch-${a.id}" data-accent-choice="${a.id}" aria-pressed="${a.id === u.prefs.accent}"><span class="swatch-dot"></span>${a.label}</button>`)}
+              </div>
+            </div>
+          </div>
+        </section>
 
         </div>
       </div>
@@ -316,6 +334,33 @@ async function accountTab(el, page) {
         toast('Vos autres appareils ont été déconnectés');
         redraw();
       });
+    }
+  });
+
+  // --- Apparence : appliquée tout de suite, puis enregistrée avec le compte
+  $('#appearance-card', root).addEventListener('click', async (e) => {
+    const button = e.target.closest('[data-theme-choice], [data-accent-choice]');
+    if (!button || button.getAttribute('aria-pressed') === 'true') return;
+    const change = button.dataset.themeChoice ? { theme: button.dataset.themeChoice } : { accent: button.dataset.accentChoice };
+    const before = { ...state.user.prefs };
+    const group = button.parentElement;
+    const press = (prefs) => {
+      root.querySelectorAll('[data-theme-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === prefs.theme)));
+      root.querySelectorAll('[data-accent-choice]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.accentChoice === prefs.accent)));
+    };
+    const next = { ...before, ...change };
+    applyAppearance(next);
+    press(next);
+    try {
+      group.setAttribute('aria-busy', 'true');
+      const { user } = await api.patch('/account/preferences', change);
+      state.user = { ...state.user, ...user };
+    } catch (err) {
+      applyAppearance(before);
+      press(before);
+      toast(err.message, 'err');
+    } finally {
+      group.removeAttribute('aria-busy');
     }
   });
 

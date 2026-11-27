@@ -9,6 +9,9 @@ import { renderSettings } from './pages/settings.js';
 import { renderStorage } from './pages/storage.js';
 import { renderHelp } from './pages/help.js';
 import { isAdmin, onAppsChange, refreshApps, state } from './state.js';
+import { applyAppearance, effectiveTheme, initAppearance } from './theme.js';
+
+initAppearance();
 
 const ROUTES = [
   { re: /^\/?$/, nav: 'dashboard', render: renderDashboard },
@@ -171,6 +174,16 @@ function renderSideUser() {
   );
 }
 
+function renderThemeToggle() {
+  const button = $('#theme-toggle');
+  if (!button) return;
+  const dark = effectiveTheme() === 'dark';
+  const label = dark ? 'Passer au thème clair' : 'Passer au thème sombre';
+  setHTML(button, icon(dark ? 'sun' : 'moon'));
+  button.title = label;
+  button.setAttribute('aria-label', label);
+}
+
 function renderShell() {
   setHTML(
     $('#app'),
@@ -190,6 +203,7 @@ function renderShell() {
         <div id="side-apps"></div>
         <div class="side-foot">
           <a class="side-user" id="side-user" href="#/settings/compte" title="Mon compte"></a>
+          <button class="btn btn-ghost btn-sm btn-icon" id="theme-toggle"></button>
           <button class="btn btn-ghost btn-sm btn-icon" id="logout" title="Se déconnecter" aria-label="Se déconnecter">${icon('logout')}</button>
         </div>
       </aside>
@@ -204,6 +218,18 @@ function renderShell() {
     </div>`,
   );
   renderSideUser();
+  renderThemeToggle();
+  // bascule rapide clair / sombre, enregistrée avec le compte
+  $('#theme-toggle').addEventListener('click', async () => {
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    applyAppearance({ ...state.user.prefs, theme: next });
+    try {
+      const { user } = await api.patch('/account/preferences', { theme: next });
+      state.user = { ...state.user, ...user };
+    } catch {
+      // le choix reste appliqué sur cet appareil
+    }
+  });
   $('#logout').addEventListener('click', async () => {
     await api.post('/auth/logout').catch(() => {});
     endSession();
@@ -236,6 +262,7 @@ function renderSidebarApps() {
 
 async function startSession(user) {
   state.user = user;
+  applyAppearance(user.prefs);
   renderShell();
   await refreshApps();
   clearInterval(poller);
@@ -272,7 +299,11 @@ function endSession(setupRequired = false) {
 
 async function boot() {
   onAppsChange(renderSidebarApps);
-  window.addEventListener('astra:user', renderSideUser);
+  window.addEventListener('astra:user', () => {
+    renderSideUser();
+    if (state.user?.prefs) applyAppearance(state.user.prefs);
+  });
+  window.addEventListener('astra:theme', renderThemeToggle);
   setUnauthorizedHandler(() => {
     if (state.user) endSession();
   });

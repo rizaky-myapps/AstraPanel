@@ -187,7 +187,10 @@ Le script, qui prend quelques minutes :
 
 L'écran de connexion affiche l'heure et la date, comme l'écran de verrouillage d'un téléphone. Une fois connecté,
 vous arrivez sur le **tableau de bord**, présenté comme le bureau d'un système d'exploitation (toutes les pages du
-panel reprennent le même style : bandeau en dégradé avec une icône, onglets en pastilles, cartes arrondies) :
+panel reprennent le même style : bandeau en dégradé avec une icône, onglets en pastilles, cartes arrondies). Le
+panel a un **thème sombre et un thème clair** : par défaut il suit le réglage de votre appareil ; le bouton soleil /
+lune, en bas du panneau latéral, bascule de l'un à l'autre, et **Paramètres → Mon compte → Apparence** permet aussi de
+choisir la couleur du panel (voir l'étape 12) :
 
 - en haut, l'**horloge** et la date, votre **compte** (photo, pseudo, grade, boutons **Mon compte** et **Déconnexion**) et une
   rangée d'indicateurs : nom et adresse IP de la machine, durée depuis son démarrage et, pour les administrateurs,
@@ -212,6 +215,8 @@ ses onglets (Console, Fichiers, Variables, Déploiement, Paramètres, Utilisateu
 application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
 
 ![Tableau de bord](images/tableau-de-bord.png)
+
+![Tableau de bord en thème clair](images/tableau-de-bord-clair.png)
 
 ## 7. Héberger un bot Discord
 
@@ -442,7 +447,7 @@ AstraPanel a deux grades :
 | Supprimer une application | ✔ | |
 | Explorateur de stockage | ✔ | |
 | Paramètres : utilisateurs, mises à jour, tunnel Cloudflare, ports | ✔ | |
-| Gérer son compte : pseudo, photo de profil, mot de passe, autres appareils | ✔ | ✔ |
+| Gérer son compte : pseudo, photo de profil, mot de passe, autres appareils, apparence | ✔ | ✔ |
 
 **Mon compte.** Chaque compte gère son profil dans **Paramètres → Mon compte** (ou en cliquant sur sa photo, en bas du
 panneau latéral ou sur le tableau de bord) :
@@ -457,7 +462,11 @@ panneau latéral ou sur le tableau de bord) :
 - **Appareils et connexions** : dernière connexion, connexion précédente et tentatives échouées avec votre pseudo
   (date et adresse IP). **Se déconnecter des autres appareils** ferme toutes vos autres sessions (un ordinateur prêté,
   un téléphone perdu…) ;
-- **Activité récente** : vos 20 dernières actions dans le panel, et les tentatives de connexion échouées en rouge.
+- **Activité récente** : vos 20 dernières actions dans le panel, et les tentatives de connexion échouées en rouge ;
+- **Apparence** : le thème (**Automatique**, qui suit le réglage clair ou sombre de l'appareil, **Clair** ou
+  **Sombre**) et la couleur du panel (**Solaire**, orange et rose, par défaut ; **Océan**, **Aurore**, **Nébuleuse** ou
+  **Framboise**). Le changement est immédiat et suit votre compte sur tous vos appareils. Les consoles et l'éditeur de
+  fichiers restent sombres dans les deux thèmes, pour la lisibilité du code.
 
 Les administrateurs gèrent les comptes dans **Paramètres → Utilisateurs** : **Ajouter un utilisateur** (avec son
 grade), changer le grade d'un compte avec la liste déroulante, changer son pseudo (icône @), définir un nouveau mot

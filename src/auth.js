@@ -235,5 +235,14 @@ export class Auth {
 }
 
 export function publicUser(user) {
-  return user ? { id: user.id, username: user.username, role: user.role, createdAt: user.createdAt, avatar: user.avatar?.v || null } : null;
+  if (!user) return null;
+  return {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    createdAt: user.createdAt,
+    avatar: user.avatar?.v || null,
+    // apparence choisie par le compte (thème clair / sombre / automatique, couleur d'accent)
+    prefs: { theme: user.prefs?.theme || 'auto', accent: user.prefs?.accent || 'solaire' },
+  };
 }

@@ -9,6 +9,12 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 
 ![Tableau de bord d'AstraPanel](docs/images/tableau-de-bord.png)
 
+<details><summary>Thème clair</summary>
+
+![Tableau de bord d'AstraPanel en thème clair](docs/images/tableau-de-bord-clair.png)
+
+</details>
+
 ## 👉 [Tutoriel complet : installer AstraPanel sur votre machine](docs/TUTORIEL.md)
 
 ## 👉 [Tutoriel Cloudflare : mettre vos sites en ligne avec votre nom de domaine](docs/CLOUDFLARE.md)
@@ -44,8 +50,10 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Onglet Hardware** : informations sur la machine et redémarrage de la machine depuis le panel, avec validation
 - **Gestion de son compte** : pseudo, photo de profil (recadrée dans le navigateur), mot de passe avec jauge de force,
   déconnexion des autres appareils, dernières connexions, tentatives échouées et activité récente
-- **Style unique** : toutes les pages reprennent le style du tableau de bord (bandeaux en dégradé, onglets en pastilles,
-  cartes arrondies) ; écran de connexion façon écran de verrouillage, avec l'heure
+- **Interface** : logo « planète en orbite », panneau latéral flottant, bandeaux en dégradé, onglets en pastilles ;
+  thème sombre et thème clair (automatique selon l'appareil, ou au choix) et cinq couleurs d'accent (Solaire par
+  défaut, Océan, Aurore, Nébuleuse, Framboise), enregistrés avec chaque compte ; écran de connexion façon écran de
+  verrouillage, avec l'heure
 - **Grades ADMIN et UTILISATEUR** : chaque application a sa liste d'utilisateurs (onglet **Utilisateurs** : le
   créateur, figé, puis les comptes à qui il a donné accès) ; les administrateurs voient toutes les applications et
   gèrent aussi le panel
