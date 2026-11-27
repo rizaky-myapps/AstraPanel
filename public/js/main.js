@@ -36,55 +36,16 @@ const ROUTES = [
 let poller = null;
 let updatePoller = null;
 let currentPage = null;
-let currentNav = null;
 let update = null;
 
-// Bandeau vert « mise à jour disponible » en haut de la page, pour les administrateurs,
-// sur toutes les pages sauf les paramètres (qui affichent déjà la mise à jour).
-function dismissedUpdate() {
-  try {
-    return localStorage.getItem('astra.update.dismissed');
-  } catch {
-    return null;
-  }
-}
-
-function renderBanner() {
-  const box = $('#banner');
-  if (!box) return;
-  const show = isAdmin() && update?.available && currentNav !== 'settings' && dismissedUpdate() !== update.latestVersion;
-  if (!show) {
-    box.textContent = '';
-    return;
-  }
-  setHTML(
-    box,
-    html`<div class="update-banner" role="status">
-      ${icon('arrowUpCircle')}
-      <div class="update-banner-text">
-        <b>Mise à jour disponible : AstraPanel ${update.latestVersion}</b>
-        <span>Vous utilisez la version ${update.installed?.version || '?'}.</span>
-      </div>
-      <a class="btn btn-sm update-banner-cta" href="#/settings/mises-a-jour">Mettre à jour</a>
-      <button class="btn btn-sm update-banner-later" data-later>Plus tard</button>
-    </div>`,
-  );
-  box.querySelector('[data-later]').addEventListener('click', () => {
-    try {
-      localStorage.setItem('astra.update.dismissed', update.latestVersion);
-    } catch {
-      // stockage indisponible : le bandeau reviendra au prochain chargement
-    }
-    box.textContent = '';
-  });
-}
-
+// Notifications : mise à jour et tunnel (administrateurs), alimentation et chaleur de la machine (tous les comptes)
 async function checkUpdate() {
+  const system = await api.get('/system').catch(() => null);
+  if (system) setSystemInfo({ system: { throttling: system.throttling, bootedAt: Math.round((Date.now() - system.uptime * 1000) / 60_000) } });
   if (!isAdmin()) return;
   const [u, tunnel] = await Promise.all([api.get('/update').catch(() => null), api.get('/tunnel').catch(() => null)]);
   if (u) update = u;
   setSystemInfo({ update, tunnel });
-  renderBanner();
 }
 
 initTooltips();
@@ -126,10 +87,8 @@ function route() {
     return;
   }
   const params = match.m.slice(1);
-  currentNav = match.r.nav;
   // page d'où l'on ouvre l'aide (elle n'est plus dans la barre latérale) : son bouton « Retour » y ramène
   if (match.r.nav !== 'aide') state.returnTo = location.hash || '#/';
-  renderBanner();
   setActiveNav(match.r.nav, params[0]);
   const view = $('#view');
   // le contenu défile dans la fenêtre : on revient en haut en changeant de page (pas d'onglet d'une même application)
@@ -194,7 +153,6 @@ function renderShell() {
         <div id="side-apps"></div>
       </aside>
       <main class="main">
-        <div id="banner"></div>
         <section class="window" id="window">
           <div class="window-body" id="window-body"><div class="view"><div id="view"></div></div></div>
         </section>

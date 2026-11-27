@@ -195,7 +195,9 @@ panel se présente comme le **bureau d'un système d'exploitation** :
   - au centre, **Rechercher** (ou **Ctrl + K**) : tapez quelques lettres pour ouvrir une application, une page des
     paramètres, un tutoriel, ou changer de thème ; flèches puis **Entrée** pour choisir ;
   - la **cloche** : les notifications (application plantée, déploiement en échec, mise à jour disponible, tunnel
-    Cloudflare déconnecté) ; un clic ouvre la page concernée ;
+    Cloudflare déconnecté, sous-tension ou processeur bridé par la chaleur) ; un clic ouvre la page concernée, la
+    **croix** d'une notification l'efface et **Tout effacer** les efface toutes. Une notification effacée ne revient
+    que si la situation se reproduit (nouveau plantage, nouvelle version, nouvelle sous-tension…) ;
   - le bouton **soleil / lune** (thème clair ou sombre), la date et l'heure, et votre **photo** : menu du compte
     (**Mon compte**, thème **Automatique / Clair / Sombre**, aide, **Se déconnecter**) ;
 - chaque page s'ouvre en **plein écran** dans une fenêtre posée sur le fond d'écran : la page elle-même ne défile
@@ -210,12 +212,11 @@ panel se présente comme le **bureau d'un système d'exploitation** :
 
 Le **tableau de bord** est le bureau lui-même, sans fenêtre : ses widgets sont posés sur le fond d'écran :
 
-- en haut, l'**horloge** et la date, votre **compte** (photo, pseudo, grade, boutons **Mon compte** et **Déconnexion**) et une
-  rangée d'indicateurs : nom et adresse IP de la machine, durée depuis son démarrage et, pour les administrateurs,
-  l'état du tunnel Cloudflare et des mises à jour (un clic ouvre le réglage correspondant) ;
+- en haut, l'**horloge** et la **date**, en grand ;
 - le bloc **Système** : quatre jauges pour le processeur, la mémoire, le stockage et la température (avec la vitesse
   du ventilateur quand la machine la fournit). Une jauge passe à l'orange puis au rouge quand la valeur devient
-  élevée. Si le panel affiche « Sous-tension détectée », l'alimentation de la machine est insuffisante : remplacez-la ;
+  élevée. Une sous-tension (alimentation insuffisante) ou un processeur bridé par la chaleur sont signalés par une
+  notification (cloche de la barre du haut) ;
 - le bloc **Applications** : une tuile par application, avec son état (en ligne, arrêtée, plantée…) et sa mémoire ;
   un clic l'ouvre. La tuile **Ajouter** crée une nouvelle application ;
 - en dessous, les **graphiques** du processeur, de la température et de la mémoire, avec le choix de la période :
@@ -576,8 +577,8 @@ noms des variables modifiées). Les 10 000 dernières actions sont conservées d
 
 **Mettre à jour AstraPanel depuis le panel.** Toutes les **5 minutes**, le panel regarde la branche
 `AstraPanel-Latest` sur GitHub et lit la version écrite dans son `package.json`. Si elle est plus récente que la
-version installée, les administrateurs voient un **bandeau vert** en haut de chaque page : « Mise à jour disponible ».
-Dans **Paramètres → Mises à jour** :
+version installée, les administrateurs reçoivent une **notification** (cloche de la barre du haut) : « AstraPanel
+X.Y.Z est disponible » ; un clic ouvre **Paramètres → Mises à jour** :
 
 - vous voyez la **version installée**, la **dernière version publiée** et l'heure de la prochaine vérification ;
 - **Vérifier maintenant** : vérifie tout de suite, sans attendre les 5 minutes ;

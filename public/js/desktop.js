@@ -27,7 +27,7 @@ const SETTINGS_TABS = {
 };
 const HELP_DOCS = { tutoriel: 'Installation et utilisation', cloudflare: 'Tunnel Cloudflare' };
 
-const sys = { update: null, tunnel: null };
+const sys = { update: null, tunnel: null, system: null };
 let hooks = { onLogout: () => {}, onToggleSidebar: () => {} };
 let current = null; // page affichée dans la fenêtre : { key, title, icon, tone }
 let openPopover = null;
@@ -65,28 +65,90 @@ export function setWindow(nav, params) {
 }
 
 // ---- Notifications --------------------------------------------------------------------------------
-function notifications() {
+// Chaque notification a une clé : une fois effacée (croix ou « Tout effacer »), elle ne revient que si la situation
+// disparaît puis se reproduit (application de nouveau plantée, nouvelle version, nouvelle sous-tension…).
+// Les effacements sont retenus par compte, dans ce navigateur.
+const dismissedKey = () => `astra.notif.dismissed.${state.user?.id || ''}`;
+let dismissed = null;
+function loadDismissed() {
+  try {
+    dismissed = new Set(JSON.parse(localStorage.getItem(dismissedKey()) || '[]'));
+  } catch {
+    dismissed = new Set();
+  }
+}
+function saveDismissed() {
+  try {
+    localStorage.setItem(dismissedKey(), JSON.stringify([...dismissed].slice(-300)));
+  } catch {
+    // stockage indisponible : l'effacement vaut jusqu'au rechargement de la page
+  }
+}
+
+// source de chaque type de notification : on n'oublie un effacement que si cette source est connue
+const SOURCE = { crash: 'apps', busy: 'apps', deploy: 'apps', update: 'update', tunnel: 'tunnel', power: 'system', heat: 'system' };
+
+function allNotifications() {
   const out = [];
   for (const app of state.apps) {
     if (app.runtime.status === 'crashed') {
-      out.push({ level: 'err', icon: 'alert', title: `${app.name} est planté`, text: 'Voir la console', href: `#/apps/${app.id}/console` });
+      // chaque plantage a sa propre clé : un nouveau plantage notifie de nouveau, même s'il suit de près
+      out.push({ key: `crash:${app.id}:${app.runtime.lastExit?.at || ''}`, level: 'err', icon: 'alert', title: `${app.name} est planté`, text: 'Voir la console', href: `#/apps/${app.id}/console` });
     }
     if (app.runtime.busy) {
-      out.push({ level: 'info', icon: 'refresh', title: `${app.name} : ${statusOf(app).label}`, text: 'Suivre dans la console', href: `#/apps/${app.id}/console` });
+      out.push({ key: `busy:${app.id}`, level: 'info', icon: 'refresh', title: `${app.name} : ${statusOf(app).label}`, text: 'Suivre dans la console', href: `#/apps/${app.id}/console` });
     }
     const hook = app.webhookLog?.[0];
     if (hook?.outcome === 'failed' && Date.now() - (hook.doneAt || hook.at) < 24 * 3600_000) {
-      out.push({ level: 'err', icon: 'upload', title: `Échec du déploiement de ${app.name}`, text: hook.error || 'Voir l’onglet Déploiement', href: `#/apps/${app.id}/deploy` });
+      out.push({ key: `deploy:${app.id}:${hook.at}`, level: 'err', icon: 'upload', title: `Échec du déploiement de ${app.name}`, text: hook.error || 'Voir l’onglet Déploiement', href: `#/apps/${app.id}/deploy` });
     }
   }
   if (isAdmin() && sys.update?.available) {
-    out.push({ level: 'ok', icon: 'arrowUpCircle', title: `AstraPanel ${sys.update.latestVersion} est disponible`, text: 'Mettre à jour', href: '#/settings/mises-a-jour' });
+    out.push({ key: `update:${sys.update.latestVersion}`, level: 'ok', icon: 'arrowUpCircle', title: `AstraPanel ${sys.update.latestVersion} est disponible`, text: `Vous utilisez la version ${sys.update.installed?.version || '?'} : mettre à jour`, href: '#/settings/mises-a-jour' });
   }
   const t = sys.tunnel;
   if (isAdmin() && t?.enabled && (t.binary || t.running) && !(t.running && (t.ready?.readyConnections || 0) > 0)) {
-    out.push({ level: 'warn', icon: 'cloud', title: 'Tunnel Cloudflare déconnecté', text: 'Vos sites ne sont plus joignables depuis Internet', href: '#/settings/tunnel' });
+    out.push({ key: 'tunnel:down', level: 'warn', icon: 'cloud', title: 'Tunnel Cloudflare déconnecté', text: 'Vos sites ne sont plus joignables depuis Internet', href: '#/settings/tunnel' });
+  }
+  // alimentation et chaleur (cartes qui les signalent) : pour tous les comptes
+  const th = sys.system?.throttling;
+  if (th) {
+    const boot = sys.system.bootedAt;
+    if (th.underVoltage) {
+      out.push({ key: `power:now:${boot}`, level: 'err', icon: 'zap', title: 'Sous-tension détectée', text: 'L’alimentation de la machine est insuffisante : elle ralentit et peut planter. Utilisez l’alimentation recommandée par le fabricant.', href: isAdmin() ? '#/settings/hardware' : '#/' });
+    } else if (th.underVoltageOccurred) {
+      out.push({ key: `power:boot:${boot}`, level: 'warn', icon: 'zap', title: 'Une sous-tension a eu lieu depuis le démarrage', text: 'Vérifiez l’alimentation et son câble.', href: isAdmin() ? '#/settings/hardware' : '#/' });
+    }
+    if (th.throttled || th.softTempLimit) {
+      out.push({ key: `heat:${boot}`, level: 'warn', icon: 'thermo', title: 'Processeur bridé à cause de la chaleur', text: 'Améliorez le refroidissement de la machine (ventilateur, dissipateur, aération).', href: isAdmin() ? '#/settings/hardware' : '#/' });
+    }
   }
   return out;
+}
+
+function notifications() {
+  if (!dismissed) loadDismissed();
+  const all = allNotifications();
+  // effacements devenus inutiles (la situation a disparu) : oubliés, pour être prévenu si elle revient
+  const present = new Set(all.map((n) => n.key));
+  const known = new Set(['apps', ...Object.keys(sys).filter((k) => sys[k])]);
+  let changed = false;
+  for (const key of dismissed) {
+    const source = SOURCE[key.split(':')[0]];
+    if (source && known.has(source) && !present.has(key)) {
+      dismissed.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) saveDismissed();
+  return all.filter((n) => !dismissed.has(n.key));
+}
+
+function dismiss(keys) {
+  if (!dismissed) loadDismissed();
+  for (const key of keys) dismissed.add(key);
+  saveDismissed();
+  refreshNotifications();
 }
 
 export function refreshNotifications() {
@@ -104,17 +166,23 @@ function drawNotifications() {
   const list = notifications();
   setHTML(
     $('#mb-popover'),
-    html`<div class="popover-head"><b>Notifications</b><span class="faint">${list.length || ''}</span></div>
+    html`<div class="popover-head">
+        <b>Notifications</b>
+        ${list.length ? html`<button type="button" class="btn btn-ghost btn-sm notif-clear" data-notif-clear>${icon('trash')} Tout effacer</button>` : ''}
+      </div>
       ${list.length
         ? html`<ul class="notif-list">
             ${list.map(
-              (n) => html`<li><a class="notif ${n.level}" href="${n.href}">
-                <span class="notif-icon">${icon(n.icon)}</span>
-                <span class="notif-text"><b>${n.title}</b><span>${n.text}</span></span>
-              </a></li>`,
+              (n) => html`<li class="notif-item">
+                <a class="notif ${n.level}" href="${n.href}">
+                  <span class="notif-icon">${icon(n.icon)}</span>
+                  <span class="notif-text"><b>${n.title}</b><span>${n.text}</span></span>
+                </a>
+                <button type="button" class="notif-dismiss" data-notif-dismiss="${n.key}" title="Effacer" aria-label="Effacer la notification « ${n.title} »">${icon('x')}</button>
+              </li>`,
             )}
           </ul>`
-        : html`<div class="popover-empty">${icon('check')} Tout fonctionne normalement</div>`}`,
+        : html`<div class="popover-empty">${icon('check')} Aucune notification</div>`}`,
   );
 }
 
@@ -335,6 +403,7 @@ export function menubarHTML() {
 
 export function mountDesktop(options) {
   hooks = { ...hooks, ...options };
+  loadDismissed();
   drawUserButton();
   drawThemeButton();
   tickClock();
@@ -345,6 +414,16 @@ export function mountDesktop(options) {
   $('#mb-notif').addEventListener('click', (e) => togglePopover('notif', e.currentTarget));
   $('#mb-user').addEventListener('click', (e) => togglePopover('user', e.currentTarget));
   $('#mb-popover').addEventListener('click', async (e) => {
+    const one = e.target.closest('[data-notif-dismiss]');
+    if (one) {
+      e.preventDefault();
+      dismiss([one.dataset.notifDismiss]);
+      return;
+    }
+    if (e.target.closest('[data-notif-clear]')) {
+      dismiss(notifications().map((n) => n.key));
+      return;
+    }
     // thème choisi dans le menu du compte : appliqué tout de suite, le menu reste ouvert
     const theme = e.target.closest('[data-menu-theme]');
     if (theme) {

@@ -5556,3 +5556,53 @@ body.os .console-output {
   height: 100%;
   min-height: 0;
 }
+
+/* ---- Notifications : croix pour effacer, « Tout effacer » ---- */
+.popover-head {
+  align-items: center;
+}
+.notif-clear {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.notif-clear svg {
+  width: 13px;
+  height: 13px;
+}
+.notif-item {
+  position: relative;
+}
+.notif-item .notif {
+  padding-right: 36px;
+}
+.notif-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.notif-dismiss svg {
+  width: 14px;
+  height: 14px;
+}
+.notif-dismiss:hover,
+.notif-dismiss:focus-visible {
+  color: var(--text);
+  background: rgba(var(--ink-rgb), 0.1);
+}
+
+/* bureau : le bandeau ne garde que l'heure et la date */
+.desk-hero {
+  grid-template-columns: minmax(0, 1fr);
+}

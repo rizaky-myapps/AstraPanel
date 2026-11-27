@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { isAdmin, onAppsChange, state } from '../state.js';
 import { formatWhen, renderLineChart } from '../chart.js';
-import { $, ROLE_LABEL, TYPE_INFO, avatar, formatBytes, formatDuration, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
+import { $, TYPE_INFO, formatBytes, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
 
 const RANGES = [
   { id: '1h', label: '1 h', refresh: 10_000 },
@@ -47,55 +47,10 @@ const SERIES = [
   },
 ];
 
-// ---- Bureau : horloge, compte, indicateurs ------------------------------------------------------
+// ---- Bureau : horloge et date ------------------------------------------------------------------------
 const pad = (n) => String(n).padStart(2, '0');
 const DATE_FORMAT = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const greeting = (hour) => (hour >= 5 && hour < 18 ? 'Bonjour' : 'Bonsoir');
 const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-
-function accountCard() {
-  const { username, role } = state.user;
-  return html`<div class="desk-account">
-    <a href="#/settings/compte" class="desk-avatar-link" title="Mon compte">${avatar(state.user, 'desk-avatar')}</a>
-    <div class="desk-account-text">
-      <div class="desk-hello"><span id="desk-greeting">${greeting(new Date().getHours())}</span>, <b>${username}</b></div>
-      <span class="badge ${role === 'admin' ? 'accent' : 'plain'}">${icon(role === 'admin' ? 'shield' : 'user')} ${ROLE_LABEL[role] || role}</span>
-    </div>
-    <div class="desk-account-actions">
-      <a class="btn btn-sm" href="#/settings/compte">${icon('user')} Mon compte</a>
-      <button type="button" class="btn btn-sm btn-ghost" data-logout title="Se déconnecter">${icon('logout')} Déconnexion</button>
-    </div>
-  </div>`;
-}
-
-// Indicateurs façon barre d'état : machine, adresse, durée d'allumage, tunnel et mises à jour (administrateurs)
-function pills(sys, extra) {
-  const ips = sys.addresses.map((a) => a.address).join(', ');
-  const out = [
-    html`<span class="desk-pill" title="${sys.model}">${icon('server')} ${sys.hostname}</span>`,
-    ips ? html`<span class="desk-pill mono">${icon('globe')} ${ips}</span>` : '',
-    html`<span class="desk-pill">${icon('clock')} Allumée depuis ${formatDuration(sys.uptime * 1000)}</span>`,
-  ];
-  const t = extra.tunnel;
-  if (t) {
-    const links = t.ready?.readyConnections || 0;
-    const [cls, label] = !t.enabled
-      ? ['', 'Tunnel désactivé']
-      : t.running && links > 0
-        ? ['ok', `Tunnel connecté · ${links} liaison${links > 1 ? 's' : ''}`]
-        : t.running
-          ? ['warn', 'Tunnel : connexion…']
-          : ['warn', 'Tunnel arrêté'];
-    out.push(html`<a class="desk-pill ${cls}" href="#/settings/tunnel">${icon('cloud')} ${label}</a>`);
-  }
-  const u = extra.update;
-  if (u?.available) {
-    out.push(html`<a class="desk-pill ok strong" href="#/settings/mises-a-jour">${icon('arrowUpCircle')} Mise à jour ${u.latestVersion} disponible</a>`);
-  } else {
-    out.push(html`<span class="desk-pill">${icon('logo')} AstraPanel ${sys.panel.version}${u && !u.available ? ' · à jour' : ''}</span>`);
-  }
-  return out;
-}
 
 // ---- Jauges circulaires ----------------------------------------------------------------------------
 const RING_R = 42;
@@ -200,21 +155,6 @@ function launcher(apps) {
 }
 const launcherKey = (apps) => apps.map((a) => `${a.id}:${a.name}:${a.type}:${statusOf(a).label}:${Math.round((a.runtime.memory || 0) / 1048576)}`).join('|');
 
-function renderAlerts(sys) {
-  const t = sys.throttling;
-  if (!t) return '';
-  const out = [];
-  if (t.underVoltage) {
-    out.push(html`<div class="alert err">${icon('zap')}<div><b>Sous-tension détectée.</b> L'alimentation de la machine est insuffisante : elle ralentit et peut planter. Utilisez l'alimentation recommandée par le fabricant.</div></div>`);
-  } else if (t.underVoltageOccurred) {
-    out.push(html`<div class="alert warn">${icon('zap')}<div>Une sous-tension a eu lieu depuis le démarrage. Vérifiez l'alimentation et son câble.</div></div>`);
-  }
-  if (t.throttled || t.softTempLimit) {
-    out.push(html`<div class="alert warn">${icon('thermo')}<div>Le processeur est bridé à cause de la chaleur. Améliorez le refroidissement de la machine (ventilateur, dissipateur, aération).</div></div>`);
-  }
-  return out;
-}
-
 function savedRange() {
   try {
     const r = localStorage.getItem('astra.range');
@@ -236,11 +176,8 @@ export function renderDashboard(view, page) {
         <div class="desk-clock">
           <div class="desk-time" aria-live="off"><span id="clock-hm">--:--</span><span class="desk-seconds" id="clock-s">--</span></div>
           <div class="desk-date" id="clock-date"></div>
-          <div class="desk-pills" id="desk-pills"></div>
         </div>
-        ${accountCard()}
       </section>
-      <div id="sys-alerts"></div>
       <section class="widget">
         <div class="widget-head">
           <h2>${icon('server')} Système</h2>
@@ -367,12 +304,10 @@ export function renderDashboard(view, page) {
     $('#clock-hm', root).textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     $('#clock-s', root).textContent = pad(now.getSeconds());
     $('#clock-date', root).textContent = capitalize(DATE_FORMAT.format(now));
-    $('#desk-greeting', root).textContent = greeting(now.getHours());
     clockTimer = setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
   };
   tick();
 
-  root.querySelector('[data-logout]').addEventListener('click', () => window.dispatchEvent(new Event('astra:logout')));
 
   // Lanceur : redessiné seulement quand une application change
   let shownApps = null;
@@ -385,27 +320,11 @@ export function renderDashboard(view, page) {
   drawLauncher();
   page.onCleanup(onAppsChange(drawLauncher));
 
-  // Tunnel et mises à jour (administrateurs), relus moins souvent
-  const extra = { tunnel: null, update: null };
-  let lastSys = null;
-  const drawPills = () => lastSys && setHTML($('#desk-pills', root), pills(lastSys, extra));
-  let extraTimer = null;
-  const loadExtra = async () => {
-    if (!isAdmin()) return;
-    const [tunnel, update] = await Promise.all([api.get('/tunnel').catch(() => null), api.get('/update').catch(() => null)]);
-    if (!page.active) return;
-    Object.assign(extra, { tunnel, update });
-    drawPills();
-    extraTimer = setTimeout(loadExtra, 30_000);
-  };
-
   let shownGauges = null;
   const loadSystem = async () => {
     try {
       const sys = await api.get('/system');
       if (!page.active) return;
-      lastSys = sys;
-      drawPills();
       $('#desk-model', root).textContent = sys.model;
       const list = gauges(sys);
       const box = $('#gauges', root);
@@ -416,19 +335,16 @@ export function renderDashboard(view, page) {
         box.getBoundingClientRect(); // l'anneau part de zéro puis glisse jusqu'à la valeur
       }
       list.forEach((g) => updateGauge(box.querySelector(`[data-gauge="${g.id}"]`), g));
-      setHTML($('#sys-alerts', root), renderAlerts(sys));
     } catch {
       // le prochain rafraîchissement réessaiera
     }
   };
   loadSystem();
-  loadExtra();
   loadMetrics();
   const timer = setInterval(loadSystem, 4000);
   page.onCleanup(() => {
     clearInterval(timer);
     clearTimeout(clockTimer);
-    clearTimeout(extraTimer);
     clearTimeout(metricsTimer);
     window.removeEventListener('resize', onResize);
   });

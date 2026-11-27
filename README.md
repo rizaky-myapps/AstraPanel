@@ -36,13 +36,14 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
   français dans le panel
 - **Tutoriels intégrés** : les tutoriels (installation, tunnel Cloudflare) lisibles directement dans le panel, depuis
   les pages qui y renvoient (bouton « Tutoriel » du tunnel Cloudflare)
-- **Tableau de bord façon bureau** : horloge, compte connecté, indicateurs (machine, IP, tunnel, mises à jour),
-  jauges du processeur, de la mémoire, du stockage et de la température, lanceur d'applications, et graphiques sur
-  1 h, 24 h, 15 jours et 30 jours ; alerte de sous-tension sur les cartes qui la signalent
+- **Tableau de bord façon bureau** : grande horloge et date, jauges du processeur, de la mémoire, du stockage et de
+  la température, lanceur d'applications, et graphiques sur 1 h, 24 h, 15 jours et 30 jours
+- **Notifications** (cloche de la barre du haut) : application plantée, déploiement en échec, mise à jour disponible,
+  tunnel déconnecté, sous-tension ou surchauffe ; chacune s'efface d'une croix, ou toutes avec « Tout effacer »
 - **Panneau latéral masquable** : il se cache sur la gauche pour laisser toute la place au contenu
 - **Explorateur de stockage** : les disques de la machine et leur contenu trié par taille, pour trouver ce qui prend de la place
 - **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
-  aux administrateurs par un bandeau vert ; un clic suffit pour mettre à jour, sans SSH. Pendant la mise à jour, le
+  aux administrateurs par une notification ; un clic suffit pour mettre à jour, sans SSH. Pendant la mise à jour, le
   panel est flouté avec un écran de chargement qui suit chaque étape, puis le cache du navigateur est vidé et la page
   rechargée
 - **Journal d'activité** : chaque action (connexions, applications, fichiers, comptes, tunnel, mises à jour,
@@ -100,7 +101,7 @@ systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script
   conservée sur sa propre branche **`AstraPanel-V.X.Y.Z`**, avec exactement les mêmes fichiers.
 - Les versions avancent de 0.0.1 à chaque publication : 1.2.8 → 1.2.9 → 1.3.0 → 1.3.1.
 - Les panels installés regardent `AstraPanel-Latest` toutes les 5 minutes et lisent la version dans son
-  `package.json` : si elle est plus récente, un bandeau vert l'annonce aux administrateurs, et un clic dans
+  `package.json` : si elle est plus récente, une notification l'annonce aux administrateurs, et un clic dans
   **Paramètres → Mises à jour** l'installe.
 - Pour publier une version : `./scripts/nouvelle-version.sh` (calcule la version suivante, met à jour
   `package.json`, pousse `AstraPanel-Latest` et crée `AstraPanel-V.X.Y.Z`).
