@@ -1,5 +1,5 @@
 import { api, setUnauthorizedHandler } from './api.js';
-import { $, ROLE_LABEL, avatar, html, icon, initTooltips, setHTML, statusOf } from './ui.js';
+import { $, html, icon, initTooltips, setHTML, statusOf } from './ui.js';
 import { renderLogin } from './pages/login.js';
 import { startUpdateWatch, stopUpdateWatch } from './update-overlay.js';
 import { renderDashboard } from './pages/dashboard.js';
@@ -9,7 +9,19 @@ import { renderSettings } from './pages/settings.js';
 import { renderStorage } from './pages/storage.js';
 import { renderHelp } from './pages/help.js';
 import { isAdmin, onAppsChange, refreshApps, state } from './state.js';
-import { applyAppearance, effectiveTheme, initAppearance } from './theme.js';
+import { applyAppearance, initAppearance } from './theme.js';
+import {
+  initDesktopGlobals,
+  menubarHTML,
+  mountDesktop,
+  refreshDesktop,
+  refreshUser,
+  setSystemInfo,
+  setWindow,
+  sidebarIcon,
+  stopDesktop,
+  windowBarHTML,
+} from './desktop.js';
 
 initAppearance();
 
@@ -70,11 +82,9 @@ function renderBanner() {
 
 async function checkUpdate() {
   if (!isAdmin()) return;
-  try {
-    update = await api.get('/update');
-  } catch {
-    return;
-  }
+  const [u, tunnel] = await Promise.all([api.get('/update').catch(() => null), api.get('/tunnel').catch(() => null)]);
+  if (u) update = u;
+  setSystemInfo({ update, tunnel });
   renderBanner();
 }
 
@@ -125,6 +135,7 @@ function route() {
   const view = $('#view');
   if (match.r.nav !== 'app' || view.dataset.app !== params[0]) window.scrollTo(0, 0);
   view.dataset.app = match.r.nav === 'app' ? params[0] : '';
+  setWindow(match.r.nav, params);
   Promise.resolve(match.r.render(view, page, ...params)).catch((err) => {
     if (page.active) setHTML(view, html`<div class="alert err">${icon('alert')}<div>${err.message}</div></div>`);
   });
@@ -135,10 +146,9 @@ function setActiveNav(nav, appId) {
   document.querySelectorAll('.side-app').forEach((a) => a.classList.toggle('active', nav === 'app' && a.dataset.id === appId));
 }
 
-const brand = () => html`<a class="brand" href="#/">${icon('logo')}<span>Astra<b>Panel</b></span></a>`;
-
 // Panneau latéral masquable (écrans larges) : le choix est retenu dans ce navigateur.
 const SIDEBAR_KEY = 'astra.sidebar';
+const wide = () => window.matchMedia('(min-width: 901px)').matches;
 function sidebarHidden() {
   try {
     return localStorage.getItem(SIDEBAR_KEY) === 'hidden';
@@ -150,7 +160,8 @@ function setSidebarHidden(hidden) {
   const shell = $('.shell');
   if (!shell) return;
   shell.classList.toggle('side-hidden', hidden);
-  $('.sidebar').toggleAttribute('inert', hidden && window.matchMedia('(min-width: 901px)').matches);
+  $('.sidebar').toggleAttribute('inert', hidden && wide());
+  sidebarIcon(hidden);
   try {
     localStorage.setItem(SIDEBAR_KEY, hidden ? 'hidden' : 'shown');
   } catch {
@@ -160,84 +171,44 @@ function setSidebarHidden(hidden) {
   setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
 }
 
-// Compte affiché en bas du panneau latéral (mis à jour quand on change de pseudo ou de photo)
-function renderSideUser() {
-  const box = $('#side-user');
-  if (!box || !state.user) return;
-  setHTML(
-    box,
-    html`${avatar(state.user)}
-      <span class="truncate">
-        <span class="truncate side-name">${state.user.username}</span>
-        <span class="faint side-role">${ROLE_LABEL[state.user.role] || ''}</span>
-      </span>`,
-  );
-}
-
-function renderThemeToggle() {
-  const button = $('#theme-toggle');
-  if (!button) return;
-  const dark = effectiveTheme() === 'dark';
-  const label = dark ? 'Passer au thème clair' : 'Passer au thème sombre';
-  setHTML(button, icon(dark ? 'sun' : 'moon'));
-  button.title = label;
-  button.setAttribute('aria-label', label);
+async function logout() {
+  await api.post('/auth/logout').catch(() => {});
+  endSession();
 }
 
 function renderShell() {
   setHTML(
     $('#app'),
     html`<div class="shell ${sidebarHidden() ? 'side-hidden' : ''}">
-      <button class="side-reveal btn btn-icon" id="side-show" title="Afficher le panneau latéral" aria-label="Afficher le panneau latéral">${icon('panelOpen')}</button>
+      <header class="menubar" id="menubar">${menubarHTML()}</header>
       <aside class="sidebar">
-        <div class="side-head">
-          ${brand()}
-          <button class="btn btn-ghost btn-icon btn-sm side-hide" id="side-hide" title="Masquer le panneau latéral" aria-label="Masquer le panneau latéral">${icon('panelClose')}</button>
-        </div>
         <nav class="nav">
           <a href="#/" data-nav="dashboard">${icon('grid')} Tableau de bord</a>
-          <a href="#/new" data-nav="new">${icon('plus')} Nouvelle application</a>
           <a href="#/settings" data-nav="settings">${icon('sliders')} Paramètres</a>
         </nav>
-        <div class="side-title">Applications</div>
-        <div id="side-apps"></div>
-        <div class="side-foot">
-          <a class="side-user" id="side-user" href="#/settings/compte" title="Mon compte"></a>
-          <button class="btn btn-ghost btn-sm btn-icon" id="theme-toggle"></button>
-          <button class="btn btn-ghost btn-sm btn-icon" id="logout" title="Se déconnecter" aria-label="Se déconnecter">${icon('logout')}</button>
+        <div class="side-title">
+          <span>Applications</span>
+          <a class="side-add" href="#/new" data-nav="new" title="Nouvelle application" aria-label="Nouvelle application">${icon('plus')}</a>
         </div>
+        <div id="side-apps"></div>
       </aside>
-      <div>
+      <main class="main">
         <div id="banner"></div>
-        <header class="topbar">
-          <button class="btn btn-ghost btn-icon" id="menu-btn" aria-label="Menu">${icon('menu')}</button>
-          ${brand()}
-        </header>
-        <main class="main"><div class="view"><div id="view"></div></div></main>
-      </div>
+        <section class="window" id="window">
+          <div class="window-bar" id="window-bar">${windowBarHTML()}</div>
+          <div class="window-body"><div class="view"><div id="view"></div></div></div>
+        </section>
+      </main>
     </div>`,
   );
-  renderSideUser();
-  renderThemeToggle();
-  // bascule rapide clair / sombre, enregistrée avec le compte
-  $('#theme-toggle').addEventListener('click', async () => {
-    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
-    applyAppearance({ ...state.user.prefs, theme: next });
-    try {
-      const { user } = await api.patch('/account/preferences', { theme: next });
-      state.user = { ...state.user, ...user };
-    } catch {
-      // le choix reste appliqué sur cet appareil
-    }
+  mountDesktop({
+    onLogout: logout,
+    // écran large : masque / affiche le panneau ; téléphone : l'ouvre par-dessus la page
+    onToggleSidebar: () => (wide() ? setSidebarHidden(!$('.shell').classList.contains('side-hidden')) : $('.shell').classList.add('menu-open')),
   });
-  $('#logout').addEventListener('click', async () => {
-    await api.post('/auth/logout').catch(() => {});
-    endSession();
-  });
-  $('#menu-btn').addEventListener('click', () => $('.shell').classList.add('menu-open'));
-  $('#side-hide').addEventListener('click', () => setSidebarHidden(true));
-  $('#side-show').addEventListener('click', () => setSidebarHidden(false));
-  if (sidebarHidden()) $('.sidebar').toggleAttribute('inert', window.matchMedia('(min-width: 901px)').matches);
+  sidebarIcon(sidebarHidden() && wide());
+  window.matchMedia('(min-width: 901px)').addEventListener('change', () => sidebarIcon($('.shell')?.classList.contains('side-hidden')));
+  if (sidebarHidden()) $('.sidebar').toggleAttribute('inert', wide());
   $('.shell').addEventListener('click', (e) => {
     if (e.target === $('.shell')) $('.shell').classList.remove('menu-open');
   });
@@ -282,6 +253,7 @@ function endSession(setupRequired = false) {
   clearInterval(poller);
   clearInterval(updatePoller);
   stopUpdateWatch();
+  stopDesktop();
   update = null;
   if (currentPage) {
     currentPage.active = false;
@@ -298,12 +270,16 @@ function endSession(setupRequired = false) {
 }
 
 async function boot() {
-  onAppsChange(renderSidebarApps);
+  onAppsChange(() => {
+    renderSidebarApps();
+    refreshDesktop();
+  });
+  initDesktopGlobals();
+  window.addEventListener('astra:logout', () => state.user && logout());
   window.addEventListener('astra:user', () => {
-    renderSideUser();
+    refreshUser();
     if (state.user?.prefs) applyAppearance(state.user.prefs);
   });
-  window.addEventListener('astra:theme', renderThemeToggle);
   setUnauthorizedHandler(() => {
     if (state.user) endSession();
   });

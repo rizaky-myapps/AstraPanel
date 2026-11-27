@@ -372,7 +372,7 @@ export function renderDashboard(view, page) {
   };
   tick();
 
-  root.querySelector('[data-logout]').addEventListener('click', () => document.getElementById('logout')?.click());
+  root.querySelector('[data-logout]').addEventListener('click', () => window.dispatchEvent(new Event('astra:logout')));
 
   // Lanceur : redessiné seulement quand une application change
   let shownApps = null;

@@ -27,7 +27,7 @@ export async function renderHelp(view, page, doc = 'tutoriel', section = '') {
   view.replaceChildren(root);
   setHTML(
     root,
-    html`<a class="back" href="${state.returnTo || '#/'}">${icon('back')} ${returnLabel(state.returnTo || '#/')}</a>
+    html`<a class="back keep" href="${state.returnTo || '#/'}">${icon('back')} ${returnLabel(state.returnTo || '#/')}</a>
       ${pageHero({ icon: 'book', tone: 'cyan', title: 'Aide', info: 'Les tutoriels d’AstraPanel, en français, pour la version installée.' })}
       <nav class="tabs">${Object.entries(DOCS).map(([id, d]) => html`<a href="${helpHref(id)}" class="${id === doc ? 'active' : ''}">${icon(d.icon)} ${d.label}</a>`)}</nav>
       <article class="card doc" id="doc"><div class="card-body row"><div class="spinner sm"></div><span class="muted">Chargement…</span></div></article>`,

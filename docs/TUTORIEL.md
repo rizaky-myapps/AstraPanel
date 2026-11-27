@@ -185,12 +185,27 @@ Le script, qui prend quelques minutes :
 3. Choisissez votre nom d'utilisateur et un mot de passe solide (8 caractères minimum). Ce premier compte est
    **administrateur** (voir l'étape 12 pour ajouter d'autres personnes).
 
-L'écran de connexion affiche l'heure et la date, comme l'écran de verrouillage d'un téléphone. Une fois connecté,
-vous arrivez sur le **tableau de bord**, présenté comme le bureau d'un système d'exploitation (toutes les pages du
-panel reprennent le même style : bandeau en dégradé avec une icône, onglets en pastilles, cartes arrondies). Le
-panel a un **thème sombre et un thème clair** : par défaut il suit le réglage de votre appareil ; le bouton soleil /
-lune, en bas du panneau latéral, bascule de l'un à l'autre, et **Paramètres → Mon compte → Apparence** permet aussi de
-choisir la couleur du panel (voir l'étape 12) :
+L'écran de connexion affiche l'heure et la date, comme l'écran de verrouillage d'un téléphone. Une fois connecté, le
+panel se présente comme le **bureau d'un système d'exploitation** :
+
+- la **barre du haut**, toujours visible :
+  - tout à gauche, le bouton du **panneau latéral** : il le **cache sur la gauche** pour laisser toute la place au
+    contenu, puis le fait revenir (sur téléphone, il ouvre le menu) ;
+  - le logo (retour au bureau) et les **fenêtres ouvertes** : un clic revient sur une application ou une page ;
+  - **Rechercher** (ou **Ctrl + K**) : tapez quelques lettres pour ouvrir une application, une page des paramètres,
+    un tutoriel, ou changer de thème ; flèches puis **Entrée** pour choisir ;
+  - la **cloche** : les notifications (application plantée, déploiement en échec, mise à jour disponible, tunnel
+    Cloudflare déconnecté) ; un clic ouvre la page concernée ;
+  - le bouton **soleil / lune** (thème clair ou sombre), la date et l'heure, et votre **photo** : menu du compte
+    (**Mon compte**, thème, aide, **Se déconnecter**) ;
+- chaque page s'ouvre dans une **fenêtre** posée sur le fond d'écran, avec sa barre de titre et trois boutons :
+  **rouge** ferme la fenêtre (retour au bureau), **jaune** la réduit (elle reste dans la barre du haut pour y revenir),
+  **vert** l'agrandit sur toute la largeur (un double-clic sur la barre de titre fait de même) ;
+- le panel a un **thème sombre et un thème clair** : par défaut il suit le réglage de votre appareil ;
+  **Paramètres → Mon compte → Apparence** permet aussi de choisir la couleur du panel et du fond d'écran (voir
+  l'étape 12).
+
+Le **tableau de bord** est le bureau lui-même, sans fenêtre : ses widgets sont posés sur le fond d'écran :
 
 - en haut, l'**horloge** et la date, votre **compte** (photo, pseudo, grade, boutons **Mon compte** et **Déconnexion**) et une
   rangée d'indicateurs : nom et adresse IP de la machine, durée depuis son démarrage et, pour les administrateurs,
@@ -208,9 +223,8 @@ choisir la couleur du panel (voir l'étape 12) :
   léger**. Cliquez sur un dossier pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les
   journaux, une vieille archive…).
 
-Vos applications sont aussi listées dans le **panneau latéral**, avec le bouton **Nouvelle application**. Le bouton
-en haut du panneau, à droite du logo, le **cache sur la gauche** pour laisser toute la place au contenu ; le bouton
-qui apparaît alors en haut à gauche de l'écran le fait revenir (le panel retient votre choix). Chaque application a
+Vos applications sont aussi listées dans le **panneau latéral**, sous **Tableau de bord** et **Paramètres** ; le petit
+**+** à côté du mot **Applications** en crée une nouvelle (comme la tuile **Ajouter** du tableau de bord). Chaque application a
 ses onglets (Console, Fichiers, Variables, Déploiement, Paramètres, Utilisateurs) ; quand vous passez d'une
 application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**) au lieu de revenir à la console.
 
@@ -234,7 +248,8 @@ application à l'autre, le panel garde l'onglet ouvert (par exemple **Fichiers**
 
 ### 7.2 Lancer le bot d'exemple
 
-1. Dans AstraPanel, cliquez sur **Nouvelle application**.
+1. Dans AstraPanel, cliquez sur le **+** à côté de **Applications** dans le panneau latéral (ou sur la tuile **Ajouter**
+   du tableau de bord) : la page **Nouvelle application** s'ouvre.
 2. Type : **Bot Discord**. Source : **Modèle de départ**.
 3. Donnez-lui un nom, puis dans **Variables d'environnement**, collez votre token comme valeur de `DISCORD_TOKEN`.
 4. Laissez cochés « Redémarrage automatique » et « Démarrer après la création », puis cliquez sur **Créer l'application**.
@@ -449,11 +464,11 @@ AstraPanel a deux grades :
 | Paramètres : utilisateurs, mises à jour, tunnel Cloudflare, ports | ✔ | |
 | Gérer son compte : pseudo, photo de profil, mot de passe, autres appareils, apparence | ✔ | ✔ |
 
-**Mon compte.** Chaque compte gère son profil dans **Paramètres → Mon compte** (ou en cliquant sur sa photo, en bas du
-panneau latéral ou sur le tableau de bord) :
+**Mon compte.** Chaque compte gère son profil dans **Paramètres → Mon compte** (ou par sa photo, en haut à droite de
+l'écran, puis **Mon compte**) :
 
 - **Photo de profil** : **Ajouter une photo** (PNG, JPEG, WebP ou GIF), puis cadrez-la dans la fenêtre qui s'ouvre :
-  faites glisser l'image et zoomez avec le curseur ou la molette. Elle s'affiche dans le panneau latéral, sur le
+  faites glisser l'image et zoomez avec le curseur ou la molette. Elle s'affiche dans la barre du haut, sur le
   tableau de bord et dans les listes d'utilisateurs. **Retirer** remet l'initiale du pseudo ;
 - **Pseudo** : c'est aussi le nom de connexion. Saisissez le nouveau, confirmez avec votre mot de passe : vous restez
   connecté, et vous vous connecterez ensuite avec le nouveau pseudo ;

@@ -50,7 +50,9 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Onglet Hardware** : informations sur la machine et redémarrage de la machine depuis le panel, avec validation
 - **Gestion de son compte** : pseudo, photo de profil (recadrée dans le navigateur), mot de passe avec jauge de force,
   déconnexion des autres appareils, dernières connexions, tentatives échouées et activité récente
-- **Interface** : logo « planète en orbite », panneau latéral flottant, bandeaux en dégradé, onglets en pastilles ;
+- **Bureau façon système d'exploitation** : barre du haut (fenêtres ouvertes, recherche Ctrl+K, notifications, thème,
+  heure, menu du compte), pages ouvertes dans des fenêtres (fermer, réduire, agrandir) sur un fond d'écran
+- **Interface** : logo « planète en orbite », panneau latéral flottant, onglets en pastilles ;
   thème sombre et thème clair (automatique selon l'appareil, ou au choix) et cinq couleurs d'accent (Solaire par
   défaut, Océan, Aurore, Nébuleuse, Framboise), enregistrés avec chaque compte ; écran de connexion façon écran de
   verrouillage, avec l'heure
