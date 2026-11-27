@@ -7,6 +7,7 @@ import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { HttpError } from '../http/util.js';
 import { assertDomainsFree, normalizeDomains } from '../domains.js';
 import { LogBuffer, stripAnsi } from './logs.js';
+import { REFUSED_ALREADY_RUNNING, REFUSED_FROM_APP } from '../instance.js';
 import { baseEnv, killGroup, pipeOutput, runCommand, runShell } from './process.js';
 import { CLK_TCK, sampleProcessGroups } from './stats.js';
 import { addrInUsePort, listProcesses, portOwner } from '../ports.js';
@@ -16,6 +17,8 @@ const SOURCES = ['empty', 'template', 'git', 'archive'];
 const TASKS = { deploy: 'Déploiement', install: 'Installation des dépendances', build: 'Build' };
 const STOP_TIMEOUT = 10000;
 const MAX_RESTARTS = 10;
+// Commande qui passe par npm / pnpm / yarn (« npm start », « NODE_OPTIONS=… npm run start »…), sans --prefix
+const PACKAGE_MANAGER_RE = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:npm|pnpm|yarn)(?:\s|$)/;
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const BRANCH_RE = /^[A-Za-z0-9._/-]+$/;
 const GIT_URL_RE = /^(https?:\/\/|ssh:\/\/|git@)\S+$/;
@@ -480,6 +483,13 @@ export class AppManager {
   // --- Processus restés en arrière-plan ----------------------------------------
   // Le code d'AstraPanel ne peut pas tourner comme application du panel (un panel dans le panel) : il garde des
   // processus en arrière-plan que le panel ne suit pas, et se dispute les ports avec lui.
+  // « npm start » (ou pnpm, yarn) sans package.json dans le dossier de l'application : npm remonterait les dossiers
+  // parents jusqu'au package.json du panel et lancerait… le panel. On refuse avant de lancer quoi que ce soit.
+  packageManagerWithoutPackage(app, command) {
+    if (!command || !PACKAGE_MANAGER_RE.test(command) || /\s--prefix[\s=]/.test(command)) return false;
+    return !existsSync(path.join(this.dir(app), 'package.json'));
+  }
+
   isAstraPanelCode(app) {
     if (app.type === 'static') return false;
     const dir = this.dir(app);
@@ -532,9 +542,8 @@ export class AppManager {
   async launch(app, { userAction = false } = {}) {
     const rt = this.rt(app.id);
     if (rt.child) return;
-    if (this.isAstraPanelCode(app)) {
-      const message = 'Cette application contient AstraPanel lui-même : un panel ne peut pas être lancé comme application du panel';
-      this.logsFor(app.id).system(`✖ ${message}. Supprimez-la ; pour mettre le panel à jour, utilisez Paramètres → Mises à jour.`);
+    const refuse = (message, advice) => {
+      this.logsFor(app.id).system(`✖ ${message}. ${advice}`);
       app.desired = 'stopped';
       this.store.save();
       rt.status = 'stopped';
@@ -543,7 +552,18 @@ export class AppManager {
         err.logged = true;
         throw err;
       }
-      return;
+    };
+    if (this.isAstraPanelCode(app)) {
+      return refuse(
+        'Cette application contient AstraPanel lui-même : un panel ne peut pas être lancé comme application du panel',
+        'Supprimez-la ; pour mettre le panel à jour, utilisez Paramètres → Mises à jour.',
+      );
+    }
+    if (app.type !== 'static' && this.packageManagerWithoutPackage(app, app.startCommand)) {
+      return refuse(
+        `Pas de package.json dans le dossier de l’application : « ${app.startCommand} » ne peut pas fonctionner`,
+        'Ajoutez votre code (onglet Fichiers, ou dépôt Git / archive dans l’onglet Déploiement), ou changez la commande de démarrage dans l’onglet Paramètres (par exemple node index.js).',
+      );
     }
     await this.reapStrays(app);
     if (rt.child) return;
@@ -663,8 +683,16 @@ export class AppManager {
     waiters.forEach((fn) => fn());
     log.system(`✖ Le processus s’est arrêté de façon inattendue (${how})`);
     rt.status = 'crashed';
-    const busyPort = addrInUsePort(stripAnsi(log.lines.filter((l) => l.t >= rt.startedAt - 1000).map((l) => l.m).join('\n')));
+    const output = stripAnsi(log.lines.filter((l) => l.t >= rt.startedAt - 1000).map((l) => l.m).join('\n'));
     const crashed = this.find(id);
+    if (crashed && (output.includes(REFUSED_FROM_APP) || output.includes(REFUSED_ALREADY_RUNNING))) {
+      // la commande de démarrage lance AstraPanel lui-même : on n'insiste pas (ni relance, ni démarrage automatique)
+      crashed.desired = 'stopped';
+      this.store.save();
+      log.system('✖ La commande de démarrage de cette application lance AstraPanel lui-même : l’application est arrêtée et ne sera pas relancée. Changez sa commande de démarrage (onglet Paramètres) ou ajoutez son code.');
+      return;
+    }
+    const busyPort = addrInUsePort(output);
     if (busyPort && crashed) this.explainAddrInUse(crashed, busyPort).catch(() => {});
     // commande qui lance le vrai programme en arrière-plan puis se termine : le panel ne peut pas le surveiller
     if (crashed) {
@@ -1019,6 +1047,10 @@ export class AppManager {
   async build(app, log, explicit) {
     if (!app.buildCommand) {
       if (explicit) log.system('Aucune commande de build configurée');
+      return;
+    }
+    if (this.packageManagerWithoutPackage(app, app.buildCommand)) {
+      log.system(`Pas de package.json : build « ${app.buildCommand} » ignoré`);
       return;
     }
     log.system(`$ ${app.buildCommand}`);

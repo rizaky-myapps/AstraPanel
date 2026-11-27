@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { isAdmin, onAppsChange, state } from '../state.js';
-import { formatWhen, renderLineChart } from '../chart.js';
+import { renderLineChart } from '../chart.js';
 import { $, TYPE_INFO, formatBytes, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
 
 const RANGES = [
@@ -201,10 +201,6 @@ export function renderDashboard(view, page) {
               <span class="chart-summary"></span>
             </div>
             <div class="chart-body"></div>
-            <details class="chart-data">
-              <summary>Voir les données</summary>
-              <div class="table-scroll"></div>
-            </details>
           </div>`,
         )}
       </div>`,
@@ -235,32 +231,8 @@ export function renderDashboard(view, page) {
         format: s.format,
         label: `${s.title} sur ${RANGES.find((r) => r.id === range).label}`,
       });
-      const details = card.querySelector('details');
-      if (details.open) fillTable(card, s, points);
     }
   }
-
-  function fillTable(card, s, points) {
-    const rows = points.filter((p) => p[1] !== null && p[1] !== undefined).reverse();
-    setHTML(
-      card.querySelector('.table-scroll'),
-      html`<table class="table compact">
-        <thead><tr><th>Moment</th><th class="num">${s.title}</th></tr></thead>
-        <tbody>${rows.map((p) => html`<tr><td>${formatWhen(p[0], data.step, data.span)}</td><td class="num">${s.format(p[1])}</td></tr>`)}</tbody>
-      </table>`,
-    );
-  }
-
-  chartsBox.addEventListener(
-    'toggle',
-    (e) => {
-      const card = e.target.closest('[data-series]');
-      if (!card || !e.target.open || !data) return;
-      const s = SERIES.find((x) => x.id === card.dataset.series);
-      fillTable(card, s, seriesPoints(s));
-    },
-    true,
-  );
 
   let metricsTimer = null;
   async function loadMetrics() {

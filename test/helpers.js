@@ -1,12 +1,12 @@
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { config } from '../src/config.js';
 import { createPanel } from '../src/server.js';
 
 // Démarre un panel isolé (dossier de données temporaire, port aléatoire).
-export async function startTestPanel() {
-  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'astrapanel-test-'));
+export async function startTestPanel({ dataDir = mkdtempSync(path.join(os.tmpdir(), 'astrapanel-test-')) } = {}) {
+  mkdirSync(dataDir, { recursive: true });
   const cfg = {
     ...config,
     dataDir,

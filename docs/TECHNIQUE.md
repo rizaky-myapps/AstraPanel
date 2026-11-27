@@ -52,9 +52,10 @@ npm run dev
 ```
 
 Le panel démarre sur `http://localhost:8080` avec ses données dans `./data` ; le jeton de première connexion
-s'affiche dans le terminal. Variables utiles : `ASTRA_PORT` (ou `PORT`), `ASTRA_DATA_DIR`, `ASTRA_HOST`. Le panel peut donc aussi tourner comme
-application d'un autre AstraPanel (pour tester une version) : il prend le port fourni dans `PORT` et garde ses données
-dans son propre dossier `data/`.
+s'affiche dans le terminal. Variables utiles : `ASTRA_PORT` (ou `PORT`), `ASTRA_DATA_DIR`, `ASTRA_HOST`.
+
+Le panel ne démarre jamais comme application d'un AstraPanel (variable `ASTRA_APP_ID` présente), et un seul panel
+tourne par dossier de données (verrou `data/panel.pid`) : voir « Sécurité ».
 
 ```bash
 npm test
@@ -101,6 +102,13 @@ install.sh           installation / mise à jour sur la machine
   installe toujours `AstraPanel-Latest`. Le service de redémarrage n'accepte qu'une demande du démarrage en cours.
 - Journal d'activité : chaque action est enregistrée avec le compte et l'adresse IP, sans mot de passe, jeton ni
   valeur de variable.
+- **Un seul panel, jamais lancé par une application.** Une commande `npm start` (ou pnpm, yarn) dans un dossier
+  d'application sans `package.json` ferait remonter npm jusqu'au `package.json` du panel (`/opt/astrapanel`) : un
+  second panel démarrerait sur les mêmes données et relancerait les applications, donc de nouveau `npm start`… Trois
+  garde-fous l'empêchent : le gestionnaire refuse de lancer une commande npm sans `package.json` dans le dossier de
+  l'application (et ignore un build npm dans ce cas) ; le panel refuse de démarrer quand `ASTRA_APP_ID` (donnée à
+  toutes les applications) est présente, et l'application concernée est alors arrêtée sans relance ; enfin le verrou
+  `data/panel.pid` empêche deux panels de tourner sur le même dossier de données.
 - **Toutes les applications tournent sous le même utilisateur** : une application peut lire les fichiers des
   autres et la configuration du panel. N'hébergez que du code en lequel vous avez confiance.
 - N'ouvrez jamais le port 8080 sur votre box : pour administrer à distance, utilisez le domaine du panel via le

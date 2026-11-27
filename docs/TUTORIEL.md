@@ -222,8 +222,8 @@ Le **tableau de bord** est le bureau lui-même, sans fenêtre : ses widgets sont
 - le bloc **Applications** : une tuile par application, avec son état (en ligne, arrêtée, plantée…) et sa mémoire ;
   un clic l'ouvre. La tuile **Ajouter** crée une nouvelle application ;
 - en dessous, les **graphiques** du processeur, de la température et de la mémoire, avec le choix de la période :
-  **1 h, 12 h, 24 h, 3 j ou 7 j**. Survolez une courbe pour lire la valeur à un instant donné ; « Voir les données »
-  affiche les mesures sous forme de tableau. L'historique se remplit au fil du temps (il est conservé 7 jours) ;
+  **1 h, 12 h, 24 h, 3 j ou 7 j**. Survolez une courbe pour lire la valeur à un instant donné. L'historique se
+  remplit au fil du temps (il est conservé 7 jours) ;
 - un clic sur la jauge **Stockage** (administrateurs) ouvre l'explorateur de stockage : la liste des disques de la
   machine (disque interne, SSD, clé USB…) et, pour chacun, les dossiers et fichiers **triés du plus lourd au plus
   léger**. Cliquez sur un dossier pour descendre dedans et trouver ce qui prend de la place (les `node_modules`, les
@@ -236,7 +236,7 @@ d'une application à l'autre, le panel garde l'onglet ouvert (par exemple **Fich
 
 L'onglet **Statistiques** d'une application montre sa charge **processeur** et sa **mémoire vive** : valeurs actuelles,
 pics de la période, durée depuis le démarrage, puis deux **graphiques** sur **1 h, 12 h, 24 h, 3 j ou 7 j** (survolez une
-courbe pour lire une valeur ; « Voir les données » affiche le tableau). Les mesures (tous les processus de
+courbe pour lire une valeur). Les mesures (tous les processus de
 l'application, toutes les 10 secondes) sont enregistrées pendant qu'elle tourne et gardées 7 jours ; un arrêt laisse un
 vide dans les courbes. 100 % correspond à un cœur de processeur entièrement occupé.
 
@@ -692,6 +692,16 @@ membres, présences) : activez-le dans l'onglet **Bot** du portail développeur.
 
 **« Trop de plantages d'affilée ».** Après 10 plantages rapprochés, le panel arrête de relancer l'application pour ne
 pas surcharger la machine. Corrigez l'erreur visible dans la console puis cliquez sur **Démarrer**.
+
+**« Pas de package.json dans le dossier de l'application ».** La commande de démarrage passe par npm (`npm start`)
+alors que le dossier de l'application ne contient pas encore de `package.json` (dossier vide, code pas encore
+ajouté). npm irait alors chercher le `package.json` d'un dossier parent… celui du panel : le panel refuse donc de
+lancer l'application. Ajoutez votre code (onglet **Fichiers**, ou dépôt Git / archive dans l'onglet **Déploiement**),
+ou changez la commande de démarrage dans l'onglet **Paramètres** (par exemple `node index.js`).
+
+**« La commande de démarrage de cette application lance AstraPanel lui-même ».** Le panel ne peut jamais être lancé
+par une de ses applications (ni tourner deux fois sur la machine) : il refuse de démarrer, et l'application est
+arrêtée sans être relancée. Corrigez sa commande de démarrage (onglet **Paramètres**).
 
 **Tunnel Cloudflare : « Cloudflare : … » lors de la connexion.** Le jeton d'API n'a pas les bonnes permissions
 (revoyez l'[étape 5.1 du tutoriel Cloudflare](CLOUDFLARE.md#51-créer-un-jeton-dapi-cloudflare)) ou a expiré. Si le tunnel reste sur « Connexion… », lisez son journal en bas de la page

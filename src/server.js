@@ -14,6 +14,7 @@ import { Updater } from './update.js';
 import { AuditLog } from './audit.js';
 import { Hardware } from './hardware.js';
 import { bootId } from './system.js';
+import { REFUSED_ALREADY_RUNNING, acquireInstanceLock, launchedByApp } from './instance.js';
 import { Router } from './http/router.js';
 import { serveStatic } from './http/static.js';
 import { listPanelAssets, servePanelAsset } from './http/panel-assets.js';
@@ -127,6 +128,21 @@ export function createPanel(cfg = config) {
 }
 
 async function main() {
+  // Garde-fous : jamais lancé par une application du panel, et un seul panel par dossier de données
+  const fromApp = launchedByApp();
+  if (fromApp) {
+    console.error(fromApp);
+    process.exit(1);
+  }
+  const lock = acquireInstanceLock(config.dataDir);
+  if (!lock.ok) {
+    console.error(
+      `✖ ${REFUSED_ALREADY_RUNNING} (${config.dataDir}${lock.pid ? `, processus ${lock.pid}` : ''}) : un second panel ne peut pas démarrer. ` +
+        'Le service tourne déjà : sudo systemctl status astrapanel',
+    );
+    process.exit(1);
+  }
+
   const panel = createPanel();
   const { server, store, auth, apps, metrics, appMetrics, tunnel, updater } = panel;
 

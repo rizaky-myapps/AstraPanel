@@ -2,7 +2,7 @@ import { api, qs, upload } from '../api.js';
 import { findApp, isAdmin, onAppsChange, refreshApps, state } from '../state.js';
 import { envEditor } from '../env-editor.js';
 import { filesTab } from './files.js';
-import { formatWhen, renderLineChart } from '../chart.js';
+import { renderLineChart } from '../chart.js';
 import { newState, renderAnsi } from '../ansi.js';
 import {
   $,
@@ -377,7 +377,6 @@ function statsTab(el, page, app) {
           (s) => html`<div class="card chart-card" data-series="${s.id}">
             <div class="chart-head"><h3>${icon(s.icon)} ${s.title}</h3><span class="chart-summary"></span></div>
             <div class="chart-body"></div>
-            <details class="chart-data"><summary>Voir les données</summary><div class="table-scroll"></div></details>
           </div>`,
         )}
       </div>
@@ -426,32 +425,9 @@ function statsTab(el, page, app) {
         format: s.format,
         label: `${s.title} de ${app.name} sur ${STAT_RANGES.find((r) => r.id === range).label}`,
       });
-      if (card.querySelector('details').open) fillTable(card, s, points);
     }
     drawTiles();
   }
-
-  function fillTable(card, s, points) {
-    const rows = points.filter((p) => p[1] !== null && p[1] !== undefined).reverse();
-    setHTML(
-      card.querySelector('.table-scroll'),
-      html`<table class="table compact">
-        <thead><tr><th>Moment</th><th class="num">${s.title}</th></tr></thead>
-        <tbody>${rows.map((p) => html`<tr><td>${formatWhen(p[0], data.step, data.span)}</td><td class="num">${s.format(p[1])}</td></tr>`)}</tbody>
-      </table>`,
-    );
-  }
-
-  charts.addEventListener(
-    'toggle',
-    (e) => {
-      const card = e.target.closest('[data-series]');
-      if (!card || !e.target.open || !data) return;
-      const s = APP_SERIES.find((x) => x.id === card.dataset.series);
-      fillTable(card, s, seriesPoints(s));
-    },
-    true,
-  );
 
   let timer = null;
   async function load() {

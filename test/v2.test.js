@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { execFileSync, spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { startTestPanel, waitFor } from './helpers.js';
 import { Metrics, RANGES, downsample } from '../src/metrics.js';
 import { Store } from '../src/store.js';
@@ -1278,5 +1278,99 @@ test('console : couleurs des applications gardées dans les journaux et affiché
   const text = await res.text();
   assert.match(text, /\[out\] \{ nombre: 42 \}/);
   assert.ok(!text.includes('\x1b'));
+});
+
+test('le panel ne démarre jamais depuis une de ses applications, ni deux fois sur les mêmes données', async (t) => {
+  const { acquireInstanceLock, REFUSED_FROM_APP, REFUSED_ALREADY_RUNNING } = await import('../src/instance.js');
+  const { stripAnsi } = await import('../src/apps/logs.js');
+  const server = path.resolve('src/server.js');
+  const env = { ...process.env, ASTRA_HOST: '127.0.0.1', ASTRA_PORT: '0' };
+  delete env.ASTRA_APP_ID;
+  const run = (extraEnv, { until } = {}) =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [server], { env: { ...env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '';
+      const collect = (d) => {
+        out += d;
+        if (until && out.includes(until)) resolve({ child, out });
+      };
+      child.stdout.on('data', collect);
+      child.stderr.on('data', collect);
+      child.on('exit', (code) => resolve({ child, out, code }));
+    });
+
+  // Installation simulée, comme /opt/astrapanel : son package.json lance le vrai panel avec « npm start », et les
+  // dossiers des applications sont en dessous (data/apps/<id>), exactement comme sur la machine.
+  const root = mkdtempSync(path.join(os.tmpdir(), 'astra-install-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'astrapanel', private: true, scripts: { start: `node ${JSON.stringify(server)}` } }));
+  const ctx = await startTestPanel({ dataDir: path.join(root, 'data') });
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const create = async (name, startCommand) =>
+    (await ctx.request('POST', '/api/apps', { body: { name, type: 'bot', source: 'empty', startCommand, autoRestart: true, startOnBoot: true } })).data.app;
+
+  // 1. « npm start » dans un dossier vide (l'incident) : refusé avant de lancer quoi que ce soit
+  const empty = await create('Bot vide', 'npm start');
+  let res = await ctx.request('POST', `/api/apps/${empty.id}/start`);
+  assert.equal(res.status, 409);
+  assert.match(res.data.error, /Pas de package\.json/);
+  assert.equal(ctx.panel.apps.get(empty.id).desired, 'stopped');
+  assert.equal(ctx.panel.apps.runtime.get(empty.id).child, null);
+  // démarrage automatique (machine, relance) : même refus, sans erreur
+  ctx.panel.apps.get(empty.id).desired = 'running';
+  await ctx.panel.apps.launch(ctx.panel.apps.get(empty.id));
+  assert.equal(ctx.panel.apps.runtime.get(empty.id).child, null);
+  // build en « npm run … » sans package.json : ignoré (il lancerait un script du panel)
+  ctx.panel.apps.get(empty.id).buildCommand = 'npm test';
+  await ctx.panel.apps.build(ctx.panel.apps.get(empty.id), ctx.panel.apps.logsFor(empty.id), true);
+  assert.ok(ctx.panel.apps.logsFor(empty.id).lines.some((l) => l.m.includes('build « npm test » ignoré')));
+  // une fois le code ajouté, « npm start » fonctionne normalement
+  writeFileSync(path.join(ctx.cfg.appsDir, empty.id, 'package.json'), JSON.stringify({ scripts: { start: 'node -e "console.log(1 + 1); setInterval(() => {}, 1000)"' } }));
+  res = await ctx.request('POST', `/api/apps/${empty.id}/start`);
+  assert.equal(res.status, 200);
+  await waitFor(() => ctx.panel.apps.logsFor(empty.id).lines.some((l) => l.s === 'out' && stripAnsi(l.m) === '2'), { timeout: 20000 });
+  await ctx.request('POST', `/api/apps/${empty.id}/stop`);
+
+  // 2. même en contournant cette vérification, npm remonte jusqu'au package.json de l'installation et lance le vrai
+  //    panel : celui-ci refuse de démarrer, et l'application est arrêtée, sans relance automatique
+  const sneaky = await create('Bot détourné', 'cd . && npm start');
+  await ctx.request('POST', `/api/apps/${sneaky.id}/start`);
+  const log = ctx.panel.apps.logsFor(sneaky.id);
+  await waitFor(() => log.lines.some((l) => l.m.includes('lance AstraPanel lui-même')), { timeout: 20000 });
+  const output = log.lines.map((l) => stripAnsi(l.m)).join('\n');
+  assert.ok(output.includes(REFUSED_FROM_APP), output);
+  assert.ok(!/^AstraPanel \d/m.test(output)); // le panel lancé par l'appli n'a rien démarré
+  assert.equal(ctx.panel.apps.get(sneaky.id).desired, 'stopped');
+  assert.ok(!ctx.panel.apps.runtime.get(sneaky.id).restartTimer);
+  assert.ok(!existsSync(path.join(root, 'data', 'panel.pid')));
+
+  // 3. lancé directement avec ASTRA_APP_ID (variable donnée à toute application) : refus immédiat, rien d'écrit
+  const fromApp = mkdtempSync(path.join(os.tmpdir(), 'astra-fromapp-'));
+  t.after(() => rmSync(fromApp, { recursive: true, force: true }));
+  const refused = await run({ ASTRA_DATA_DIR: fromApp, ASTRA_APP_ID: 'mon-bot', ASTRA_APP_NAME: 'Mon bot' });
+  assert.equal(refused.code, 1);
+  assert.ok(refused.out.includes(REFUSED_FROM_APP));
+  assert.deepEqual(readdirSync(fromApp), []);
+
+  // 4. un seul panel par dossier de données : le second refuse tant que le premier tourne
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'astra-lock-'));
+  t.after(() => rmSync(dataDir, { recursive: true, force: true }));
+  const first = await run({ ASTRA_DATA_DIR: dataDir }, { until: 'Données :' });
+  t.after(() => first.child.kill('SIGKILL'));
+  assert.equal(readFileSync(path.join(dataDir, 'panel.pid'), 'utf8'), String(first.child.pid));
+  const second = await run({ ASTRA_DATA_DIR: dataDir });
+  assert.equal(second.code, 1);
+  assert.ok(second.out.includes(REFUSED_ALREADY_RUNNING), second.out);
+  const stopped = new Promise((r) => first.child.on('exit', r));
+  first.child.kill('SIGTERM');
+  await stopped;
+  assert.ok(!existsSync(path.join(dataDir, 'panel.pid'))); // verrou rendu à l'arrêt
+  // verrou laissé par un panel arrêté brutalement : repris
+  writeFileSync(path.join(dataDir, 'panel.pid'), '999999');
+  const lock = acquireInstanceLock(dataDir);
+  assert.equal(lock.ok, true);
+  lock.release();
+  assert.ok(!existsSync(path.join(dataDir, 'panel.pid')));
 });
 
