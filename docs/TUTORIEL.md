@@ -381,9 +381,19 @@ démarre. Au premier démarrage, le serveur prépare le monde (une à deux minut
 ### 9.2 Se connecter au serveur
 
 - Dans Minecraft : **Multijoueur → Ajouter un serveur**, adresse : l'**adresse IP de la machine**, suivie de
-  `:port` si ce n'est pas 25565. Le bouton avec l'adresse, en haut de la page du serveur, la copie.
+  `:port` si ce n'est pas 25565 (ou son nom de domaine, voir plus bas). Le bouton avec l'adresse, en haut de la page
+  du serveur, la copie.
 - **Depuis Internet** : redirigez le port TCP du serveur (25565) vers la machine dans l'interface de votre box
-  (rubrique NAT / redirection de ports). Le tunnel Cloudflare ne transmet pas Minecraft.
+  (rubrique NAT / redirection de ports).
+- **Avec un nom de domaine** (par exemple `mc.mondomaine.fr`) : indiquez-le dans le champ **Nom de domaine** du
+  serveur (à la création ou dans l'onglet **Paramètres**). Le tunnel Cloudflare ne transporte que le web, pas
+  Minecraft : le panel crée donc chez Cloudflare un enregistrement `A` **« DNS uniquement »** (nuage gris) vers
+  l'adresse IP publique de votre box, plus un enregistrement `SRV` si le port n'est pas 25565 (les joueurs tapent
+  alors seulement `mc.mondomaine.fr`, sans le port). Si votre box change d'adresse IP publique, le panel met
+  l'enregistrement à jour tout seul (vérification toutes les 5 minutes). Cela demande le mode « Géré depuis le
+  panel » du tunnel Cloudflare ; sinon, l'onglet **Paramètres** du serveur indique les enregistrements à créer
+  vous-même. Dans tous les cas, la **redirection du port** dans la box reste nécessaire : le guide affiché sous le
+  domaine donne le port et l'adresse de la machine.
 - Si le pare-feu `ufw` est actif sur la machine : `sudo ufw allow 25565/tcp`.
 - La **console** accepte les commandes du serveur : `op Pseudo`, `whitelist add Pseudo`, `say Bonjour`, `list`…
 

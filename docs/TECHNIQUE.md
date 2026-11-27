@@ -43,6 +43,12 @@ sécurité. Pour l'installer, suivez le [README](../README.md) ; pour l'utiliser
   server.jar --nogui` (`-Dterminal.ansi=true` pour les couleurs). Arrêt : `stop` sur l'entrée standard, puis SIGTERM
   après 60 secondes (`TimeoutStopSec=90` dans le service). Adresses des API modifiables pour les tests :
   `ASTRA_PAPER_API`, `ASTRA_MOJANG_MANIFEST`, `ASTRA_ADOPTIUM_API`.
+- **Domaine d'un serveur Minecraft** (`src/tunnel.js`, `syncMinecraft`) : pas d'entrée dans le tunnel (HTTP
+  seulement) mais un enregistrement `A` « DNS uniquement » vers l'adresse IPv4 publique (lue sur
+  `https://1.1.1.1/cdn-cgi/trace`, modifiable avec `ASTRA_PUBLIC_IP_URL`) et un `SRV` `_minecraft._tcp.<domaine>`
+  si le port n'est pas 25565, tous deux commentés « Géré par AstraPanel ». L'adresse publique est relue toutes
+  les 5 minutes : si elle change, les enregistrements suivent. Mode « jeton » : enregistrements à créer à la main
+  (guide affiché dans le panel).
 - Chaque application est un processus lancé par le panel dans son propre groupe de processus (arrêt propre de tout
   l'arbre, `npm start` compris), avec redémarrage automatique et backoff en cas de plantage.
 - Les sites reçoivent leur port dans `PORT`. Le tunnel Cloudflare, lancé en même temps que le panel, redirige chaque

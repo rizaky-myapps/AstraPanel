@@ -7,6 +7,7 @@ import { stripAnsi } from '../apps/logs.js';
 import { HttpError, readBody, receiveToFile, streamLog } from '../http/util.js';
 import { RANGE_LIST } from '../metrics.js';
 import { FLAVORS, listVersions, machineCores, machineMemory } from '../apps/minecraft.js';
+import { publicIp } from '../tunnel.js';
 
 export function sendDownload(res, file, size, name, type = 'application/octet-stream') {
   res.writeHead(200, {
@@ -18,7 +19,7 @@ export function sendDownload(res, file, size, name, type = 'application/octet-st
   createReadStream(file).pipe(res);
 }
 
-export function appRoutes(router, { apps, appMetrics, config }) {
+export function appRoutes(router, { apps, appMetrics, config, store }) {
   const q = (ctx, key) => ctx.query.get(key) ?? '';
 
   // --- Applications -------------------------------------------------------
@@ -42,6 +43,22 @@ export function appRoutes(router, { apps, appMetrics, config }) {
     const flavor = ctx.query.get('flavor') || 'paper';
     const versions = await listVersions(flavor);
     return { flavor, flavors: FLAVORS, versions: versions.map((v) => v.id), memory: machineMemory(), cores: machineCores() };
+  });
+
+  // Serveurs Minecraft : adresses utiles pour les joueurs (IP publique de la box, IP de la machine sur le réseau
+  // local) et gestion du DNS (automatique si le panel est relié à un compte Cloudflare)
+  router.get('/api/minecraft/network', async () => {
+    const lanIp = Object.values(os.networkInterfaces())
+      .flat()
+      .find((i) => i && i.family === 'IPv4' && !i.internal)?.address || null;
+    const cf = store.data.settings.tunnel;
+    let ip = null;
+    try {
+      ip = await publicIp();
+    } catch {
+      // pas d'accès à Internet : l'interface l'indique
+    }
+    return { publicIp: ip, lanIp, dnsAuto: Boolean(cf.mode === 'api' && cf.api?.apiToken && cf.api?.accountId) };
   });
 
   // Historique processeur / mémoire de l'application (onglet Statistiques)

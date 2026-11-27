@@ -182,6 +182,20 @@ l'enregistrement DNS sont supprimés.
 | **Domaine inconnu** | ce domaine n'est pas dans votre compte Cloudflare, ou pas encore « Active » | ajoutez-le (étape 3) ou corrigez la faute de frappe |
 | **Erreur** | Cloudflare a refusé l'opération | lisez le message, vérifiez les permissions du jeton (étape 5.1), puis **Synchroniser** |
 
+### 5.5 Donner un nom de domaine à un serveur Minecraft
+
+Le tunnel ne transporte que le web : un serveur Minecraft n'y passe pas. Pour qu'on s'y connecte avec
+`mc.monsite.fr`, indiquez ce domaine dans l'onglet **Paramètres** du serveur. Le panel crée alors :
+
+- un enregistrement `A` **« DNS uniquement »** (nuage gris) : `mc.monsite.fr` → l'adresse IP publique de votre box ;
+- si le port du serveur n'est pas 25565, un enregistrement `SRV` `_minecraft._tcp.mc.monsite.fr` vers ce port : les
+  joueurs tapent seulement `mc.monsite.fr`.
+
+Si votre box change d'adresse IP publique (c'est fréquent chez les particuliers), le panel met l'enregistrement à
+jour tout seul. Il reste à **rediriger le port** du serveur vers la machine dans votre box (rubrique NAT /
+redirection de ports) : le guide affiché dans l'onglet **Paramètres** du serveur donne le port et l'adresse de la
+machine. Dans le tableau des domaines, ces domaines apparaissent avec la mention **Minecraft · DNS uniquement**.
+
 ## 6. Mode B : tunnel géré depuis le site Cloudflare
 
 Dans ce mode, vous créez le tunnel et ses routes vous-même sur le site de Cloudflare ; le panel se contente de faire
@@ -222,6 +236,19 @@ tourner le tunnel sur la machine.
 > Sur certains comptes, l'ancienne interface est encore affichée : **Zero Trust** → **Networks** → **Tunnels**, puis
 > l'onglet **Public Hostname** → **Add a public hostname**, avec les champs **Subdomain**, **Domain**, **Type**
 > (choisissez **HTTP**) et **URL** (`localhost:4000`). Le principe est identique.
+
+### 6.4 Serveur Minecraft avec un nom de domaine
+
+Dans ce mode, le panel n'a pas accès au DNS de votre domaine : créez vous-même les enregistrements (Cloudflare →
+votre domaine → **DNS** → **Add record**) :
+
+- type `A`, nom `mc` (pour `mc.monsite.fr`), IPv4 : l'adresse IP publique de votre box, **Proxy status : DNS only**
+  (nuage gris) ;
+- si le port du serveur n'est pas 25565 : type `SRV`, nom `_minecraft._tcp.mc`, priorité 0, poids 5, le port du
+  serveur, cible `mc.monsite.fr`.
+
+L'onglet **Paramètres → Tunnel Cloudflare** du panel les rappelle, adresse IP publique comprise. Si votre adresse IP
+publique change, mettez l'enregistrement `A` à jour (ou passez au mode A, qui le fait tout seul).
 
 ## 7. Accéder au panel depuis Internet
 

@@ -92,6 +92,10 @@ export function renderNewApp(view) {
                       <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port (25565 : port habituel de Minecraft, qu’on n’a pas besoin de taper). Pour jouer depuis Internet, redirigez ce port vers la machine dans votre box.')}</label>
                       <input id="mc-port" type="number" name="port" value="${f.port}" placeholder="Automatique (25565)" min="1024" max="65535" />
                     </div>
+                    <div class="field full">
+                      <label for="mc-domain">Nom de domaine <span class="faint">(optionnel)</span> ${tip('Adresse que les joueurs tapent dans Minecraft, par exemple mc.mondomaine.fr. Le panel crée chez Cloudflare un enregistrement « DNS uniquement » vers l’adresse IP publique de votre box, tenu à jour si elle change (Paramètres → Tunnel Cloudflare, mode « Géré depuis le panel »). Il faut aussi rediriger le port du serveur vers la machine dans votre box.')}</label>
+                      <input id="mc-domain" type="text" name="domains" class="mono" value="${f.domains}" placeholder="mc.mondomaine.fr" spellcheck="false" />
+                    </div>
                     <div class="full new-app-toggles">
                       <label class="check">${toggle('autoRestart', f.autoRestart)}<span>Redémarrage automatique ${tip('Relance le serveur s’il plante.')}</span></label>
                       <label class="check">${toggle('startOnBoot', f.startOnBoot)}<span>Démarrer avec la machine ${tip('Lance le serveur à chaque démarrage de la machine.')}</span></label>
@@ -291,7 +295,7 @@ export function renderNewApp(view) {
     if (isMc) {
       delete body.installCommand;
       delete body.buildCommand;
-      Object.assign(body, { mc: { ...f.mc, eula: true }, port: f.port || null, start: true });
+      Object.assign(body, { mc: { ...f.mc, eula: true }, port: f.port || null, domains: f.domains, start: true });
     } else {
       if (f.type !== 'static') body.startCommand = f.startCommand;
       if (f.type === 'static') Object.assign(body, { staticDir: f.staticDir, spa: f.spa });

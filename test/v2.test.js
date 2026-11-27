@@ -1525,11 +1525,12 @@ test('serveurs Minecraft : versions, Java, téléchargement vérifié, RAM / cœ
   t.after(() => ctx.close());
   await ctx.setupAdmin();
   const body = { name: 'Survie', type: 'minecraft', mc: { flavor: 'paper', version: 'latest', ramMin: 512, ramMax: 1024, cores: 1 } };
-  // CLUF obligatoire ; pas de domaine
+  // CLUF obligatoire
   let res = await ctx.request('POST', '/api/apps', { body });
   assert.equal(res.status, 400);
   assert.match(res.data.error, /CLUF/);
-  res = await ctx.request('POST', '/api/apps', { body: { ...body, mc: { ...body.mc, eula: true }, domains: 'mc.exemple.fr' } });
+  // un domaine est possible (DNS uniquement, voir le test suivant) ; pas pour un bot
+  res = await ctx.request('POST', '/api/apps', { body: { name: 'Bot', type: 'bot', source: 'empty', domains: 'bot.exemple.fr' } });
   assert.equal(res.status, 400);
   // API des versions (interface)
   res = await ctx.request('GET', '/api/minecraft/versions?flavor=paper');
@@ -1575,5 +1576,118 @@ test('serveurs Minecraft : versions, Java, téléchargement vérifié, RAM / cœ
   await ctx.request('POST', `/api/apps/${app.id}/tasks/deploy`, { body: {} });
   await waitFor(() => log.lines.some((l) => l.m.includes('fichier corrompu')));
   assert.equal(readFileSync(path.join(dir, 'server.jar'), 'utf8'), 'faux serveur paper'); // l'ancien serveur reste en place
+});
+
+test('serveur Minecraft avec un domaine : DNS uniquement vers l’IP publique, SRV, IP dynamique, conflit, retrait', async (t) => {
+  const http = await import('node:http');
+  const ACC = 'b'.repeat(32);
+  let records = [{ id: 'x1', type: 'A', name: 'jeu.monsite.fr', content: '198.51.100.1', proxied: false, comment: null }];
+  let ingress = null;
+  let nextId = 1;
+  const cf = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => (body += d)).on('end', () => {
+      const url = new URL(req.url, 'http://x');
+      const p = url.pathname;
+      const send = (result) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, errors: [], result }));
+      };
+      if (p === '/zones') return send([{ id: 'z1', name: 'monsite.fr', status: 'active', account: { id: ACC, name: 'Compte' } }]);
+      if (p.endsWith('/configurations')) {
+        ingress = JSON.parse(body).config.ingress;
+        return send({});
+      }
+      const one = /^\/zones\/z1\/dns_records\/(.+)$/.exec(p);
+      if (one && req.method === 'DELETE') {
+        records = records.filter((r) => r.id !== one[1]);
+        return send({ id: one[1] });
+      }
+      if (one && req.method === 'PUT') {
+        records = records.map((r) => (r.id === one[1] ? { id: r.id, ...JSON.parse(body) } : r));
+        return send(records.find((r) => r.id === one[1]));
+      }
+      if (p === '/zones/z1/dns_records' && req.method === 'POST') {
+        const r = { id: `r${nextId++}`, ...JSON.parse(body) };
+        records.push(r);
+        return send(r);
+      }
+      if (p === '/zones/z1/dns_records') {
+        const name = url.searchParams.get('name');
+        return send(records.filter((r) => !name || r.name === name));
+      }
+      res.writeHead(404);
+      res.end(JSON.stringify({ success: false, errors: [{ message: `route inconnue ${p}` }] }));
+    });
+  });
+  let ip = '203.0.113.7';
+  const ipServer = http.createServer((req, res) => res.end(`fl=1\nh=1.1.1.1\nip=${ip}\nts=0\n`));
+  await Promise.all([new Promise((r) => cf.listen(0, '127.0.0.1', r)), new Promise((r) => ipServer.listen(0, '127.0.0.1', r))]);
+  Object.assign(process.env, {
+    ASTRA_CLOUDFLARE_API: `http://127.0.0.1:${cf.address().port}`,
+    ASTRA_PUBLIC_IP_URL: `http://127.0.0.1:${ipServer.address().port}/cdn-cgi/trace`,
+    // pas de téléchargement du serveur Minecraft pendant ce test
+    ASTRA_PAPER_API: 'http://127.0.0.1:9/paper',
+  });
+  const ctx = await startTestPanel();
+  t.after(async () => {
+    for (const k of ['ASTRA_CLOUDFLARE_API', 'ASTRA_PUBLIC_IP_URL', 'ASTRA_PAPER_API']) delete process.env[k];
+    await ctx.close();
+    cf.close();
+    ipServer.close();
+  });
+  await ctx.setupAdmin();
+  const { tunnel } = ctx.panel;
+  // panel relié à Cloudflare (mode « Géré depuis le panel »), tunnel créé
+  tunnel.save({ mode: 'api', enabled: true, api: { apiToken: 'jeton-valide-0123456789abcdef', accountId: ACC, accountName: 'Compte', tunnelId: 'tunnel-1', tunnelName: 't', tunnelToken: '' } });
+  const mine = () => records.filter((r) => r.comment === 'Géré par AstraPanel').map((r) => [r.type, r.name, r.type === 'SRV' ? r.data.port : r.content, r.proxied ?? null]).sort();
+
+  // un bot n'a toujours pas de domaine
+  let res = await ctx.request('POST', '/api/apps', { body: { name: 'Bot', type: 'bot', source: 'empty', domains: 'bot.monsite.fr' } });
+  assert.equal(res.status, 400);
+
+  // création : A « DNS uniquement » vers l'IP publique, SRV pour le port 25570, rien dans le tunnel
+  res = await ctx.request('POST', '/api/apps', {
+    body: { name: 'Survie', type: 'minecraft', port: 25570, domains: 'mc.monsite.fr', mc: { ramMin: 512, ramMax: 1024, eula: true } },
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.equal(res.data.tunnel.ok, true, JSON.stringify(res.data.tunnel));
+  const id = res.data.app.id;
+  assert.deepEqual(mine(), [['A', 'mc.monsite.fr', '203.0.113.7', false], ['SRV', '_minecraft._tcp.mc.monsite.fr', 25570, null]]);
+  assert.equal(records.find((r) => r.type === 'SRV').data.target, 'mc.monsite.fr');
+  assert.ok(!ingress.some((r) => r.hostname === 'mc.monsite.fr'));
+  const route = res.data.tunnel.routes.find((r) => r.hostname === 'mc.monsite.fr');
+  assert.equal(route.kind, 'minecraft');
+  assert.match(route.message, /203\.0\.113\.7/);
+
+  // la box change d'adresse IP : l'enregistrement suit
+  ip = '203.0.113.8';
+  await tunnel.watchPublicIp();
+  assert.deepEqual(mine()[0], ['A', 'mc.monsite.fr', '203.0.113.8', false]);
+  assert.ok(tunnel.log.lines.some((l) => l.m.includes('203.0.113.7 → 203.0.113.8')));
+
+  // port 25565 : plus besoin de SRV
+  res = await ctx.request('PATCH', `/api/apps/${id}`, { body: { port: 25565 } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(mine(), [['A', 'mc.monsite.fr', '203.0.113.8', false]]);
+
+  // domaine déjà utilisé par un autre enregistrement : conflit, puis « Remplacer »
+  res = await ctx.request('PATCH', `/api/apps/${id}`, { body: { domains: 'jeu.monsite.fr' } });
+  const conflict = res.data.tunnel.routes.find((r) => r.hostname === 'jeu.monsite.fr');
+  assert.equal(conflict.status, 'conflict');
+  assert.deepEqual(mine(), []); // l'ancien domaine mc.monsite.fr a été retiré
+  const replaced = await tunnel.sync({ replace: ['jeu.monsite.fr'] });
+  assert.equal(replaced.ok, true, JSON.stringify(replaced));
+  assert.deepEqual(mine(), [['A', 'jeu.monsite.fr', '203.0.113.8', false]]);
+  assert.ok(!records.some((r) => r.id === 'x1'));
+
+  // domaine retiré : enregistrements du panel supprimés
+  await ctx.request('PATCH', `/api/apps/${id}`, { body: { domains: '' } });
+  assert.deepEqual(mine(), []);
+
+  // adresses utiles affichées dans l'interface
+  res = await ctx.request('GET', '/api/minecraft/network');
+  assert.equal(res.data.publicIp, '203.0.113.8');
+  assert.equal(res.data.dnsAuto, true);
 });
 

@@ -33,8 +33,9 @@ const TEMPLATES = {
 };
 
 const needsPort = (type) => type === 'node' || type === 'static' || type === 'minecraft';
-// seuls les sites passent par le tunnel Cloudflare (HTTP) : un bot ou un serveur Minecraft n'a pas de domaine
-const needsDomain = (type) => type === 'node' || type === 'static';
+// domaines : les sites passent par le tunnel Cloudflare ; un serveur Minecraft a un domaine « DNS uniquement » vers
+// l'adresse IP publique de la box (voir tunnel.js) ; un bot n'en a pas
+const needsDomain = (type) => type === 'node' || type === 'static' || type === 'minecraft';
 
 function str(value, max, field) {
   if (value === undefined || value === null) return '';
@@ -345,9 +346,7 @@ export class AppManager {
     if ('git' in input) app.git = cleanGit(input.git);
     if ('domains' in input) {
       const domains = normalizeDomains(input.domains);
-      if (domains.length && !needsDomain(app.type)) {
-        throw new HttpError(400, app.type === 'minecraft' ? 'Un serveur Minecraft n’a pas de domaine : les joueurs s’y connectent avec l’adresse de la machine et le port' : 'Un bot ne peut pas avoir de domaine');
-      }
+      if (domains.length && !needsDomain(app.type)) throw new HttpError(400, 'Un bot ne peut pas avoir de domaine');
       assertDomainsFree(this.store, domains, app.id);
       app.domains = domains;
     }

@@ -725,6 +725,11 @@ async function updateTab(el, page) {
 // ---- Tunnel Cloudflare ----------------------------------------------------------------
 async function tunnelTab(el, page) {
   let status = await api.get('/tunnel');
+  // serveurs Minecraft avec un domaine : adresse IP publique, pour les enregistrements à créer à la main (mode jeton)
+  let mcPublicIp = null;
+  if (state.apps.some((x) => x.type === 'minecraft' && x.domains?.length)) {
+    mcPublicIp = (await api.get('/minecraft/network').catch(() => null))?.publicIp || null;
+  }
   if (!page.active) return;
   // Mode affiché : « géré depuis le site » seulement si un jeton de tunnel y est enregistré ; sinon le mode
   // recommandé (géré depuis le panel), y compris pendant sa configuration.
@@ -851,12 +856,26 @@ async function tunnelTab(el, page) {
     html`<table class="table compact">
       <thead><tr><th>Site</th><th>À indiquer dans « Service URL »</th></tr></thead>
       <tbody>
-        ${state.apps.filter((a) => a.port).length
-          ? state.apps.filter((a) => a.port).map((a) => html`<tr><td>${a.name}</td><td><code>http://localhost:${a.port}</code></td></tr>`)
+        ${state.apps.filter((a) => a.port && a.type !== 'minecraft').length
+          ? state.apps.filter((a) => a.port && a.type !== 'minecraft').map((a) => html`<tr><td>${a.name}</td><td><code>http://localhost:${a.port}</code></td></tr>`)
           : html`<tr><td colspan="2" class="muted">Aucun site pour l'instant.</td></tr>`}
         <tr><td>Panel AstraPanel</td><td><code>http://localhost:${location.port || '8080'}</code></td></tr>
       </tbody>
     </table>`;
+
+  // Mode « jeton » : le panel n'a pas accès au DNS ; enregistrements à créer soi-même pour les serveurs Minecraft
+  const mcTokenGuide = () => {
+    const servers = state.apps.filter((a) => a.type === 'minecraft' && a.domains?.length);
+    if (!servers.length) return '';
+    return html`<div class="alert info mc-guide" style="margin-top:14px">${icon('cube')}<div>
+      <b>Serveurs Minecraft</b> ${tip('Le tunnel ne transporte pas Minecraft : leur domaine doit pointer directement sur l’adresse IP publique de votre box. Avec le mode « Géré depuis le panel », ces enregistrements sont créés et tenus à jour automatiquement.')}
+      <ol class="guide">
+        ${servers.map(
+          (a) => html`<li>Cloudflare → DNS → <b>Add record</b> : <code>A</code> <code>${a.domains[0]}</code> → <code>${status.publicIp || mcPublicIp || 'votre adresse IP publique'}</code>, proxy désactivé (nuage gris)${a.port !== 25565 ? html`, puis <code>SRV</code> <code>_minecraft._tcp.${a.domains[0]}</code> : priorité 0, poids 5, port ${a.port}, cible <code>${a.domains[0]}</code>` : ''}. Dans la box : port TCP ${a.port} vers cette machine.</li>`,
+        )}
+      </ol>
+    </div></div>`;
+  };
 
   function drawMode() {
     const box = $('#mode-body', el);
@@ -895,6 +914,7 @@ async function tunnelTab(el, page) {
             </li>
           </ol>
           ${appsTable()}
+          ${mcTokenGuide()}
           <form id="token-form" style="margin-top:16px">
             <div class="field">
               <label>Jeton du tunnel (ou commande complète)</label>
@@ -1095,12 +1115,16 @@ async function tunnelTab(el, page) {
               ? status.routes.map((r) => {
                   const s = synced.get(r.hostname);
                   const [cls, label] = s ? STATUS[s.status] || ['', s.status] : ['', 'À synchroniser'];
+                  const mc = r.kind === 'minecraft';
                   return html`<tr>
-                    <td><a href="https://${r.hostname}" target="_blank" rel="noopener">${r.hostname}</a><div class="hint">${r.label}</div></td>
-                    <td class="hide-sm"><code>${r.service}</code></td>
+                    <td>${mc ? html`<b>${r.hostname}</b>` : html`<a href="https://${r.hostname}" target="_blank" rel="noopener">${r.hostname}</a>`}<div class="hint">${r.label}</div></td>
+                    <td class="hide-sm">${mc
+                      ? html`<span class="route-mc">${icon('cube')} Minecraft ${tip(html`Le tunnel ne transporte pas Minecraft : le domaine pointe directement sur l'adresse IP publique de la box (enregistrement A « DNS uniquement », tenu à jour si elle change)${r.port !== 25565 ? html`, plus un enregistrement SRV pour le port ${r.port}` : ''}. Redirigez le port TCP ${r.port} vers la machine dans votre box.`)}</span><div class="hint">DNS uniquement · port ${r.port}</div>`
+                      : html`<code>${r.service}</code>`}</td>
                     <td>
                       <span class="badge ${cls}">${label}</span>${s && s.status !== 'ok' ? html`<div class="hint">${s.message}</div>` : ''}
-                      ${s?.status === 'conflict' ? html`<button class="btn btn-sm replace-dns" data-replace="${r.hostname}" title="Remplacer l'enregistrement DNS existant par celui du tunnel">${icon('refresh')} Remplacer</button>` : ''}
+                      ${s?.status === 'ok' && mc ? html`<div class="hint">${s.message}</div>` : ''}
+                      ${s?.status === 'conflict' ? html`<button class="btn btn-sm replace-dns" data-replace="${r.hostname}" title="Remplacer l'enregistrement DNS existant par celui du panel">${icon('refresh')} Remplacer</button>` : ''}
                     </td>
                   </tr>`;
                 })

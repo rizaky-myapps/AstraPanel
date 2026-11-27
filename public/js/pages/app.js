@@ -160,8 +160,12 @@ function renderHeader(el, app) {
   }
   const byIp = /^[\d.]+$|^\[/.test(location.hostname) || location.hostname === 'localhost';
   const host = byIp || typeof machineIp !== 'string' ? location.hostname : machineIp;
-  const mcAddress = app.type === 'minecraft' && app.port ? `${host}${app.port === 25565 ? '' : `:${app.port}`}` : '';
+  // domaine (enregistrement SRV si le port n'est pas 25565) : les joueurs le tapent tel quel
+  const mcAddress =
+    app.type === 'minecraft' && app.port ? app.domains[0] || `${host}${app.port === 25565 ? '' : `:${app.port}`}` : '';
   const url = app.type === 'minecraft' ? '' : localUrl(app);
+  // liens vers le site : pas pour un serveur Minecraft (son domaine se copie, il ne s'ouvre pas dans le navigateur)
+  const siteDomains = app.type === 'minecraft' ? [] : app.domains;
 
   setHTML(
     el,
@@ -174,9 +178,9 @@ function renderHeader(el, app) {
       cls: 'app-hero',
       actions: html`${mcAddress
           ? html`<div class="row app-links"><button class="btn btn-glass btn-sm" data-copy-address="${mcAddress}" title="Adresse à saisir dans Minecraft (Multijoueur → Ajouter un serveur)">${icon('copy')} ${mcAddress}</button></div>`
-          : ''}${app.domains.length || url
+          : ''}${siteDomains.length || url
           ? html`<div class="row app-links">
-              ${app.domains.map((d) => html`<a class="btn btn-glass btn-sm" href="${domainUrl(d)}" target="_blank" rel="noopener">${icon('globe')} ${d}</a>`)}
+              ${siteDomains.map((d) => html`<a class="btn btn-glass btn-sm" href="${domainUrl(d)}" target="_blank" rel="noopener">${icon('globe')} ${d}</a>`)}
               ${url ? html`<a class="btn btn-glass btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external')} Ouvrir</a>` : ''}
             </div>`
           : ''}
@@ -806,6 +810,11 @@ async function minecraftSettings(el, page, app) {
               <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port. Pour jouer depuis Internet, redirigez ce port vers la machine dans votre box.')}</label>
               <input id="mc-port" type="number" name="port" value="${app.port || ''}" min="1024" max="65535" />
             </div>
+            <div class="field">
+              <label for="mc-domain">Nom de domaine ${tip('Adresse que les joueurs tapent dans Minecraft. Le panel crée chez Cloudflare un enregistrement « DNS uniquement » vers l’adresse IP publique de votre box (plus un enregistrement SRV si le port n’est pas 25565), et le tient à jour si elle change.')}</label>
+              <input id="mc-domain" type="text" name="domains" class="mono" value="${app.domains.join(', ')}" placeholder="mc.mondomaine.fr" spellcheck="false" />
+            </div>
+            <div class="full" id="mc-domain-guide"></div>
             <div class="full">
               <label class="check">${toggle('autoRestart', app.autoRestart)}<span>Redémarrage automatique en cas de plantage ${tip('Relance le serveur s’il s’arrête de façon inattendue.')}</span></label>
               <label class="check">${toggle('startOnBoot', app.startOnBoot !== false)}<span>Démarrer avec la machine ${tip('Lance le serveur à chaque démarrage de la machine.')}</span></label>
@@ -820,7 +829,42 @@ async function minecraftSettings(el, page, app) {
         ${dangerZone(app)}
       </div>`,
     );
+  // Connexion par domaine : ce que fait le panel chez Cloudflare, et la redirection de port à faire dans la box
+  let net = null;
+  const drawGuide = () => {
+    const box = $('#mc-domain-guide', el);
+    const current = findApp(app.id) || app;
+    if (!box) return;
+    const domain = current.domains[0];
+    if (!domain || !net) return setHTML(box, '');
+    const port = current.port;
+    const ip = net.publicIp || '(adresse IP publique introuvable)';
+    return setHTML(
+      box,
+      html`<div class="alert info mc-guide">${icon('globe')}<div>
+        <b>Connexion avec ${domain}</b>
+        <ol class="guide">
+          ${net.dnsAuto
+            ? html`<li>Cloudflare : le panel crée l'enregistrement A <code>${domain}</code> → <code>${ip}</code> (« DNS uniquement »)${port !== 25565 ? html` et l'enregistrement SRV du port ${port}` : ''}, et le met à jour si votre adresse IP publique change.</li>`
+            : html`<li>Cloudflare → votre domaine → DNS → <b>Add record</b> : type <code>A</code>, nom <code>${domain}</code>, IPv4 <code>${ip}</code>, proxy <b>désactivé</b> (nuage gris).${port !== 25565 ? html` Puis un enregistrement <code>SRV</code> : nom <code>_minecraft._tcp.${domain}</code>, priorité 0, poids 5, port ${port}, cible <code>${domain}</code>.` : ''} Pour que le panel s'en charge, reliez-le à Cloudflare (Paramètres → Tunnel Cloudflare, « Géré depuis le panel »).</li>`}
+          <li>Dans votre box (NAT / redirection de ports) : port TCP <b>${port}</b> vers <code>${net.lanIp || 'l’adresse de la machine'}</code>, port <b>${port}</b>.</li>
+          <li>Les joueurs se connectent avec <code>${domain}</code>.</li>
+        </ol>
+      </div></div>`,
+    );
+  };
+  const loadNet = () =>
+    api
+      .get('/minecraft/network')
+      .then((n) => {
+        net = n;
+        if (page.active) drawGuide();
+      })
+      .catch(() => {});
+  page.onCleanup(onAppsChange(() => drawGuide()));
+
   draw(null);
+  loadNet();
   fillVersions(el, mc.flavor);
   // limites de la machine (mémoire, cœurs) : connues après le premier chargement
   mcInfo(mc.flavor)
@@ -828,9 +872,12 @@ async function minecraftSettings(el, page, app) {
       if (!page.active) return;
       const form = $('#settings-form', el);
       const keep = { ...readMcFields(form), name: form.name.value };
+      const domains = $('#settings-form [name=domains]', el).value;
       draw({ memory: info.memory, cores: info.cores });
       $('#settings-form [name=name]', el).value = keep.name;
+      $('#settings-form [name=domains]', el).value = domains;
       fillVersions(el, keep.flavor);
+      drawGuide();
       wire();
     })
     .catch(() => {});
@@ -850,15 +897,16 @@ async function minecraftSettings(el, page, app) {
         return;
       }
       withBusy(e.submitter, async () => {
-        await api.patch(`/apps/${app.id}`, {
+        const result = await api.patch(`/apps/${app.id}`, {
           name: form.name.value,
           mc: values,
           port: form.port.value || null,
+          domains: form.domains.value,
           autoRestart: form.autoRestart.checked,
           startOnBoot: form.startOnBoot.checked,
         });
         if (restart) await api.post(`/apps/${app.id}/restart`).catch((err) => toast(err.message, 'err'));
-        toast(restart ? 'Paramètres enregistrés, serveur redémarré' : 'Paramètres enregistrés');
+        if (routingWarnings(result)) toast(restart ? 'Paramètres enregistrés, serveur redémarré' : 'Paramètres enregistrés');
         await refreshApps();
       });
     });
