@@ -8,7 +8,7 @@ function usageBar(ratio) {
   return html`<div class="bar ${cls}"><i style="width:${pct.toFixed(1)}%"></i></div>`;
 }
 
-const storageHref = (p) => `#/storage/${encodeURIComponent(p)}`;
+const storageHref = (p) => `/storage/${encodeURIComponent(p)}`;
 
 export async function renderStorage(view, page, encodedPath) {
   if (!isAdmin()) {
@@ -25,7 +25,7 @@ export async function renderStorage(view, page, encodedPath) {
   view.replaceChildren(root);
   setHTML(
     root,
-    html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
+    html`<a class="back" href="/home">${icon('back')} Tableau de bord</a>
       ${pageHero({ icon: 'disk', tone: 'blue', title: 'Stockage', info: 'Les emplacements de stockage de la machine et ce qui y occupe de la place.' })}
       <div class="grid mounts" id="mounts"><div class="card stat"><div class="spinner sm"></div></div></div>
       <div id="analysis"></div>`,

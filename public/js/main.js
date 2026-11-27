@@ -21,11 +21,12 @@ import {
   sidebarIcon,
   stopDesktop,
 } from './desktop.js';
+import { HOME, currentPath, initRouter, navigate, onNavigate } from './router.js';
 
 initAppearance();
 
 const ROUTES = [
-  { re: /^\/?$/, nav: 'dashboard', render: renderDashboard },
+  { re: /^\/(?:home)?$/, nav: 'dashboard', render: renderDashboard },
   { re: /^\/new$/, nav: 'new', render: renderNewApp },
   { re: /^\/apps\/([^/]+)(?:\/(\w+))?$/, nav: 'app', render: renderApp },
   { re: /^\/settings(?:\/([\w-]+)(?:\/([\w-]+))?)?$/, nav: 'settings', render: renderSettings },
@@ -75,20 +76,15 @@ function route() {
   currentPage = page;
   $('.shell')?.classList.remove('menu-open');
 
-  let path;
-  try {
-    path = decodeURI(location.hash.replace(/^#/, '')) || '/';
-  } catch {
-    path = '/';
-  }
+  const path = currentPath();
   const match = ROUTES.map((r) => ({ r, m: r.re.exec(path) })).find((x) => x.m);
   if (!match) {
-    location.hash = '#/';
+    navigate(HOME, { replace: true });
     return;
   }
   const params = match.m.slice(1);
   // page d'où l'on ouvre l'aide (elle n'est plus dans la barre latérale) : son bouton « Retour » y ramène
-  if (match.r.nav !== 'aide') state.returnTo = location.hash || '#/';
+  if (match.r.nav !== 'aide') state.returnTo = path + location.search;
   setActiveNav(match.r.nav, params[0]);
   const view = $('#view');
   // le contenu défile dans la fenêtre : on revient en haut en changeant de page (pas d'onglet d'une même application)
@@ -143,12 +139,12 @@ function renderShell() {
       <header class="menubar" id="menubar">${menubarHTML()}</header>
       <aside class="sidebar">
         <nav class="nav">
-          <a href="#/" data-nav="dashboard">${icon('grid')} Tableau de bord</a>
-          <a href="#/settings" data-nav="settings">${icon('sliders')} Paramètres</a>
+          <a href="/home" data-nav="dashboard">${icon('grid')} Tableau de bord</a>
+          <a href="/settings" data-nav="settings">${icon('sliders')} Paramètres</a>
         </nav>
         <div class="side-title">
           <span>Applications</span>
-          <a class="side-add" href="#/new" data-nav="new" title="Nouvelle application" aria-label="Nouvelle application">${icon('plus')}</a>
+          <a class="side-add" href="/new" data-nav="new" title="Nouvelle application" aria-label="Nouvelle application">${icon('plus')}</a>
         </div>
         <div id="side-apps"></div>
       </aside>
@@ -181,7 +177,7 @@ function renderSidebarApps() {
     state.apps.length
       ? state.apps.map((app) => {
           const s = statusOf(app);
-          return html`<a class="side-app ${app.id === activeId ? 'active' : ''}" data-id="${app.id}" href="#/apps/${app.id}"
+          return html`<a class="side-app ${app.id === activeId ? 'active' : ''}" data-id="${app.id}" href="/apps/${app.id}"
             ><span class="dot ${s.cls}"></span><span class="truncate">${app.name}</span></a
           >`;
         })
@@ -223,7 +219,7 @@ function endSession(setupRequired = false) {
   renderLogin($('#app'), {
     setupRequired,
     onSuccess: (user) => {
-      if (location.hash && location.hash !== '#/') location.hash = '#/';
+      if (location.pathname !== HOME) history.replaceState(null, '', HOME);
       startSession(user);
     },
   });
@@ -243,7 +239,8 @@ async function boot() {
   setUnauthorizedHandler(() => {
     if (state.user) endSession();
   });
-  window.addEventListener('hashchange', route);
+  initRouter();
+  onNavigate(route);
   try {
     const status = await api.get('/auth/status');
     if (status.user) startSession(status.user);

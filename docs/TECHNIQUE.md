@@ -39,6 +39,10 @@ sécurité. Pour l'installer, suivez le [README](../README.md) ; pour l'utiliser
 - Le panel tourne sans privilèges. Pour se mettre à jour, il crée `data/update-request` : une unité systemd `.path`
   lance alors `astrapanel-update` en root, qui télécharge la branche `AstraPanel-Latest` et relance `install.sh`.
   Même principe pour redémarrer la machine (Paramètres → Hardware) : `data/reboot-request` → `astrapanel-reboot`.
+- Interface : JavaScript natif, sans build. Chaque page a son adresse, sans `#` (History API) : `/home`,
+  `/apps/<id>/<onglet>`, `/settings/<onglet>`, `/storage/…`, `/aide/…` ; le serveur renvoie `index.html` pour ces
+  adresses (`src/http/panel-assets.js`) et `public/js/router.js` affiche la bonne page. Les anciennes adresses
+  `/#/…` sont converties.
 - Les données sont dans `/opt/astrapanel/data` : `db.json` (configuration), `apps/<id>/` (fichiers des applis),
   `logs/` (journaux avec rotation, couleurs des applications comprises), `metrics.json` et `app-metrics.json`
   (historique des graphiques), `bin/cloudflared`.

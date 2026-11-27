@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { refreshApps } from '../state.js';
 import { openOverlay, stepsAt } from '../overlay.js';
 import { $, html, icon, pageHero, routingWarnings, setHTML, tip, toast, toggle } from '../ui.js';
+import { navigate } from '../router.js';
 
 const TYPES = [
   { id: 'bot', title: 'Bot Discord', desc: 'Un bot discord.js, ou tout programme Node.js sans site web.', icon: 'bot', placeholder: 'Mon super bot' },
@@ -38,7 +39,7 @@ export function renderNewApp(view) {
     const hasPort = f.type !== 'bot';
     setHTML(
       root,
-      html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
+      html`<a class="back" href="/home">${icon('back')} Tableau de bord</a>
         ${pageHero({
           icon: 'plus',
           tone: 'green',
@@ -110,7 +111,7 @@ export function renderNewApp(view) {
               <div class="full error-text"></div>
             </div>
             <div class="card-foot">
-              <a class="btn btn-ghost" href="#/">Annuler</a>
+              <a class="btn btn-ghost" href="/home">Annuler</a>
               <button class="btn btn-primary" type="submit">${icon('check')} Créer l'application</button>
             </div>
           </div>
@@ -177,7 +178,7 @@ export function renderNewApp(view) {
       await refreshApps();
       // l'écran reste visible un court instant (pas de clignotement), puis l'application s'ouvre et l'écran disparaît
       await new Promise((r) => setTimeout(r, Math.max(0, 700 - (Date.now() - screen.startedAt))));
-      location.hash = `#/apps/${app.id}/files`; // dossier vide : on y dépose le code
+      navigate(`/apps/${app.id}/files`); // dossier vide : on y dépose le code
       toast(`« ${app.name} » a été créée`);
       setTimeout(() => screen.close(), 250);
     } catch (err) {

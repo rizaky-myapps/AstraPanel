@@ -6,6 +6,7 @@ import { api } from './api.js';
 import { isAdmin, refreshApps, state } from './state.js';
 import { THEMES, applyAppearance, effectiveTheme } from './theme.js';
 import { $, ROLE_LABEL, TYPE_INFO, avatar, copyText, html, icon, localUrl, openContextMenu, setHTML, statusOf, toast } from './ui.js';
+import { currentPath, navigate, refreshRoute } from './router.js';
 
 const APP_TABS = {
   console: 'Console',
@@ -39,7 +40,7 @@ function describe(nav, params) {
   if (nav === 'app') {
     const app = state.apps.find((x) => x.id === a);
     const type = TYPE_INFO[app?.type] || { icon: 'box' };
-    const tab = APP_TABS[(location.hash.split('/')[3] || '').split('?')[0]];
+    const tab = APP_TABS[currentPath().split('/')[3] || ''];
     return { key: `app:${a}`, title: app?.name || 'Application', sub: tab, icon: type.icon, tone: app?.type || 'accent' };
   }
   if (nav === 'settings') return { key: 'settings', title: 'Paramètres', sub: SETTINGS_TABS[a || 'compte'], icon: 'sliders', tone: 'accent' };
@@ -93,34 +94,34 @@ function allNotifications() {
   for (const app of state.apps) {
     if (app.runtime.status === 'crashed') {
       // chaque plantage a sa propre clé : un nouveau plantage notifie de nouveau, même s'il suit de près
-      out.push({ key: `crash:${app.id}:${app.runtime.lastExit?.at || ''}`, level: 'err', icon: 'alert', title: `${app.name} est planté`, text: 'Voir la console', href: `#/apps/${app.id}/console` });
+      out.push({ key: `crash:${app.id}:${app.runtime.lastExit?.at || ''}`, level: 'err', icon: 'alert', title: `${app.name} est planté`, text: 'Voir la console', href: `/apps/${app.id}/console` });
     }
     if (app.runtime.busy) {
-      out.push({ key: `busy:${app.id}`, level: 'info', icon: 'refresh', title: `${app.name} : ${statusOf(app).label}`, text: 'Suivre dans la console', href: `#/apps/${app.id}/console` });
+      out.push({ key: `busy:${app.id}`, level: 'info', icon: 'refresh', title: `${app.name} : ${statusOf(app).label}`, text: 'Suivre dans la console', href: `/apps/${app.id}/console` });
     }
     const hook = app.webhookLog?.[0];
     if (hook?.outcome === 'failed' && Date.now() - (hook.doneAt || hook.at) < 24 * 3600_000) {
-      out.push({ key: `deploy:${app.id}:${hook.at}`, level: 'err', icon: 'upload', title: `Échec du déploiement de ${app.name}`, text: hook.error || 'Voir l’onglet Déploiement', href: `#/apps/${app.id}/deploy` });
+      out.push({ key: `deploy:${app.id}:${hook.at}`, level: 'err', icon: 'upload', title: `Échec du déploiement de ${app.name}`, text: hook.error || 'Voir l’onglet Déploiement', href: `/apps/${app.id}/deploy` });
     }
   }
   if (isAdmin() && sys.update?.available) {
-    out.push({ key: `update:${sys.update.latestVersion}`, level: 'ok', icon: 'arrowUpCircle', title: `AstraPanel ${sys.update.latestVersion} est disponible`, text: `Vous utilisez la version ${sys.update.installed?.version || '?'} : mettre à jour`, href: '#/settings/mises-a-jour' });
+    out.push({ key: `update:${sys.update.latestVersion}`, level: 'ok', icon: 'arrowUpCircle', title: `AstraPanel ${sys.update.latestVersion} est disponible`, text: `Vous utilisez la version ${sys.update.installed?.version || '?'} : mettre à jour`, href: '/settings/mises-a-jour' });
   }
   const t = sys.tunnel;
   if (isAdmin() && t?.enabled && (t.binary || t.running) && !(t.running && (t.ready?.readyConnections || 0) > 0)) {
-    out.push({ key: 'tunnel:down', level: 'warn', icon: 'cloud', title: 'Tunnel Cloudflare déconnecté', text: 'Vos sites ne sont plus joignables depuis Internet', href: '#/settings/tunnel' });
+    out.push({ key: 'tunnel:down', level: 'warn', icon: 'cloud', title: 'Tunnel Cloudflare déconnecté', text: 'Vos sites ne sont plus joignables depuis Internet', href: '/settings/tunnel' });
   }
   // alimentation et chaleur (cartes qui les signalent) : pour tous les comptes
   const th = sys.system?.throttling;
   if (th) {
     const boot = sys.system.bootedAt;
     if (th.underVoltage) {
-      out.push({ key: `power:now:${boot}`, level: 'err', icon: 'zap', title: 'Sous-tension détectée', text: 'L’alimentation de la machine est insuffisante : elle ralentit et peut planter. Utilisez l’alimentation recommandée par le fabricant.', href: isAdmin() ? '#/settings/hardware' : '#/' });
+      out.push({ key: `power:now:${boot}`, level: 'err', icon: 'zap', title: 'Sous-tension détectée', text: 'L’alimentation de la machine est insuffisante : elle ralentit et peut planter. Utilisez l’alimentation recommandée par le fabricant.', href: isAdmin() ? '/settings/hardware' : '/home' });
     } else if (th.underVoltageOccurred) {
-      out.push({ key: `power:boot:${boot}`, level: 'warn', icon: 'zap', title: 'Une sous-tension a eu lieu depuis le démarrage', text: 'Vérifiez l’alimentation et son câble.', href: isAdmin() ? '#/settings/hardware' : '#/' });
+      out.push({ key: `power:boot:${boot}`, level: 'warn', icon: 'zap', title: 'Une sous-tension a eu lieu depuis le démarrage', text: 'Vérifiez l’alimentation et son câble.', href: isAdmin() ? '/settings/hardware' : '/home' });
     }
     if (th.throttled || th.softTempLimit) {
-      out.push({ key: `heat:${boot}`, level: 'warn', icon: 'thermo', title: 'Processeur bridé à cause de la chaleur', text: 'Améliorez le refroidissement de la machine (ventilateur, dissipateur, aération).', href: isAdmin() ? '#/settings/hardware' : '#/' });
+      out.push({ key: `heat:${boot}`, level: 'warn', icon: 'thermo', title: 'Processeur bridé à cause de la chaleur', text: 'Améliorez le refroidissement de la machine (ventilateur, dissipateur, aération).', href: isAdmin() ? '/settings/hardware' : '/home' });
     }
   }
   return out;
@@ -305,12 +306,12 @@ function drawUserMenu() {
         <div class="truncate"><b class="truncate">${u.username}</b><span class="faint">${ROLE_LABEL[u.role]}</span></div>
       </div>
       <div class="popover-menu">
-        <a href="#/settings/compte">${icon('user')} Mon compte</a>
+        <a href="/settings/compte">${icon('user')} Mon compte</a>
         <div class="popover-theme segmented" role="group" aria-label="Thème">
           ${THEMES.map((t) => html`<button type="button" data-menu-theme="${t.id}" aria-pressed="${t.id === (state.user.prefs?.theme || 'auto')}" title="${t.label}">${icon(t.icon)}<span>${t.label}</span></button>`)}
         </div>
-        ${isAdmin() ? html`<a href="#/settings/utilisateurs">${icon('users')} Utilisateurs</a>` : ''}
-        <a href="#/aide">${icon('book')} Aide</a>
+        ${isAdmin() ? html`<a href="/settings/utilisateurs">${icon('users')} Utilisateurs</a>` : ''}
+        <a href="/aide">${icon('book')} Aide</a>
         <button type="button" class="danger" data-menu="logout">${icon('logout')} Se déconnecter</button>
       </div>`,
   );
@@ -400,18 +401,18 @@ function searchItems() {
   const items = [];
   for (const app of state.apps) {
     const type = TYPE_INFO[app.type] || { icon: 'box', label: app.type };
-    items.push({ group: 'Applications', icon: type.icon, tone: app.type, title: app.name, sub: `${type.label} · ${statusOf(app).label}`, href: `#/apps/${app.id}` });
+    items.push({ group: 'Applications', icon: type.icon, tone: app.type, title: app.name, sub: `${type.label} · ${statusOf(app).label}`, href: `/apps/${app.id}` });
   }
   const page = (title, href, ic, sub = '', tone = 'accent') => items.push({ group: 'Pages', icon: ic, tone, title, sub, href });
-  page('Tableau de bord', '#/', 'grid', 'Bureau');
-  page('Nouvelle application', '#/new', 'plus', 'Site ou bot Discord', 'green');
+  page('Tableau de bord', '/home', 'grid', 'Bureau');
+  page('Nouvelle application', '/new', 'plus', 'Site ou bot Discord', 'green');
   for (const [id, label] of Object.entries(SETTINGS_TABS)) {
     if (id !== 'compte' && !isAdmin()) continue;
-    page(label, `#/settings/${id}`, id === 'compte' ? 'user' : 'sliders', 'Paramètres');
+    page(label, `/settings/${id}`, id === 'compte' ? 'user' : 'sliders', 'Paramètres');
   }
-  if (isAdmin()) page('Stockage', '#/storage', 'disk', 'Disques et espace occupé', 'blue');
-  page('Tutoriel d’installation et d’utilisation', '#/aide/tutoriel', 'book', 'Aide', 'cyan');
-  page('Tutoriel du tunnel Cloudflare', '#/aide/cloudflare', 'cloud', 'Aide', 'cyan');
+  if (isAdmin()) page('Stockage', '/storage', 'disk', 'Disques et espace occupé', 'blue');
+  page('Tutoriel d’installation et d’utilisation', '/aide/tutoriel', 'book', 'Aide', 'cyan');
+  page('Tutoriel du tunnel Cloudflare', '/aide/cloudflare', 'cloud', 'Aide', 'cyan');
   items.push({ group: 'Actions', icon: effectiveTheme() === 'dark' ? 'sun' : 'moon', tone: 'accent', title: effectiveTheme() === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre', action: 'theme' });
   items.push({ group: 'Actions', icon: 'logout', tone: 'accent', title: 'Se déconnecter', action: 'logout' });
   return items;
@@ -461,7 +462,7 @@ export function openSearch() {
     closeSearch();
     if (item.action === 'theme') toggleTheme();
     else if (item.action === 'logout') hooks.onLogout();
-    else location.hash = item.href;
+    else navigate(item.href);
   };
   input.addEventListener('input', () => {
     selected = 0;
@@ -496,7 +497,7 @@ function closeSearch() {
 export function menubarHTML() {
   return html`<div class="mb-left">
       <button class="mb-btn" id="side-toggle" title="Panneau latéral" aria-label="Afficher ou masquer le panneau latéral">${icon('panelClose')}</button>
-      <a class="mb-brand" href="#/" title="Tableau de bord">${icon('logo')}<span>Astra<b>Panel</b></span></a>
+      <a class="mb-brand" href="/home" title="Tableau de bord">${icon('logo')}<span>Astra<b>Panel</b></span></a>
     </div>
     <button class="mb-btn mb-search" id="mb-search" title="Rechercher (Ctrl+K)" aria-label="Rechercher">${icon('search')}<span>Rechercher une application, une page…</span><kbd>Ctrl K</kbd></button>
     <div class="mb-right">
@@ -582,11 +583,11 @@ function appMenu(app) {
   };
   const url = localUrl(app);
   return [
-    { label: 'Ouvrir', icon: 'external', onClick: () => (location.hash = `#/apps/${app.id}`) },
-    { label: 'Console', icon: 'terminal', onClick: () => (location.hash = `#/apps/${app.id}/console`) },
-    { label: 'Statistiques', icon: 'activity', onClick: () => (location.hash = `#/apps/${app.id}/stats`) },
-    { label: 'Fichiers', icon: 'folder', onClick: () => (location.hash = `#/apps/${app.id}/files`) },
-    { label: 'Paramètres', icon: 'sliders', onClick: () => (location.hash = `#/apps/${app.id}/settings`) },
+    { label: 'Ouvrir', icon: 'external', onClick: () => navigate(`/apps/${app.id}`) },
+    { label: 'Console', icon: 'terminal', onClick: () => navigate(`/apps/${app.id}/console`) },
+    { label: 'Statistiques', icon: 'activity', onClick: () => navigate(`/apps/${app.id}/stats`) },
+    { label: 'Fichiers', icon: 'folder', onClick: () => navigate(`/apps/${app.id}/files`) },
+    { label: 'Paramètres', icon: 'sliders', onClick: () => navigate(`/apps/${app.id}/settings`) },
     '-',
     running
       ? { label: 'Arrêter', icon: 'stop', disabled: Boolean(app.runtime.busy), onClick: act('stop', 'arrêt demandé') }
@@ -617,15 +618,15 @@ function contextItems(target, x, y) {
   const dark = effectiveTheme() === 'dark';
   items.push(
     { label: 'Rechercher…', icon: 'search', hint: 'Ctrl+K', onClick: openSearch },
-    { label: 'Nouvelle application', icon: 'plus', onClick: () => (location.hash = '#/new') },
-    { label: 'Actualiser', icon: 'refresh', onClick: () => window.dispatchEvent(new HashChangeEvent('hashchange')) },
+    { label: 'Nouvelle application', icon: 'plus', onClick: () => navigate('/new') },
+    { label: 'Actualiser', icon: 'refresh', onClick: () => refreshRoute() },
     '-',
     { label: dark ? 'Thème clair' : 'Thème sombre', icon: dark ? 'sun' : 'moon', onClick: toggleTheme },
     window.matchMedia('(min-width: 901px)').matches && { label: hidden ? 'Afficher le panneau latéral' : 'Masquer le panneau latéral', icon: hidden ? 'panelOpen' : 'panelClose', onClick: () => hooks.onToggleSidebar() },
     '-',
-    { label: 'Tableau de bord', icon: 'grid', onClick: () => (location.hash = '#/') },
-    { label: 'Paramètres', icon: 'sliders', onClick: () => (location.hash = '#/settings') },
-    { label: 'Aide', icon: 'book', onClick: () => (location.hash = '#/aide') },
+    { label: 'Tableau de bord', icon: 'grid', onClick: () => navigate('/home') },
+    { label: 'Paramètres', icon: 'sliders', onClick: () => navigate('/settings') },
+    { label: 'Aide', icon: 'book', onClick: () => navigate('/aide') },
   );
   return items;
 }
@@ -650,7 +651,7 @@ export function initDesktopGlobals() {
     }
   });
   window.addEventListener('astra:theme', drawThemeButton);
-  window.addEventListener('hashchange', closePopover);
+  window.addEventListener('astra:navigate', closePopover);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.user) refreshNotifications();
   });

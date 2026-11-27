@@ -5,10 +5,10 @@ import { state } from '../state.js';
 
 // Libellé du bouton « Retour » d'après la page d'où l'on vient
 function returnLabel(hash) {
-  if (hash.startsWith('#/settings')) return 'Paramètres';
-  if (hash.startsWith('#/apps/')) return state.apps.find((a) => a.id === hash.split('/')[2])?.name || 'Application';
-  if (hash.startsWith('#/new')) return 'Nouvelle application';
-  if (hash.startsWith('#/storage')) return 'Stockage';
+  if (hash.startsWith('/settings')) return 'Paramètres';
+  if (hash.startsWith('/apps/')) return state.apps.find((a) => a.id === hash.split('/')[2])?.name || 'Application';
+  if (hash.startsWith('/new')) return 'Nouvelle application';
+  if (hash.startsWith('/storage')) return 'Stockage';
   return 'Tableau de bord';
 }
 
@@ -19,7 +19,7 @@ export const DOCS = {
 };
 const FILE_TO_DOC = Object.fromEntries(Object.entries(DOCS).map(([id, d]) => [d.file, id]));
 
-export const helpHref = (doc, section = '') => `#/aide/${doc}${section ? `/${encodeURIComponent(section)}` : ''}`;
+export const helpHref = (doc, section = '') => `/aide/${doc}${section ? `/${encodeURIComponent(section)}` : ''}`;
 
 export async function renderHelp(view, page, doc = 'tutoriel', section = '') {
   if (!DOCS[doc]) doc = 'tutoriel';
@@ -27,7 +27,7 @@ export async function renderHelp(view, page, doc = 'tutoriel', section = '') {
   view.replaceChildren(root);
   setHTML(
     root,
-    html`<a class="back keep" href="${state.returnTo || '#/'}">${icon('back')} ${returnLabel(state.returnTo || '#/')}</a>
+    html`<a class="back keep" href="${state.returnTo || '/home'}">${icon('back')} ${returnLabel(state.returnTo || '/home')}</a>
       ${pageHero({ icon: 'book', tone: 'cyan', title: 'Aide', info: 'Les tutoriels d’AstraPanel, en français, pour la version installée.' })}
       <nav class="tabs">${Object.entries(DOCS).map(([id, d]) => html`<a href="${helpHref(id)}" class="${id === doc ? 'active' : ''}">${icon(d.icon)} ${d.label}</a>`)}</nav>
       <article class="card doc" id="doc"><div class="card-body row"><div class="spinner sm"></div><span class="muted">Chargement…</span></div></article>`,

@@ -31,6 +31,7 @@ import {
   toggle,
   withBusy,
 } from '../ui.js';
+import { navigate, refreshRoute } from '../router.js';
 
 const TABS = [
   { id: 'console', label: 'Console', icon: 'terminal' },
@@ -53,10 +54,10 @@ try {
 const isTab = (tab) => TABS.some((t) => t.id === tab);
 
 export function renderApp(view, page, id, tab) {
-  // lien sans onglet (#/apps/<id>) : on ouvre l'onglet utilisé en dernier, et l'adresse l'indique
+  // lien sans onglet (/apps/<id>) : on ouvre l'onglet utilisé en dernier, et l'adresse l'indique
   if (!tab) {
     tab = isTab(lastTab) ? lastTab : 'console';
-    history.replaceState(null, '', `#/apps/${id}/${tab}`);
+    history.replaceState(null, '', `/apps/${id}/${tab}`);
   }
   if (!isTab(tab)) tab = 'console';
   lastTab = tab;
@@ -69,7 +70,7 @@ export function renderApp(view, page, id, tab) {
   if (!app) {
     setHTML(
       view,
-      html`<div class="card empty"><h2>Application introuvable</h2><p>Elle a peut-être été supprimée.</p><a class="btn" href="#/">Retour au tableau de bord</a></div>`,
+      html`<div class="card empty"><h2>Application introuvable</h2><p>Elle a peut-être été supprimée.</p><a class="btn" href="/home">Retour au tableau de bord</a></div>`,
     );
     return;
   }
@@ -78,11 +79,11 @@ export function renderApp(view, page, id, tab) {
   view.replaceChildren(root);
   setHTML(
     root,
-    html`<a class="back" href="#/">${icon('back')} Tableau de bord</a>
+    html`<a class="back" href="/home">${icon('back')} Tableau de bord</a>
       <div id="app-header"></div>
       <div id="app-busy"></div>
       <nav class="tabs">
-        ${TABS.map((t) => html`<a href="#/apps/${id}/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}
+        ${TABS.map((t) => html`<a href="/apps/${id}/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}
       </nav>
       <div id="tab"></div>`,
   );
@@ -92,7 +93,7 @@ export function renderApp(view, page, id, tab) {
   const update = () => {
     const current = findApp(id);
     if (!current) {
-      location.hash = '#/';
+      navigate('/home');
       return;
     }
     renderHeader(header, current);
@@ -612,7 +613,7 @@ function deployTab(el, page, app) {
       withBusy(task, async () => {
         await api.post(`/apps/${app.id}/tasks/${task.dataset.task}`);
         await refreshApps();
-        location.hash = `#/apps/${app.id}/console`;
+        navigate(`/apps/${app.id}/console`);
       });
     }
     if (e.target.closest('[data-copy-hook]')) copyText($('#hook-url', el).value);
@@ -634,7 +635,7 @@ function deployTab(el, page, app) {
       await api.patch(`/apps/${app.id}`, { git: values.url.trim() ? values : null });
       await refreshApps();
       toast('Dépôt Git enregistré');
-      window.dispatchEvent(new HashChangeEvent('hashchange')); // ré-affiche l'onglet avec la nouvelle config
+      refreshRoute(); // ré-affiche l'onglet avec la nouvelle config
     });
   });
 
@@ -655,7 +656,7 @@ function deployTab(el, page, app) {
       });
       toast('Archive importée');
       await refreshApps();
-      location.hash = `#/apps/${app.id}/console`;
+      navigate(`/apps/${app.id}/console`);
     });
   });
 }
@@ -767,7 +768,7 @@ function settingsTab(el, page, app) {
     if (!result) return;
     toast(`« ${app.name} » a été supprimée`);
     await refreshApps();
-    location.hash = '#/';
+    navigate('/home');
   });
 }
 
@@ -820,7 +821,7 @@ async function usersTab(el, page, app) {
                 </select>
                 <button class="btn btn-primary" type="submit">${icon('plus')} Donner l'accès</button>
               </form>`
-            : html`<div class="card-foot"><span class="muted">Tous les utilisateurs ont déjà accès</span>${isAdmin() ? tip(html`Pour donner accès à quelqu'un d'autre, créez d'abord son compte dans <a href="#/settings/utilisateurs">Paramètres → Utilisateurs</a>.`) : ''}</div>`
+            : html`<div class="card-foot"><span class="muted">Tous les utilisateurs ont déjà accès</span>${isAdmin() ? tip(html`Pour donner accès à quelqu'un d'autre, créez d'abord son compte dans <a href="/settings/utilisateurs">Paramètres → Utilisateurs</a>.`) : ''}</div>`
           : ''}
       </div>`,
     );

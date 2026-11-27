@@ -17,6 +17,7 @@ import {
   html,
   icon,
   modal,
+  openContextMenu,
   pageHero,
   routingWarnings,
   setHTML,
@@ -26,6 +27,7 @@ import {
   withBusy,
 } from '../ui.js';
 import { renderAnsi } from '../ansi.js';
+import { refreshRoute } from '../router.js';
 
 const TABS = [
   { id: 'compte', label: 'Mon compte', icon: 'user' },
@@ -38,9 +40,7 @@ const TABS = [
 ];
 
 const short = (sha) => (sha ? sha.slice(0, 7) : '—');
-const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
-
-const heroUser = () => html`${avatar(state.user, 'xs')} ${state.user.username}`;
+const rerender = () => refreshRoute();
 
 export function renderSettings(view, page, tab = 'compte', arg = '') {
   const tabs = TABS.filter((t) => !t.admin || isAdmin());
@@ -53,18 +53,10 @@ export function renderSettings(view, page, tab = 'compte', arg = '') {
         icon: 'sliders',
         title: 'Paramètres',
         info: 'Votre compte et, pour les administrateurs : les utilisateurs, les mises à jour, le tunnel Cloudflare, les réglages du panel, la machine et le journal d’activité.',
-        meta: html`<span class="desk-pill" id="hero-user">${heroUser()}</span><span class="desk-pill">${icon(state.user.role === 'admin' ? 'shield' : 'user')} ${ROLE_LABEL[state.user.role]}</span>`,
       })}
-      ${tabs.length > 1 ? html`<nav class="tabs">${tabs.map((t) => html`<a href="#/settings/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}</nav>` : ''}
+      ${tabs.length > 1 ? html`<nav class="tabs">${tabs.map((t) => html`<a href="/settings/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}</nav>` : ''}
       <div id="settings-tab"></div>`,
   );
-  // pseudo ou photo modifiés depuis « Mon compte » : le bandeau suit
-  const onUser = () => {
-    const pill = $('#hero-user', root);
-    if (pill) setHTML(pill, heroUser());
-  };
-  window.addEventListener('astra:user', onUser);
-  page.onCleanup(() => window.removeEventListener('astra:user', onUser));
   const el = $('#settings-tab', root);
   const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, general: generalTab, hardware: hardwareTab, journal: journalTab };
   return Promise.resolve(renderers[tab](el, page, arg)).catch((err) => {
@@ -151,6 +143,21 @@ async function photoEditor(canvas, zoomInput, file) {
   };
 }
 
+// Activité : les actions identiques qui se suivent (connexions répétées…) sont regroupées en une ligne « ×N »
+function groupActivity(entries) {
+  const out = [];
+  for (const e of entries) {
+    const prev = out.at(-1);
+    if (prev && prev.label === e.label && Boolean(prev.failed) === Boolean(e.failed) && prev.app?.id === e.app?.id && prev.ip === e.ip && prev.detail === e.detail) {
+      prev.count += 1;
+      continue;
+    }
+    out.push({ ...e, count: 1 });
+  }
+  return out;
+}
+const ACTIVITY_SHOWN = 6;
+
 async function accountTab(el, page) {
   const [info, activity] = await Promise.all([api.get('/account'), api.get('/account/activity')]);
   if (!page.active) return;
@@ -161,119 +168,105 @@ async function accountTab(el, page) {
   const redraw = () => accountTab(el, page).catch((err) => toast(err.message, 'err'));
   const logins = activity.entries.filter((e) => e.label === 'Connexion');
   const failed = activity.entries.filter((e) => e.failed);
+  const groups = groupActivity(activity.entries);
+  const apps = info.apps.owned + info.apps.shared;
 
   setHTML(
     root,
-    html`<div class="stack">
-      <section class="profile-hero">
-        <div class="profile-photo">
+    html`<div class="account">
+      <section class="account-hero">
+        <button type="button" class="account-photo" data-photo title="Photo de profil" aria-label="Photo de profil : changer ou retirer">
           ${avatar(u, 'xl')}
-          <button type="button" class="profile-photo-btn" data-pick title="Changer la photo de profil" aria-label="Changer la photo de profil">${icon('camera')}</button>
-        </div>
-        <div class="profile-id">
-          <h2>${u.username}</h2>
-          <div class="desk-pills">
-            <span class="desk-pill">${icon(u.role === 'admin' ? 'shield' : 'user')} ${ROLE_LABEL[u.role]} ${tip(
+          <span class="account-photo-edit">${icon('camera')}</span>
+        </button>
+        <div class="account-id">
+          <div class="account-name">
+            <h2>${u.username}</h2>
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" data-rename title="Changer de pseudo" aria-label="Changer de pseudo">${icon('edit')}</button>
+          </div>
+          <div class="account-meta">
+            <span>${icon(u.role === 'admin' ? 'shield' : 'user')} ${ROLE_LABEL[u.role]} ${tip(
               u.role === 'admin'
                 ? 'Accès complet : toutes les applications, utilisateurs, mises à jour, tunnel, stockage, machine et journal.'
                 : 'Vous voyez les applications que vous avez créées et celles auxquelles on vous a donné accès (onglet « Utilisateurs » de chaque application). Les paramètres du panel sont réservés aux administrateurs.',
             )}</span>
-            ${u.createdAt ? html`<span class="desk-pill">${icon('clock')} Membre depuis le ${DAY_FORMAT.format(new Date(u.createdAt))}</span>` : ''}
-            <span class="desk-pill">${icon('box')} ${info.apps.owned} application${info.apps.owned > 1 ? 's' : ''} créée${info.apps.owned > 1 ? 's' : ''}</span>
-            ${info.apps.shared ? html`<span class="desk-pill">${icon('users')} ${info.apps.shared} partagée${info.apps.shared > 1 ? 's' : ''} avec vous</span>` : ''}
+            ${u.createdAt ? html`<span>${icon('clock')} Membre depuis le ${DAY_FORMAT.format(new Date(u.createdAt))}</span>` : ''}
+            <span>${icon('box')} ${apps} application${apps > 1 ? 's' : ''}${info.apps.shared ? ` (dont ${info.apps.shared} partagée${info.apps.shared > 1 ? 's' : ''})` : ''}</span>
           </div>
-        </div>
-        <div class="profile-actions">
-          <button type="button" class="btn btn-glass" data-pick>${icon('camera')} ${u.avatar ? 'Changer la photo' : 'Ajouter une photo'}</button>
-          ${u.avatar ? html`<button type="button" class="btn btn-ghost" data-remove-photo>${icon('trash')} Retirer</button>` : ''}
-          ${tip('La photo s’affiche dans le panneau latéral, sur le tableau de bord et dans les listes d’utilisateurs. Elle est recadrée en carré : faites-la glisser pour choisir la partie visible, et zoomez avec le curseur ou la molette.')}
         </div>
         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" id="photo-file" />
       </section>
 
-      <div class="account-cols">
-        <div class="account-col">
-        <form class="card" id="name-form" autocomplete="off">
-          <div class="card-header"><h2>${icon('atSign')} Pseudo ${tip('Votre pseudo s’affiche partout dans le panel et sert à vous connecter. 3 à 32 caractères : lettres, chiffres, . _ -')}</h2></div>
-          <div class="card-body">
-            <div class="field"><label for="acc-name">Nouveau pseudo</label><input id="acc-name" type="text" name="username" value="${u.username}" spellcheck="false" autocapitalize="off" maxlength="32" required /></div>
-            <div class="field"><label for="acc-name-pw">Mot de passe ${tip('Confirme que c’est bien vous.')}</label><input id="acc-name-pw" type="password" name="password" autocomplete="current-password" required /></div>
-          </div>
-          <div class="card-foot"><button class="btn btn-primary" type="submit">${icon('check')} Changer de pseudo</button></div>
-        </form>
+      <div class="account-grid">
         <section class="card">
-          <div class="card-header"><h2>${icon('devices')} Appareils et connexions ${tip('Déconnecte toutes vos autres sessions : autre navigateur, téléphone, ordinateur prêté… Vous restez connecté ici. Pratique si vous avez oublié de vous déconnecter ailleurs.')}</h2></div>
-          <div class="card-body stack-sm">
-            <table class="table kv-table compact">
-              <tbody>
-                <tr><td class="muted">Dernière connexion</td><td>${logins[0] ? html`${formatDate(logins[0].at)} <span class="muted">· ${logins[0].ip || '—'}</span>` : '—'}</td></tr>
-                <tr><td class="muted">Connexion précédente</td><td>${logins[1] ? html`${formatDate(logins[1].at)} <span class="muted">· ${logins[1].ip || '—'}</span>` : '—'}</td></tr>
-                <tr><td class="muted">Tentatives échouées</td><td>${failed.length
-                  ? html`<span class="badge st-crashed">${failed.length}</span> <span class="muted">dernière le ${formatDate(failed[0].at)} · ${failed[0].ip || '—'}</span>`
-                  : html`<span class="badge st-running">Aucune</span>`}</td></tr>
-              </tbody>
-            </table>
-            <div class="row"><button type="button" class="btn" data-logout-others>${icon('logout')} Se déconnecter des autres appareils</button></div>
-          </div>
-        </section>
-        </div>
-        <div class="account-col">
-        <form class="card" id="password-form">
-          <div class="card-header"><h2>${icon('key')} Mot de passe ${tip('Changer de mot de passe déconnecte vos autres appareils ; vous restez connecté ici.')}</h2></div>
-          <div class="card-body">
-            <div class="field"><label for="acc-pw-current">Mot de passe actuel</label><input id="acc-pw-current" type="password" name="current" autocomplete="current-password" required /></div>
-            <div class="field">
-              <label for="acc-pw-next">Nouveau mot de passe</label>
-              <div class="input-group">
-                <input id="acc-pw-next" type="password" name="next" autocomplete="new-password" required />
-                <button type="button" class="btn btn-ghost btn-icon" data-show-pw title="Afficher les mots de passe" aria-label="Afficher les mots de passe">${icon('eye')}</button>
-              </div>
-              <div class="pw-meter" id="pw-meter" aria-live="polite"><div class="pw-meter-bar"><i></i></div><span></span></div>
+          <div class="card-header"><h2>${icon('shield')} Sécurité</h2></div>
+          <div class="account-rows">
+            <div class="account-row">
+              <span class="account-row-icon">${icon('key')}</span>
+              <span class="account-row-text"><b>Mot de passe ${tip('Changer de mot de passe déconnecte vos autres appareils ; vous restez connecté ici.')}</b><span class="account-dots">••••••••••</span></span>
+              <button type="button" class="btn btn-sm" data-password>Modifier</button>
             </div>
-            <div class="field"><label for="acc-pw-confirm">Confirmation</label><input id="acc-pw-confirm" type="password" name="confirm" autocomplete="new-password" required /></div>
-          </div>
-          <div class="card-foot"><button class="btn btn-primary" type="submit">${icon('check')} Changer le mot de passe</button></div>
-        </form>
-        <section class="card" id="appearance-card">
-          <div class="card-header"><h2>${icon('palette')} Apparence ${tip('Le thème et la couleur du panel pour votre compte, sur tous vos appareils. « Automatique » suit le réglage clair ou sombre de l’appareil.')}</h2></div>
-          <div class="card-body stack-sm">
-            <div class="field">
-              <label>Thème</label>
-              <div class="segmented theme-choice" role="group" aria-label="Thème">
-                ${THEMES.map((t) => html`<button type="button" data-theme-choice="${t.id}" aria-pressed="${t.id === u.prefs.theme}">${icon(t.icon)} ${t.label}</button>`)}
-              </div>
+            <div class="account-row">
+              <span class="account-row-icon">${icon('devices')}</span>
+              <span class="account-row-text"><b>Dernière connexion</b><span>${logins[0] ? `${formatDate(logins[0].at)} · ${logins[0].ip || '—'}` : '—'}</span></span>
+              <button type="button" class="btn btn-sm" data-logout-others title="Fermer toutes vos autres sessions (autre navigateur, téléphone…) ; vous restez connecté ici">${icon('logout')} Déconnecter les autres appareils</button>
             </div>
-            <div class="field">
-              <label>Couleur</label>
-              <div class="swatches" role="group" aria-label="Couleur d’accent">
-                ${ACCENTS.map((a) => html`<button type="button" class="swatch swatch-${a.id}" data-accent-choice="${a.id}" aria-pressed="${a.id === u.prefs.accent}"><span class="swatch-dot"></span>${a.label}</button>`)}
-              </div>
+            <div class="account-row">
+              <span class="account-row-icon ${failed.length ? 'err' : 'ok'}">${icon(failed.length ? 'alert' : 'check')}</span>
+              <span class="account-row-text"><b>Tentatives de connexion échouées</b><span>${failed.length ? `Dernière le ${formatDate(failed[0].at)} · ${failed[0].ip || '—'}` : 'Aucune parmi vos dernières actions'}</span></span>
+              <span class="badge ${failed.length ? 'st-crashed' : 'st-running'}">${failed.length || 'Aucune'}</span>
             </div>
           </div>
         </section>
 
-        </div>
+        <section class="card" id="appearance-card">
+          <div class="card-header"><h2>${icon('palette')} Apparence ${tip('Le thème et la couleur du panel pour votre compte, sur tous vos appareils. « Automatique » suit le réglage clair ou sombre de l’appareil.')}</h2></div>
+          <div class="card-body account-appearance">
+            <div class="segmented theme-choice" role="group" aria-label="Thème">
+              ${THEMES.map((t) => html`<button type="button" data-theme-choice="${t.id}" aria-pressed="${t.id === u.prefs.theme}">${icon(t.icon)} ${t.label}</button>`)}
+            </div>
+            <div class="swatches" role="group" aria-label="Couleur d’accent">
+              ${ACCENTS.map((a) => html`<button type="button" class="swatch swatch-${a.id}" data-accent-choice="${a.id}" aria-pressed="${a.id === u.prefs.accent}" title="${a.label}"><span class="swatch-dot"></span>${a.label}</button>`)}
+            </div>
+          </div>
+        </section>
       </div>
 
       <section class="card">
-        <div class="card-header"><h2>${icon('activity')} Activité récente ${tip('Vos 20 dernières actions dans le panel, et les tentatives de connexion échouées avec votre pseudo.')}</h2></div>
-        ${activity.entries.length
-          ? html`<ul class="activity-list">
-              ${activity.entries.map(
+        <div class="card-header"><h2>${icon('activity')} Activité récente ${tip('Vos dernières actions dans le panel et les tentatives de connexion échouées avec votre pseudo. Les actions identiques qui se suivent sont regroupées.')}</h2></div>
+        ${groups.length
+          ? html`<ul class="activity-list ${groups.length > ACTIVITY_SHOWN ? 'collapsed' : ''}" id="activity">
+              ${groups.map(
                 (e) => html`<li class="${e.failed ? 'failed' : ''}">
                   <span class="activity-icon">${icon(e.failed ? 'alert' : ACTIVITY_ICONS[e.category] || 'info')}</span>
-                  <span class="activity-text"><b>${e.failed ? 'Tentative de connexion échouée' : e.label}</b>${e.app ? html` · <a href="#/apps/${e.app.id}">${e.app.name}</a>` : ''}${e.detail ? html`<span class="muted"> · ${e.detail}</span>` : ''}</span>
+                  <span class="activity-text"><b>${e.failed ? 'Tentative de connexion échouée' : e.label}</b>${e.count > 1 ? html` <span class="activity-count">×${e.count}</span>` : ''}${e.app ? html` · <a href="/apps/${e.app.id}">${e.app.name}</a>` : ''}${e.detail ? html`<span class="muted"> · ${e.detail}</span>` : ''}</span>
                   <span class="activity-meta faint">${formatDate(e.at)}${e.ip ? ` · ${e.ip}` : ''}</span>
                 </li>`,
               )}
-            </ul>`
+            </ul>
+            ${groups.length > ACTIVITY_SHOWN ? html`<div class="card-foot account-more"><button type="button" class="btn btn-ghost btn-sm" data-more>${icon('chevronDown')} Tout afficher</button></div>` : ''}`
           : html`<div class="card-body muted">Aucune activité pour l'instant.</div>`}
       </section>
     </div>`,
   );
 
-  // --- Photo : recadrage dans une fenêtre, puis envoi
+  // --- Photo : un seul point d'entrée, la photo elle-même
   const fileInput = $('#photo-file', root);
+  const pickPhoto = () => {
+    fileInput.value = '';
+    fileInput.click();
+  };
+  const removePhoto = async () => {
+    if (!(await confirmDialog('Retirer la photo ?', 'L’initiale de votre pseudo la remplacera.', { confirmLabel: 'Retirer' }))) return;
+    try {
+      const { user } = await api.del('/account/avatar');
+      setMe(user);
+      toast('Photo de profil retirée');
+      redraw();
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+  };
   const editPhoto = async (file) => {
     let editor = null;
     const saved = await modal({
@@ -304,38 +297,98 @@ async function accountTab(el, page) {
     const file = fileInput.files[0];
     if (file) editPhoto(file);
   });
+
+  // --- Pseudo : dans une fenêtre, confirmé par le mot de passe
+  const rename = () =>
+    modal({
+      title: 'Changer de pseudo',
+      confirmLabel: 'Enregistrer',
+      body: html`<div class="field"><label for="acc-name">Nouveau pseudo ${tip('Il s’affiche partout dans le panel et sert à vous connecter. 3 à 32 caractères : lettres, chiffres, . _ -')}</label><input id="acc-name" type="text" name="username" value="${u.username}" spellcheck="false" autocapitalize="off" maxlength="32" required autofocus /></div>
+        <div class="field"><label for="acc-name-pw">Mot de passe actuel</label><input id="acc-name-pw" type="password" name="password" autocomplete="current-password" required /></div>`,
+      onConfirm: async (values) => {
+        const { user } = await api.patch('/account', { username: values.username.trim(), password: values.password });
+        return user;
+      },
+    }).then((user) => {
+      if (!user) return;
+      setMe(user);
+      toast(`Pseudo modifié : connectez-vous désormais avec « ${user.username} »`);
+      redraw();
+    });
+
+  // --- Mot de passe : dans une fenêtre, avec la force du nouveau mot de passe
+  const changePassword = () =>
+    modal({
+      title: 'Changer de mot de passe',
+      confirmLabel: 'Enregistrer',
+      body: html`<div class="field"><label for="acc-pw-current">Mot de passe actuel</label><input id="acc-pw-current" type="password" name="current" autocomplete="current-password" required autofocus /></div>
+        <div class="field">
+          <label for="acc-pw-next">Nouveau mot de passe</label>
+          <div class="input-group">
+            <input id="acc-pw-next" type="password" name="next" autocomplete="new-password" required />
+            <button type="button" class="btn btn-ghost btn-icon" data-show-pw title="Afficher les mots de passe" aria-label="Afficher les mots de passe">${icon('eye')}</button>
+          </div>
+          <div class="pw-meter" aria-live="polite"><div class="pw-meter-bar"><i></i></div><span></span></div>
+        </div>
+        <div class="field"><label for="acc-pw-confirm">Confirmation</label><input id="acc-pw-confirm" type="password" name="confirm" autocomplete="new-password" required /></div>`,
+      onOpen: (form) => {
+        const meter = form.querySelector('.pw-meter');
+        form.querySelector('[name=next]').addEventListener('input', (e) => {
+          const st = passwordStrength(e.target.value);
+          meter.className = `pw-meter ${st ? st.cls : ''} ${st ? 'shown' : ''}`;
+          meter.querySelector('i').style.width = `${st ? st.pct : 0}%`;
+          meter.querySelector('span').textContent = st ? st.label : '';
+        });
+        const show = form.querySelector('[data-show-pw]');
+        show.addEventListener('click', () => {
+          const visible = show.dataset.shown !== '1';
+          show.dataset.shown = visible ? '1' : '';
+          form.querySelectorAll('input[name=next], input[name=confirm]').forEach((i) => (i.type = visible ? 'text' : 'password'));
+          setHTML(show, icon(visible ? 'eyeOff' : 'eye'));
+          show.title = visible ? 'Masquer les mots de passe' : 'Afficher les mots de passe';
+        });
+      },
+      onConfirm: async (values) => {
+        if (values.next !== values.confirm) throw new Error('Les mots de passe ne correspondent pas');
+        await api.post('/auth/password', { current: values.current, next: values.next });
+        return true;
+      },
+    }).then((done) => {
+      if (!done) return;
+      toast('Mot de passe modifié. Vos autres appareils ont été déconnectés.');
+      redraw();
+    });
+
   root.addEventListener('click', async (e) => {
-    if (e.target.closest('[data-pick]')) {
-      fileInput.value = '';
-      fileInput.click();
+    const photo = e.target.closest('[data-photo]');
+    if (photo) {
+      // sans photo : on en choisit une ; avec : changer ou retirer
+      if (!u.avatar) return pickPhoto();
+      const r = photo.getBoundingClientRect();
+      return openContextMenu(r.left + r.width / 2, r.bottom + 6, [
+        { label: 'Changer la photo', icon: 'camera', onClick: pickPhoto },
+        { label: 'Retirer la photo', icon: 'trash', danger: true, onClick: removePhoto },
+      ]);
     }
-    const remove = e.target.closest('[data-remove-photo]');
-    if (remove) {
-      if (!(await confirmDialog('Retirer la photo ?', 'L’initiale de votre pseudo la remplacera.', { confirmLabel: 'Retirer' }))) return;
-      await withBusy(remove, async () => {
-        const { user } = await api.del('/account/avatar');
-        setMe(user);
-        toast('Photo de profil retirée');
-        redraw();
-      });
-    }
-    const pw = e.target.closest('[data-show-pw]');
-    if (pw) {
-      const show = pw.dataset.shown !== '1';
-      pw.dataset.shown = show ? '1' : '';
-      $('#password-form', root).querySelectorAll('input[name=next], input[name=confirm]').forEach((i) => (i.type = show ? 'text' : 'password'));
-      setHTML(pw, icon(show ? 'eyeOff' : 'eye'));
-      pw.title = show ? 'Masquer les mots de passe' : 'Afficher les mots de passe';
+    if (e.target.closest('[data-rename]')) return rename();
+    if (e.target.closest('[data-password]')) return changePassword();
+    const more = e.target.closest('[data-more]');
+    if (more) {
+      const list = $('#activity', root);
+      const open = list.classList.toggle('collapsed') === false;
+      setHTML(more, html`${icon(open ? 'chevronUp' : 'chevronDown')} ${open ? 'Réduire' : 'Tout afficher'}`);
+      return undefined;
     }
     const others = e.target.closest('[data-logout-others]');
     if (others) {
-      if (!(await confirmDialog('Se déconnecter des autres appareils ?', 'Toutes vos autres sessions seront fermées. Vous restez connecté ici.', { confirmLabel: 'Déconnecter' }))) return;
+      if (!(await confirmDialog('Se déconnecter des autres appareils ?', 'Toutes vos autres sessions seront fermées. Vous restez connecté ici.', { confirmLabel: 'Déconnecter' }))) return undefined;
       await withBusy(others, async () => {
         await api.post('/account/logout-others');
         toast('Vos autres appareils ont été déconnectés');
         redraw();
       });
     }
+    return undefined;
   });
 
   // --- Apparence : appliquée tout de suite, puis enregistrée avec le compte
@@ -363,43 +416,6 @@ async function accountTab(el, page) {
     } finally {
       group.removeAttribute('aria-busy');
     }
-  });
-
-  // --- Pseudo
-  $('#name-form', root).addEventListener('submit', (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const values = Object.fromEntries(new FormData(form));
-    withBusy($('[type=submit]', form), async () => {
-      const { user } = await api.patch('/account', { username: values.username.trim(), password: values.password });
-      setMe(user);
-      toast(`Pseudo modifié : connectez-vous désormais avec « ${user.username} »`);
-      redraw();
-    });
-  });
-
-  // --- Mot de passe
-  const meter = $('#pw-meter', root);
-  $('#password-form [name=next]', root).addEventListener('input', (e) => {
-    const s = passwordStrength(e.target.value);
-    meter.className = `pw-meter ${s ? s.cls : ''} ${s ? 'shown' : ''}`;
-    meter.querySelector('i').style.width = `${s ? s.pct : 0}%`;
-    meter.querySelector('span').textContent = s ? s.label : '';
-  });
-  $('#password-form', root).addEventListener('submit', (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const values = Object.fromEntries(new FormData(form));
-    if (values.next !== values.confirm) {
-      toast('Les mots de passe ne correspondent pas', 'err');
-      return;
-    }
-    withBusy($('[type=submit]', form), async () => {
-      await api.post('/auth/password', { current: values.current, next: values.next });
-      form.reset();
-      toast('Mot de passe modifié. Vos autres appareils ont été déconnectés.');
-      redraw();
-    });
   });
 }
 
@@ -433,7 +449,7 @@ async function usersTab(el, page) {
                 <td class="muted hide-sm">${formatDate(u.createdAt)}</td>
                 <td>
                   <div class="file-actions">
-                    <a class="btn btn-ghost btn-sm btn-icon" title="Voir son activité" aria-label="Voir l'activité de ${u.username}" href="#/settings/journal/${u.id}">${icon('clock')}</a>
+                    <a class="btn btn-ghost btn-sm btn-icon" title="Voir son activité" aria-label="Voir l'activité de ${u.username}" href="/settings/journal/${u.id}">${icon('clock')}</a>
                     <button class="btn btn-ghost btn-sm btn-icon" title="Changer le pseudo" data-rename>${icon('atSign')}</button>
                     <button class="btn btn-ghost btn-sm btn-icon" title="Définir un nouveau mot de passe" data-password>${icon('key')}</button>
                     ${u.id === state.user.id ? '' : html`<button class="btn btn-ghost btn-sm btn-icon" title="Supprimer" data-del>${icon('trash')}</button>`}
@@ -785,8 +801,8 @@ async function tunnelTab(el, page) {
   const siteLinks = () => {
     const sites = state.apps.filter((x) => x.port);
     return sites.length
-      ? html`<div class="row site-links">${sites.map((x) => html`<a class="btn btn-sm" href="#/apps/${x.id}/settings">${icon('globe')} ${x.name}${x.domains?.length ? ` · ${x.domains[0]}` : ' : ajouter un domaine'}</a>`)}</div>`
-      : html`<p class="hint">Vous n'avez pas encore de site : créez-en un avec <a href="#/new">Nouvelle application</a>.</p>`;
+      ? html`<div class="row site-links">${sites.map((x) => html`<a class="btn btn-sm" href="/apps/${x.id}/settings">${icon('globe')} ${x.name}${x.domains?.length ? ` · ${x.domains[0]}` : ' : ajouter un domaine'}</a>`)}</div>`
+      : html`<p class="hint">Vous n'avez pas encore de site : créez-en un avec <a href="/new">Nouvelle application</a>.</p>`;
   };
 
   const appsTable = () =>
@@ -1350,7 +1366,7 @@ async function journalTab(el, page, userFilter = '') {
                   <td class="nowrap muted">${formatDate(e.at)}</td>
                   <td>${who(e)}</td>
                   <td>
-                    <div class="journal-action">${icon(CATEGORY_ICONS[e.category] || 'info')}<b>${e.label}</b>${e.app ? html`<a class="journal-app" href="#/apps/${e.app.id}">${e.app.name}</a>` : ''}</div>
+                    <div class="journal-action">${icon(CATEGORY_ICONS[e.category] || 'info')}<b>${e.label}</b>${e.app ? html`<a class="journal-app" href="/apps/${e.app.id}">${e.app.name}</a>` : ''}</div>
                     ${e.detail ? html`<div class="hint journal-detail">${e.detail}</div>` : ''}
                   </td>
                   <td class="hide-sm mono muted">${e.ip || '—'}</td>
@@ -1386,7 +1402,7 @@ async function journalTab(el, page, userFilter = '') {
   );
   const onFilter = (key) => (e) => {
     filters[key] = e.target.value;
-    if (key === 'user') history.replaceState(null, '', `#/settings/journal${filters.user ? `/${filters.user}` : ''}`);
+    if (key === 'user') history.replaceState(null, '', `/settings/journal${filters.user ? `/${filters.user}` : ''}`);
     load();
   };
   $('#f-user', el).addEventListener('change', onFilter('user'));

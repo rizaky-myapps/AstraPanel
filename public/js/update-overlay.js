@@ -74,7 +74,7 @@ function renderUpdate() {
     hint: done ? '' : elapsedHint(u.screen, 'La mise à jour continue sur la machine même si vous fermez cette page.'),
     actions: failed
       ? [
-          ...(isAdmin() ? [{ label: 'Voir le journal', icon: 'terminal', href: '#/settings/mises-a-jour', onClick: closeCurrent }] : []),
+          ...(isAdmin() ? [{ label: 'Voir le journal', icon: 'terminal', href: '/settings/mises-a-jour', onClick: closeCurrent }] : []),
           { label: 'Fermer', primary: true, onClick: closeCurrent },
         ]
       : [],

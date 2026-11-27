@@ -115,6 +115,7 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  chevronUp: '<path d="m18 15-6-6-6 6"/>',
   arrowUpCircle: '<circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/>',
   user: '<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
   userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
@@ -242,7 +243,7 @@ export function initTooltips() {
   });
   window.addEventListener('scroll', () => tipFor && hideTip(), true);
   window.addEventListener('resize', () => tipFor && hideTip());
-  window.addEventListener('hashchange', () => hideTip());
+  window.addEventListener('astra:navigate', () => hideTip());
 }
 
 // Champ « fichier » en français (le bouton natif du navigateur s'affiche dans la langue du système).
@@ -559,5 +560,5 @@ function listenForClose() {
   window.addEventListener('scroll', () => ctxMenu && closeContextMenu(), true);
   window.addEventListener('resize', () => ctxMenu && closeContextMenu());
   window.addEventListener('blur', () => ctxMenu && closeContextMenu());
-  window.addEventListener('hashchange', () => ctxMenu && closeContextMenu());
+  window.addEventListener('astra:navigate', () => ctxMenu && closeContextMenu());
 }

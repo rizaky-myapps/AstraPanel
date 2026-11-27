@@ -1,7 +1,7 @@
 import { api } from './api.js';
 
 // État partagé : la liste des applications est rafraîchie régulièrement par main.js.
-export const state = { user: null, apps: [], appsLoaded: false, returnTo: '#/' };
+export const state = { user: null, apps: [], appsLoaded: false, returnTo: '/home' };
 const listeners = new Set();
 
 export function onAppsChange(fn) {

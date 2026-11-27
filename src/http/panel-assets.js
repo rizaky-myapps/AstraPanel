@@ -8,6 +8,10 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 
 const IMPORT_RE = /(\b(?:from|import)\s*\(?\s*)(['"])(\.{1,2}\/[^'"?#]+\.js)\2/g;
 
+// Adresses des pages de l'interface (sans « # », voir public/js/router.js) : le navigateur reçoit index.html et
+// l'interface affiche la bonne page (/home, /apps/<id>/console, /settings/compte…).
+export const APP_PATH_RE = /^\/(?:home|new|apps|settings|storage|aide)(?:\/|$)/;
+
 export function versionImports(source, version) {
   return source.replace(IMPORT_RE, (_, before, quote, spec) => `${before}${quote}${spec}?v=${encodeURIComponent(version)}${quote}`);
 }
@@ -21,7 +25,7 @@ export async function servePanelAsset(req, res, publicDir, pathname, version) {
     return true;
   };
 
-  if (pathname === '/' || pathname === '/index.html') {
+  if (pathname === '/' || pathname === '/index.html' || APP_PATH_RE.test(pathname)) {
     const page = (await readFile(path.join(publicDir, 'index.html'), 'utf8')).replaceAll('__ASTRA_VERSION__', version);
     return send(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(page), 'Cache-Control': 'no-store' }, page);
   }

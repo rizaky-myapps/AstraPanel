@@ -499,6 +499,17 @@ test('interface versionnée et cache vidé après une mise à jour', async (t) =
   assert.ok(page.includes(`<meta name="astra-version" content="${version}" />`));
   assert.ok(!page.includes('__ASTRA_VERSION__'));
 
+  // adresses sans « # » : chaque page de l'interface reçoit index.html, le reste garde son comportement
+  for (const address of ['/home', '/new', '/apps/mon-bot/console', '/settings/compte', '/storage/%2Fhome', '/aide/tutoriel']) {
+    const r = await fetch(`${ctx.base}${address}`);
+    assert.equal(r.status, 200, address);
+    assert.match(r.headers.get('content-type'), /text\/html/, address);
+    assert.ok((await r.text()).includes(`/js/main.js?v=${version}`), address);
+  }
+  assert.equal((await fetch(`${ctx.base}/inconnue`)).status, 404);
+  assert.equal((await fetch(`${ctx.base}/homepage`)).status, 404);
+  assert.equal((await fetch(`${ctx.base}/api/apps`)).status, 401);
+
   // modules : imports relatifs versionnés, revalidation par ETag
   res = await fetch(`${ctx.base}/js/main.js?v=${version}`);
   const main = await res.text();

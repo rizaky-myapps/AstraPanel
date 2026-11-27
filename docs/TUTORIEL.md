@@ -176,6 +176,8 @@ Le script, qui prend quelques minutes :
 ## 6. Première connexion et tableau de bord
 
 1. Sur votre ordinateur (ou votre téléphone, connecté au même réseau), ouvrez **http://<ip-de-la-machine>:8080** (l'adresse affichée par le script).
+   Chaque page du panel a sa propre adresse, sans `#` : `/home` pour le tableau de bord, `/apps/<application>/console`,
+   `/settings/compte`… Vous pouvez les mettre en favori ; les boutons Précédent et Suivant du navigateur fonctionnent.
 2. Saisissez le **jeton d'installation**. Si vous l'avez perdu, affichez-le sur la machine :
 
    ```bash
@@ -212,15 +214,19 @@ panel se présente comme le **bureau d'un système d'exploitation** :
   **automatique** et suit le réglage de votre appareil ; **Paramètres → Mon compte → Apparence** permet aussi de
   choisir la couleur du panel et du fond d'écran (voir l'étape 12).
 
-Le **tableau de bord** est le bureau lui-même, sans fenêtre : ses widgets sont posés sur le fond d'écran :
+Le **tableau de bord** (adresse `/home`) est le bureau lui-même, sans fenêtre : ses widgets sont posés sur le fond
+d'écran :
 
 - en haut, l'**horloge** et la **date**, en grand ;
-- le bloc **Système** : quatre jauges pour le processeur, la mémoire, le stockage et la température (avec la vitesse
-  du ventilateur quand la machine la fournit). Une jauge passe à l'orange puis au rouge quand la valeur devient
-  élevée. Une sous-tension (alimentation insuffisante) ou un processeur bridé par la chaleur sont signalés par une
-  notification (cloche de la barre du haut) ;
-- le bloc **Applications** : une tuile par application, avec son état (en ligne, arrêtée, plantée…) et sa mémoire ;
-  un clic l'ouvre. La tuile **Ajouter** crée une nouvelle application ;
+- quatre **jauges** en direct : processeur, mémoire, stockage et température (avec la vitesse du ventilateur quand la
+  machine la fournit). Sous chacune, une **mini-courbe** montre les 30 dernières minutes (une barre pour le
+  stockage). Une jauge passe à l'orange puis au rouge quand la valeur devient élevée. Une sous-tension (alimentation
+  insuffisante) ou un processeur bridé par la chaleur sont signalés par une notification (cloche de la barre du haut) ;
+- le bloc **Applications** : une carte par application, avec son état (en ligne, arrêtée, plantée…), son domaine ou
+  son port, et sa charge **processeur** et **mémoire** en direct ; un clic l'ouvre. La carte **Nouvelle
+  application** en crée une ;
+- le bloc **Machine** : son nom, son système, depuis quand elle est allumée, son adresse IP et les versions de Node.js
+  et d'AstraPanel ;
 - en dessous, les **graphiques** du processeur, de la température et de la mémoire, avec le choix de la période :
   **1 h, 12 h, 24 h, 3 j ou 7 j**. Survolez une courbe pour lire la valeur à un instant donné. L'historique se
   remplit au fil du temps (il est conservé 7 jours) ;
@@ -474,19 +480,23 @@ AstraPanel a deux grades :
 | Gérer son compte : pseudo, photo de profil, mot de passe, autres appareils, apparence | ✔ | ✔ |
 
 **Mon compte.** Chaque compte gère son profil dans **Paramètres → Mon compte** (ou par sa photo, en haut à droite de
-l'écran, puis **Mon compte**) :
+l'écran, puis **Mon compte**). En haut, une carte présente votre **photo**, votre **pseudo**, votre grade, votre date
+d'arrivée et le nombre de vos applications :
 
-- **Photo de profil** : **Ajouter une photo** (PNG, JPEG, WebP ou GIF), puis cadrez-la dans la fenêtre qui s'ouvre :
-  faites glisser l'image et zoomez avec le curseur ou la molette. Elle s'affiche dans la barre du haut, sur le
-  tableau de bord et dans les listes d'utilisateurs. **Retirer** remet l'initiale du pseudo ;
-- **Pseudo** : c'est aussi le nom de connexion. Saisissez le nouveau, confirmez avec votre mot de passe : vous restez
-  connecté, et vous vous connecterez ensuite avec le nouveau pseudo ;
-- **Mot de passe** : l'ancien, puis le nouveau (une jauge indique s'il est faible, correct ou solide ; l'œil affiche
-  ce que vous tapez). Les autres appareils sont déconnectés, pas celui-ci ;
-- **Appareils et connexions** : dernière connexion, connexion précédente et tentatives échouées avec votre pseudo
-  (date et adresse IP). **Se déconnecter des autres appareils** ferme toutes vos autres sessions (un ordinateur prêté,
-  un téléphone perdu…) ;
-- **Activité récente** : vos 20 dernières actions dans le panel, et les tentatives de connexion échouées en rouge ;
+- **Photo de profil** : cliquez sur la photo (ou sur l'initiale). Sans photo, choisissez une image (PNG, JPEG, WebP ou
+  GIF) ; avec une photo, un menu propose **Changer la photo** ou **Retirer la photo**. Cadrez l'image dans la fenêtre
+  qui s'ouvre : faites-la glisser et zoomez avec le curseur ou la molette. Elle s'affiche dans la barre du haut et
+  dans les listes d'utilisateurs ;
+- **Pseudo** : le crayon à côté du pseudo ouvre une fenêtre : le nouveau pseudo, puis votre mot de passe pour
+  confirmer. C'est aussi le nom de connexion : vous restez connecté, et vous vous connecterez ensuite avec le nouveau ;
+- **Sécurité** :
+  - **Mot de passe → Modifier** : l'ancien, puis le nouveau (une jauge indique s'il est faible, correct ou solide ;
+    l'œil affiche ce que vous tapez). Les autres appareils sont déconnectés, pas celui-ci ;
+  - **Dernière connexion** (date et adresse IP) et **Déconnecter les autres appareils**, qui ferme toutes vos autres
+    sessions (un ordinateur prêté, un téléphone perdu…) ;
+  - **Tentatives de connexion échouées** avec votre pseudo ;
+- **Activité récente** : vos dernières actions dans le panel (les actions identiques qui se suivent sont regroupées,
+  par exemple « Connexion ×12 »), et les tentatives de connexion échouées en rouge. **Tout afficher** déplie la liste ;
 - **Apparence** : le thème (**Automatique**, qui suit le réglage clair ou sombre de l'appareil, **Clair** ou
   **Sombre**) et la couleur du panel (**Solaire**, orange et rose, par défaut ; **Océan**, **Aurore**, **Nébuleuse** ou
   **Framboise**). Le changement est immédiat et suit votre compte sur tous vos appareils. Les consoles et l'éditeur de

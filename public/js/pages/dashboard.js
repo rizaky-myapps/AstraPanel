@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { isAdmin, onAppsChange, state } from '../state.js';
 import { renderLineChart } from '../chart.js';
-import { $, TYPE_INFO, formatBytes, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
+import { $, TYPE_INFO, formatBytes, formatDuration, formatPercent, html, icon, setHTML, statusOf } from '../ui.js';
 
 const RANGES = [
   { id: '1h', label: '1 h', refresh: 10_000 },
@@ -53,11 +53,12 @@ const pad = (n) => String(n).padStart(2, '0');
 const DATE_FORMAT = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
-// ---- Jauges circulaires ----------------------------------------------------------------------------
+// ---- Jauges : anneau, valeur, mini-courbe des dernières minutes -------------------------------------
 const RING_R = 42;
 const RING_C = 2 * Math.PI * RING_R;
 const clampPct = (v) => Math.max(0, Math.min(100, Number(v) || 0));
 const level = (pct, warn = 75, err = 90) => (pct >= err ? 'err' : pct >= warn ? 'warn' : '');
+const SPARK_SPAN = 30 * 60_000; // mini-courbes : 30 dernières minutes
 
 function gauges(sys) {
   const { memory: mem, disk } = sys;
@@ -70,6 +71,7 @@ function gauges(sys) {
       pct: clampPct(sys.cpu),
       value: sys.cpu === null ? '—' : `${Math.round(sys.cpu)} %`,
       detail: `${sys.cpus} cœurs · charge ${num(sys.loadavg[0], 2)}`,
+      spark: sys.cpu,
     },
     {
       id: 'mem',
@@ -77,7 +79,8 @@ function gauges(sys) {
       icon: 'memory',
       pct: clampPct((mem.used / mem.total) * 100),
       value: `${Math.round((mem.used / mem.total) * 100)} %`,
-      detail: `${formatBytes(mem.used)} / ${formatBytes(mem.total)}`,
+      detail: `${formatBytes(mem.used)} sur ${formatBytes(mem.total)}`,
+      spark: (mem.used / mem.total) * 100,
     },
   ];
   if (disk) {
@@ -87,8 +90,8 @@ function gauges(sys) {
       icon: 'disk',
       pct: clampPct((disk.used / disk.total) * 100),
       value: `${Math.round((disk.used / disk.total) * 100)} %`,
-      detail: `${formatBytes(disk.free)} libres`,
-      href: isAdmin() ? '#/storage' : null,
+      detail: `${formatBytes(disk.free)} libres sur ${formatBytes(disk.total)}`,
+      href: isAdmin() ? '/storage' : null,
     });
   }
   list.push({
@@ -100,61 +103,121 @@ function gauges(sys) {
     level: temp === null ? '' : temp >= 75 ? 'err' : temp >= 60 ? 'warn' : '',
     value: temp === null ? '—' : `${Math.round(temp)} °C`,
     detail: temp === null ? 'Capteur indisponible' : sys.fan !== null ? `Ventilateur ${sys.fan.toLocaleString('fr-FR')} tr/min` : `${num(temp)} °C`,
+    spark: temp,
   });
   return list.map((g) => ({ ...g, level: g.level ?? level(g.pct) }));
 }
 
 function gaugeHTML(g) {
-  const inner = html`<div class="gauge-ring">
-      <svg viewBox="0 0 100 100" aria-hidden="true">
-        <circle class="gauge-track" cx="50" cy="50" r="${RING_R}" />
-        <circle class="gauge-value" cx="50" cy="50" r="${RING_R}" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${RING_C.toFixed(2)}" />
-      </svg>
-      <div class="gauge-center"><span class="gauge-number"></span></div>
+  const inner = html`<div class="dash-stat-main">
+      <div class="gauge-ring">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="gauge-track" cx="50" cy="50" r="${RING_R}" />
+          <circle class="gauge-value" cx="50" cy="50" r="${RING_R}" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${RING_C.toFixed(2)}" />
+        </svg>
+        <span class="gauge-icon">${icon(g.icon)}</span>
+      </div>
+      <div class="dash-stat-text">
+        <span class="dash-stat-label">${g.label}${g.href ? icon('chevronRight') : ''}</span>
+        <span class="gauge-number"></span>
+        <span class="gauge-detail"></span>
+      </div>
     </div>
-    <div class="gauge-label">${icon(g.icon)} ${g.label}${g.href ? icon('chevronRight') : ''}</div>
-    <div class="gauge-detail"></div>`;
+    ${g.id === 'disk'
+      ? html`<div class="dash-bar" aria-hidden="true"><i></i></div>`
+      : html`<svg class="dash-spark" viewBox="0 0 200 44" preserveAspectRatio="none" aria-hidden="true"><path class="spark-area" /><path class="spark-line" /></svg>`}`;
   return g.href
-    ? html`<a class="gauge gauge-${g.id}" data-gauge="${g.id}" href="${g.href}" title="Voir ce qui occupe l'espace">${inner}</a>`
-    : html`<div class="gauge gauge-${g.id}" data-gauge="${g.id}">${inner}</div>`;
+    ? html`<a class="dash-stat gauge gauge-${g.id}" data-gauge="${g.id}" href="${g.href}" title="Voir ce qui occupe l'espace">${inner}</a>`
+    : html`<div class="dash-stat gauge gauge-${g.id}" data-gauge="${g.id}">${inner}</div>`;
 }
 
-// Mise à jour sur place : l'anneau glisse jusqu'à la nouvelle valeur
-function updateGauge(el, g) {
+// Mini-courbe : [[t, valeur]] sur les 30 dernières minutes, dans le cadre 200 × 44 du SVG
+function sparkPaths(points, now, [lo, hi]) {
+  const pts = points.filter((p) => p[1] !== null && p[1] !== undefined && p[0] >= now - SPARK_SPAN);
+  if (pts.length < 2) return null;
+  // moins de 30 minutes de mesures (page ou panel ouvert depuis peu) : la courbe occupe quand même toute la largeur
+  const from = pts[0][0];
+  const span = Math.max(60_000, now - from);
+  const x = (t) => ((t - from) / span) * 200;
+  const y = (v) => 42 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo || 1)) * 38;
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join('');
+  return { line, area: `${line}L${x(pts.at(-1)[0]).toFixed(1)},44L${x(pts[0][0]).toFixed(1)},44Z` };
+}
+
+// Mise à jour sur place : l'anneau glisse jusqu'à la nouvelle valeur, la courbe avance
+function updateGauge(el, g, history) {
   el.classList.toggle('warn', g.level === 'warn');
   el.classList.toggle('err', g.level === 'err');
   el.querySelector('.gauge-value').setAttribute('stroke-dashoffset', (RING_C * (1 - g.pct / 100)).toFixed(2));
   el.querySelector('.gauge-number').textContent = g.value;
   el.querySelector('.gauge-detail').textContent = g.detail;
   el.setAttribute('aria-label', `${g.label} : ${g.value}, ${g.detail}`);
+  const bar = el.querySelector('.dash-bar i');
+  if (bar) bar.style.width = `${g.pct}%`;
+  const spark = el.querySelector('.dash-spark');
+  if (spark) {
+    const values = history.map((p) => p[1]).filter((v) => v !== null && v !== undefined);
+    const domain = g.id === 'temp' && values.length ? [Math.min(...values) - 4, Math.max(...values) + 4] : [0, 100];
+    const paths = sparkPaths(history, Date.now(), domain);
+    spark.querySelector('.spark-line').setAttribute('d', paths?.line || '');
+    spark.querySelector('.spark-area').setAttribute('d', paths?.area || '');
+  }
 }
 
-// ---- Lanceur d'applications ------------------------------------------------------------------------
+// ---- Applications : une tuile par appli, avec sa charge en direct ------------------------------------
+function appTile(app, maxMem) {
+  const s = statusOf(app);
+  const type = TYPE_INFO[app.type] || { label: app.type, icon: 'box' };
+  const rt = app.runtime;
+  const running = rt.status === 'running';
+  const cpu = running && rt.cpu !== null ? rt.cpu : null;
+  const mem = running && rt.memory ? rt.memory : null;
+  const where = app.domains?.[0] || (app.port ? `port ${app.port}` : type.label);
+  return html`<a class="dash-app" href="/apps/${app.id}" title="${app.name} — ${type.label}">
+    <span class="dash-app-head">
+      <span class="app-tile-icon type-${app.type}">${icon(type.icon)}</span>
+      <span class="dash-app-name"><b>${app.name}</b><span class="dash-app-sub"><span class="dot ${s.cls}"></span><span class="dash-app-state ${s.cls}">${s.label}</span> · ${where}</span></span>
+    </span>
+    <span class="dash-app-meters">
+      <span class="dash-meter"><span>Processeur</span><b>${cpu === null ? '—' : formatPercent(cpu)}</b><i style="--v: ${cpu === null ? 0 : Math.min(100, cpu)}%"></i></span>
+      <span class="dash-meter mem"><span>Mémoire</span><b>${mem === null ? '—' : formatBytes(mem)}</b><i style="--v: ${mem === null ? 0 : Math.max(4, (mem / maxMem) * 100)}%"></i></span>
+    </span>
+  </a>`;
+}
+
 function launcher(apps) {
   const running = apps.filter((a) => a.runtime.status === 'running').length;
+  const maxMem = Math.max(64 * 1048576, ...apps.map((a) => a.runtime.memory || 0));
   return html`<div class="widget-head">
       <h2>${icon('grid')} Applications</h2>
-      <span class="muted widget-sub">${apps.length ? `${running} en ligne · ${apps.length} au total` : ''}</span>
+      <span class="dash-count">${apps.length ? html`<b>${running}</b> / ${apps.length} en ligne` : ''}</span>
     </div>
-    <div class="launcher">
-      ${apps.map((app) => {
-        const s = statusOf(app);
-        const type = TYPE_INFO[app.type] || { label: app.type, icon: 'box' };
-        const mem = app.runtime.status === 'running' && app.runtime.memory ? ` · ${formatBytes(app.runtime.memory)}` : '';
-        return html`<a class="app-tile" href="#/apps/${app.id}" title="${app.name} — ${type.label}">
-          <span class="app-tile-icon type-${app.type}">${icon(type.icon)}<span class="dot ${s.cls}"></span></span>
-          <span class="app-tile-name">${app.name}</span>
-          <span class="app-tile-status">${s.label}${mem}</span>
-        </a>`;
-      })}
-      <a class="app-tile app-tile-new" href="#/new">
-        <span class="app-tile-icon">${icon('plus')}</span>
-        <span class="app-tile-name">Ajouter</span>
-        <span class="app-tile-status">Site ou bot Discord</span>
+    <div class="dash-apps">
+      ${apps.map((app) => appTile(app, maxMem))}
+      <a class="dash-app dash-app-new" href="/new">
+        <span class="dash-app-plus">${icon('plus')}</span>
+        <b>Nouvelle application</b>
       </a>
     </div>`;
 }
-const launcherKey = (apps) => apps.map((a) => `${a.id}:${a.name}:${a.type}:${statusOf(a).label}:${Math.round((a.runtime.memory || 0) / 1048576)}`).join('|');
+const launcherKey = (apps) =>
+  apps
+    .map((a) => `${a.id}:${a.name}:${a.type}:${a.domains?.[0] || a.port}:${statusOf(a).label}:${Math.round(a.runtime.cpu || 0)}:${Math.round((a.runtime.memory || 0) / 1048576)}`)
+    .join('|');
+
+// ---- Machine : nom, système, durée depuis le démarrage, adresse ----------------------------------------
+function machineHTML(sys) {
+  const row = (ic, label, value) => html`<li><span class="dash-machine-icon">${icon(ic)}</span><span>${label}</span><b>${value}</b></li>`;
+  return html`<div class="widget-head"><h2>${icon('server')} Machine</h2></div>
+    <div class="dash-machine-name">${sys.hostname}</div>
+    <div class="dash-machine-model">${sys.model}</div>
+    <ul class="dash-machine-list">
+      ${row('clock', 'Allumée depuis', formatDuration(sys.uptime * 1000))}
+      ${sys.addresses?.[0] ? row('link', 'Adresse IP', sys.addresses[0].address) : ''}
+      ${row('box', 'Node.js', sys.node.replace(/^v/, ''))}
+      ${row('logo', 'AstraPanel', sys.panel?.version || '—')}
+    </ul>`;
+}
 
 function savedRange() {
   try {
@@ -173,20 +236,17 @@ export function renderDashboard(view, page) {
 
   setHTML(
     root,
-    html`<section class="desk-hero">
+    html`<div class="dash"><section class="desk-hero">
         <div class="desk-clock">
           <div class="desk-time" aria-live="off"><span id="clock-hm">--:--</span><span class="desk-seconds" id="clock-s">--</span></div>
           <div class="desk-date" id="clock-date"></div>
         </div>
       </section>
-      <section class="widget">
-        <div class="widget-head">
-          <h2>${icon('server')} Système</h2>
-          <span class="muted widget-sub" id="desk-model"></span>
-        </div>
-        <div class="gauges" id="gauges"></div>
-      </section>
-      <section class="widget" id="launcher"></section>
+      <section class="dash-stats" id="gauges" aria-label="Machine en direct"></section>
+      <div class="dash-row">
+        <section class="widget dash-apps-widget" id="launcher"></section>
+        <section class="widget dash-machine" id="machine"></section>
+      </div>
       <div class="section-title">
         <h2>Historique</h2>
         <div class="segmented" role="group" aria-label="Période affichée">
@@ -203,7 +263,7 @@ export function renderDashboard(view, page) {
             <div class="chart-body"></div>
           </div>`,
         )}
-      </div>`,
+      </div></div>`,
   );
 
   const chartsBox = $('#charts', root);
@@ -294,24 +354,61 @@ export function renderDashboard(view, page) {
   page.onCleanup(onAppsChange(drawLauncher));
 
   let shownGauges = null;
+  let shownMachine = '';
+  // mini-courbes : historique de la dernière heure, puis une mesure à chaque rafraîchissement
+  const history = { cpu: [], mem: [], temp: [] };
+  const remember = (id, t, v) => {
+    const list = history[id];
+    if (!list || v === null || v === undefined) return;
+    list.push([t, v]);
+    while (list.length && list[0][0] < t - SPARK_SPAN) list.shift();
+  };
+  let last = null;
+  const drawGauges = () => {
+    if (!last || !page.active) return;
+    const list = gauges(last);
+    const box = $('#gauges', root);
+    const ids = list.map((g) => g.id).join(',');
+    if (ids !== shownGauges) {
+      shownGauges = ids;
+      setHTML(box, list.map(gaugeHTML));
+      box.getBoundingClientRect(); // l'anneau part de zéro puis glisse jusqu'à la valeur
+    }
+    list.forEach((g) => updateGauge(box.querySelector(`[data-gauge="${g.id}"]`), g, history[g.id] || []));
+  };
   const loadSystem = async () => {
     try {
       const sys = await api.get('/system');
       if (!page.active) return;
-      $('#desk-model', root).textContent = sys.model;
-      const list = gauges(sys);
-      const box = $('#gauges', root);
-      const ids = list.map((g) => g.id).join(',');
-      if (ids !== shownGauges) {
-        shownGauges = ids;
-        setHTML(box, list.map(gaugeHTML));
-        box.getBoundingClientRect(); // l'anneau part de zéro puis glisse jusqu'à la valeur
+      last = sys;
+      const now = Date.now();
+      for (const g of gauges(sys)) remember(g.id, now, g.spark);
+      drawGauges();
+      const machine = machineHTML(sys);
+      if (String(machine) !== shownMachine) {
+        shownMachine = String(machine);
+        setHTML($('#machine', root), machine);
       }
-      list.forEach((g) => updateGauge(box.querySelector(`[data-gauge="${g.id}"]`), g));
     } catch {
       // le prochain rafraîchissement réessaiera
     }
   };
+  api
+    .get('/system/metrics?range=1h')
+    .then((d) => {
+      if (!page.active) return;
+      const seed = { cpu: [], mem: [], temp: [] };
+      for (const [t, cpu, temp, mem] of d.points) {
+        if (t < Date.now() - SPARK_SPAN) continue;
+        seed.cpu.push([t, cpu]);
+        seed.temp.push([t, temp]);
+        if (d.memTotal && mem !== null) seed.mem.push([t, (mem / d.memTotal) * 100]);
+      }
+      // les mesures de l'historique passent avant celles prises depuis l'ouverture de la page
+      for (const id of Object.keys(history)) history[id] = [...seed[id].filter((p) => p[1] !== null), ...history[id]];
+      drawGauges();
+    })
+    .catch(() => {});
   loadSystem();
   loadMetrics();
   const timer = setInterval(loadSystem, 4000);
