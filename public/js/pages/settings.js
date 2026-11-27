@@ -25,6 +25,7 @@ import {
   toggle,
   withBusy,
 } from '../ui.js';
+import { renderAnsi } from '../ansi.js';
 
 const TABS = [
   { id: 'compte', label: 'Mon compte', icon: 'user' },
@@ -1065,7 +1066,7 @@ async function tunnelTab(el, page) {
         ts.textContent = formatLogTime(line.t);
         const m = document.createElement('span');
         m.className = 'm';
-        m.textContent = line.m;
+        renderAnsi(m, line.m);
         row.append(ts, m);
         out.appendChild(row);
       }

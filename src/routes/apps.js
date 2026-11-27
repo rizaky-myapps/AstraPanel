@@ -1,8 +1,9 @@
 import os from 'node:os';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { createReadStream, existsSync, statSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { createReadStream, existsSync } from 'node:fs';
+import { readFile, rm } from 'node:fs/promises';
+import { stripAnsi } from '../apps/logs.js';
 import { HttpError, readBody, receiveToFile, streamLog } from '../http/util.js';
 import { RANGE_LIST } from '../metrics.js';
 
@@ -99,11 +100,19 @@ export function appRoutes(router, { apps, appMetrics, config }) {
     apps.logsFor(apps.get(ctx.params.id).id).clear();
   });
 
-  router.get('/api/apps/:id/logs/download', (ctx) => {
+  router.get('/api/apps/:id/logs/download', async (ctx) => {
     const app = apps.get(ctx.params.id);
     const file = path.join(config.logsDir, `${app.id}.log`);
     if (!existsSync(file)) throw new HttpError(404, 'Aucun journal');
-    sendDownload(ctx.res, file, statSync(file).size, `${app.id}.log`, 'text/plain; charset=utf-8');
+    // fichier téléchargé : texte brut, sans les codes de couleur (illisibles dans un éditeur de texte)
+    const text = Buffer.from(stripAnsi(await readFile(file, 'utf8')));
+    ctx.res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Length': text.length,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`${app.id}.log`)}`,
+      'Cache-Control': 'no-store',
+    });
+    ctx.res.end(text);
   });
 
   // --- Webhook de déploiement (GitHub, GitLab, Gitea…) --------------------

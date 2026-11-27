@@ -7,9 +7,11 @@ PURGE=0
 [ "${1:-}" = "--purge" ] && PURGE=1
 [ "$(id -u)" -eq 0 ] || { echo "Lancez ce script avec sudo." >&2; exit 1; }
 
-systemctl disable --now astrapanel astrapanel-update.path 2>/dev/null || true
-rm -f /etc/systemd/system/astrapanel.service /etc/systemd/system/astrapanel-update.service \
-  /etc/systemd/system/astrapanel-update.path /usr/local/bin/astrapanel-cli /usr/local/bin/astrapanel-update
+systemctl disable --now astrapanel astrapanel-update.path astrapanel-reboot.path 2>/dev/null || true
+rm -f /etc/systemd/system/astrapanel.service \
+  /etc/systemd/system/astrapanel-update.service /etc/systemd/system/astrapanel-update.path \
+  /etc/systemd/system/astrapanel-reboot.service /etc/systemd/system/astrapanel-reboot.path \
+  /usr/local/bin/astrapanel-cli /usr/local/bin/astrapanel-update
 systemctl daemon-reload
 
 if [ "$PURGE" -eq 1 ]; then

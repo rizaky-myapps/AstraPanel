@@ -1,200 +1,289 @@
-# AstraPanel
+# AstraPanel : installation
 
-**Un panel web auto-hébergé pour faire tourner vos sites et vos bots Discord en JavaScript sur votre propre machine
-Linux : ordinateur, mini-PC, serveur à la maison, VPS…**
-
-Créez une application en quelques clics, déposez-y votre code (fichiers, dépôt Git ou archive ZIP), suivez ses logs en direct,
-gérez ses fichiers, ses variables d'environnement, et mettez vos sites en ligne en HTTPS avec votre nom de domaine grâce
-au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
+AstraPanel est un panel web, en français, pour héberger vos **bots Discord** et vos **sites web JavaScript** sur votre
+propre machine. Ce guide explique, pas à pas, comment l'installer : choix de la machine et du système, commandes à
+taper, première connexion. Comptez 20 à 30 minutes, installation du système comprise.
 
 ![Tableau de bord d'AstraPanel](docs/images/tableau-de-bord.png)
 
-<details><summary>Thème clair</summary>
+## Sommaire
 
-![Tableau de bord d'AstraPanel en thème clair](docs/images/tableau-de-bord-clair.png)
+1. [Choisir la machine](#1-choisir-la-machine)
+2. [Choisir le système d'exploitation](#2-choisir-le-système-dexploitation)
+3. [Installer le système](#3-installer-le-système)
+4. [Se connecter à la machine en SSH](#4-se-connecter-à-la-machine-en-ssh)
+5. [Préparer le système](#5-préparer-le-système)
+6. [Installer AstraPanel](#6-installer-astrapanel)
+7. [Première connexion](#7-première-connexion)
+8. [Commandes utiles](#8-commandes-utiles)
+9. [Désinstaller](#9-désinstaller)
+10. [En cas de problème](#10-en-cas-de-problème)
+11. [Et ensuite ?](#11-et-ensuite-)
 
-</details>
+---
 
-## 👉 [Tutoriel complet : installer AstraPanel sur votre machine](docs/TUTORIEL.md)
+## 1. Choisir la machine
 
-## 👉 [Tutoriel Cloudflare : mettre vos sites en ligne avec votre nom de domaine](docs/CLOUDFLARE.md)
+AstraPanel tourne sur n'importe quelle machine capable de faire tourner Linux en **64 bits** : un ancien ordinateur, un
+mini-PC, un serveur à la maison, une carte ARM 64 bits, ou un serveur loué (VPS) chez un hébergeur.
 
-## Fonctionnalités
+| | Minimum | Conseillé |
+| --- | --- | --- |
+| Processeur | 64 bits : **x86-64** (Intel, AMD) ou **ARM64** | 2 cœurs ou plus |
+| Mémoire vive | 2 Go (quelques bots) | 4 Go ou plus (plusieurs bots et sites) |
+| Stockage | 16 Go libres | un **SSD**, plus rapide et plus fiable allumé 24 h/24 |
+| Réseau | Wi-Fi | un **câble Ethernet** relié à la box |
 
-- **Bots Discord** (discord.js ou tout programme Node.js) avec redémarrage automatique en cas de plantage
-- **Sites Node.js** (Express, Fastify, Next.js…) : le panel attribue un port à chaque site via `PORT`
-- **Sites statiques** (HTML, ou le résultat d'un build Vite/React) avec mode SPA
-- **Console en direct** des logs (stdout/stderr) et envoi de commandes sur l'entrée standard
-- **Gestionnaire de fichiers** : double-clic pour ouvrir, menu clic droit (avec propriétés), sélection multiple,
-  déplacer, copier, renommer, compresser en ZIP, extraire, téléverser des fichiers et des dossiers (glisser-déposer),
-  télécharger un dossier en ZIP, éditeur de code avec numéros de ligne, visionneuse d'images, de vidéos et de sons
-- **Variables d'environnement** (tableau ou collage d'un fichier `.env`) pour garder vos tokens hors du code
-- **Déploiement** depuis Git en un clic (pull + `npm install` + build + redémarrage), import d'archive ZIP, webhook
-  pour redéployer à chaque `git push`
-- **Tunnel Cloudflare intégré** : mise en ligne en HTTPS sans ouvrir de port ; en mode « géré par le panel », ajouter
-  un domaine à une application crée tout seul la route du tunnel et l'enregistrement DNS, avec un pas-à-pas en
-  français dans le panel
-- **Tutoriels intégrés** : les tutoriels (installation, tunnel Cloudflare) lisibles directement dans le panel, depuis
-  les pages qui y renvoient (bouton « Tutoriel » du tunnel Cloudflare)
-- **Tableau de bord façon bureau** : grande horloge et date, jauges du processeur, de la mémoire, du stockage et de
-  la température, lanceur d'applications, et graphiques sur 1 h, 12 h, 24 h, 3 jours et 7 jours
-- **Notifications** (cloche de la barre du haut) : application plantée, déploiement en échec, mise à jour disponible,
-  tunnel déconnecté, sous-tension ou surchauffe ; à son arrivée, une notification s'affiche quelques secondes sous la
-  cloche ; chacune s'efface d'une croix, ou toutes avec « Tout effacer »
-- **Panneau latéral masquable** : il se cache sur la gauche pour laisser toute la place au contenu
-- **Explorateur de stockage** : les disques de la machine et leur contenu trié par taille, pour trouver ce qui prend de la place
-- **Mises à jour depuis le panel** : AstraPanel vérifie GitHub toutes les 5 minutes et annonce les nouvelles versions
-  aux administrateurs par une notification ; un clic suffit pour mettre à jour, sans SSH. Pendant la mise à jour, le
-  panel est flouté avec un écran de chargement qui suit chaque étape, puis le cache du navigateur est vidé et la page
-  rechargée
-- **Journal d'activité** : chaque action (connexions, applications, fichiers, comptes, tunnel, mises à jour,
-  redémarrages) avec le compte, la date et l'adresse IP, filtrable par compte et par application — sans aucun secret
-- **Onglet Hardware** : informations sur la machine et redémarrage de la machine depuis le panel, avec validation
-- **Gestion de son compte** : pseudo, photo de profil (recadrée dans le navigateur), mot de passe avec jauge de force,
-  déconnexion des autres appareils, dernières connexions, tentatives échouées et activité récente
-- **Bureau façon système d'exploitation** : barre du haut (recherche Ctrl+K au centre, notifications, thème, heure,
-  menu du compte), pages en plein écran sur un fond d'écran (seul le contenu défile), menu clic droit sur tout le site
-- **Statistiques par application** : historique processeur et mémoire vive (1 h, 12 h, 24 h, 3 jours, 7 jours) en graphiques
-- **Interface** : logo « planète en orbite », panneau latéral flottant, onglets en pastilles ;
-  thème sombre et thème clair (automatique selon l'appareil, ou au choix) et cinq couleurs d'accent (Solaire par
-  défaut, Océan, Aurore, Nébuleuse, Framboise), enregistrés avec chaque compte ; écran de connexion façon écran de
-  verrouillage, avec l'heure
-- **Grades ADMIN et UTILISATEUR** : chaque application a sa liste d'utilisateurs (onglet **Utilisateurs** : le
-  créateur, figé, puis les comptes à qui il a donné accès) ; les administrateurs voient toutes les applications et
-  gèrent aussi le panel
-- **Création express** : un nom, un type (bot Discord, site Node.js ou site statique) et l'application est prête,
-  avec un dossier vide où déposer votre code
-- Applications relancées automatiquement au démarrage de la machine, interface utilisable sur mobile
-- **Zéro dépendance npm** : le panel n'utilise que Node.js, rien à compiler
+La machine doit rester allumée en permanence : c'est elle qui fera tourner vos bots et vos sites.
 
-| Gestionnaire de fichiers | Tunnel Cloudflare |
+Il vous faut aussi un **ordinateur** (Windows, macOS ou Linux) pour vous connecter à la machine et ouvrir le panel dans
+un navigateur.
+
+## 2. Choisir le système d'exploitation
+
+Le script d'installation a besoin d'un **Linux 64 bits avec `apt` et `systemd`**.
+
+| Système | |
 | --- | --- |
-| ![Gestionnaire de fichiers](docs/images/fichiers.png) | ![Tunnel Cloudflare](docs/images/tunnel.png) |
+| **Debian 12 ou 13**, version sans bureau | ✅ **Recommandé** : léger et très stable |
+| **Ubuntu Server 24.04 LTS** ou plus récent | ✅ **Recommandé** : le plus simple à trouver chez les hébergeurs |
+| Dérivés de Debian / Ubuntu (Linux Mint, Armbian, Pop!_OS…) | ✅ Compatible |
+| Windows, macOS | ❌ Non compatible |
+| Fedora, Arch, Alpine, openSUSE… (sans `apt`) | ❌ Non compatible |
+| Systèmes 32 bits | ❌ Déconseillé (Node.js et de nombreux modules ne les gèrent plus) |
 
-## Installation rapide
+**Prenez une version serveur, sans environnement de bureau** : elle laisse toute la mémoire à vos applications. Vous
+n'aurez jamais besoin d'écran sur la machine : tout se fait depuis votre ordinateur.
 
-Sur une machine **Linux 64 bits avec apt et systemd** (Debian, Ubuntu ou un dérivé), architecture x86-64 ou ARM64 :
+## 3. Installer le système
+
+### Machine à la maison
+
+1. **Téléchargez** l'image d'installation :
+   - Debian : [debian.org/download](https://www.debian.org/download) (image « netinst » pour PC 64 bits) ;
+   - ou Ubuntu Server : [ubuntu.com/download/server](https://ubuntu.com/download/server).
+
+   Pour une carte ARM, prenez l'image **64 bits** officielle de son fabricant (Debian ou Ubuntu).
+2. **Créez une clé USB d'installation** (8 Go minimum, elle sera effacée) avec
+   [balenaEtcher](https://etcher.balena.io/) (Windows, macOS, Linux) ou [Rufus](https://rufus.ie/) (Windows).
+3. **Démarrez la machine sur la clé** : branchez-la, allumez la machine et appuyez sur la touche du menu de démarrage
+   (souvent **F12**, **F11**, **F8** ou **Échap**, affichée au démarrage), puis choisissez la clé USB.
+4. **Suivez l'installation** :
+   - **Nom de la machine** : par exemple `astrapanel` ;
+   - **Debian** : laissez le **mot de passe « root » vide** ; le compte que vous créez ensuite pourra alors utiliser
+     `sudo` (indispensable pour la suite) ;
+   - **Compte utilisateur** : un nom (par exemple `admin`) et un mot de passe solide ;
+   - **Disque** : « utiliser un disque entier » (⚠️ tout son contenu est effacé) ;
+   - **Logiciels** (Debian) : décochez **environnement de bureau** et **GNOME**, cochez **serveur SSH** et
+     **utilitaires usuels du système** ;
+   - **Ubuntu Server** : cochez **Install OpenSSH server**.
+5. Retirez la clé quand l'installation le demande : la machine redémarre sur le système installé.
+
+Laissez la machine branchée au réseau. Si elle a déjà un Debian ou un Ubuntu compatible, gardez-le : il suffit que le
+serveur SSH soit installé (`sudo apt install -y openssh-server`).
+
+### Serveur loué (VPS)
+
+Chez votre hébergeur (OVHcloud, Hetzner, Scaleway, Ionos…), choisissez **Debian 12/13** ou **Ubuntu 24.04 LTS** (ou
+plus récent) à la commande. Vous recevez l'**adresse IP** du serveur et un accès SSH.
+
+> Si l'hébergeur vous connecte directement en **root**, tapez les commandes de ce guide **sans** le mot `sudo` (ou
+> installez-le d'abord avec `apt install -y sudo`).
+
+## 4. Se connecter à la machine en SSH
+
+**Trouvez l'adresse IP de la machine** : dans l'interface de votre box (liste des appareils connectés), ou sur la
+machine elle-même avec la commande `hostname -I`. Pour un VPS, l'hébergeur vous l'a donnée.
+
+Sur votre ordinateur, ouvrez un terminal : sous Windows, **Terminal** ou **PowerShell** (la commande `ssh` est déjà
+installée) ; sous macOS et Linux, l'application **Terminal**. Tapez, en remplaçant `admin` par votre nom
+d'utilisateur et `192.168.1.50` par l'adresse de la machine :
+
+```bash
+ssh admin@192.168.1.50
+```
+
+À la première connexion, tapez `yes` pour accepter l'empreinte de la machine, puis votre mot de passe (rien ne
+s'affiche pendant la saisie, c'est normal).
+
+> **Conseil (machine à la maison)** : dans l'interface de votre box, rubrique **DHCP / baux statiques** (ou
+> « IP fixe »), réservez cette adresse à la machine. Elle ne changera plus, et le panel restera toujours à la même
+> adresse.
+
+## 5. Préparer le système
+
+Toutes les commandes suivantes se tapent **sur la machine**, dans la session SSH.
+
+Vérifiez d'abord que votre compte peut utiliser `sudo` :
+
+```bash
+sudo whoami
+```
+
+La réponse doit être `root`. Si vous lisez « *n'est pas dans le fichier sudoers* » (« *is not in the sudoers file* »),
+passez en root avec `su -` (mot de passe root), tapez `usermod -aG sudo admin` (avec votre nom d'utilisateur), puis
+`exit` deux fois et reconnectez-vous en SSH.
+
+Mettez le système à jour :
+
+```bash
+sudo apt update && sudo apt full-upgrade -y
+```
+
+Redémarrez la machine :
+
+```bash
+sudo reboot
+```
+
+Attendez une minute, puis reconnectez-vous en SSH (même commande qu'à l'étape 4).
+
+## 6. Installer AstraPanel
+
+Installez git, qui sert à télécharger le panel :
 
 ```bash
 sudo apt install -y git
 ```
 
-La dernière version est toujours sur la branche `AstraPanel-Latest` :
+Téléchargez la dernière version d'AstraPanel (elle est toujours sur la branche `AstraPanel-Latest`) :
 
 ```bash
 git clone -b AstraPanel-Latest https://github.com/rizaky-myapps/AstraPanel.git
 ```
 
-```bash
-cd AstraPanel && sudo ./install.sh
-```
-
-Ouvrez ensuite `http://<ip-de-la-machine>:8080` et saisissez le jeton d'installation affiché à la fin du script.
-Toutes les étapes, de la préparation de la machine jusqu'à la mise en ligne, sont dans le
-[tutoriel](docs/TUTORIEL.md).
-
-Le script installe Node.js 24 LTS (si besoin), git, zip, les outils de compilation (pour les modules natifs de vos
-bots), crée l'utilisateur système `astrapanel`, copie le panel dans `/opt/astrapanel` et le lance comme service
-systemd, avec le service de mise à jour `astrapanel-update`. Relancer le script ne touche pas à vos applications.
-
-## Versions
-
-- **`AstraPanel-Latest`** (branche principale) contient toujours la dernière version. Chaque version est aussi
-  conservée sur sa propre branche **`AstraPanel-V.X.Y.Z`**, avec exactement les mêmes fichiers.
-- Les versions avancent de 0.0.1 à chaque publication : 1.2.8 → 1.2.9 → 1.3.0 → 1.3.1.
-- Les panels installés regardent `AstraPanel-Latest` toutes les 5 minutes et lisent la version dans son
-  `package.json` : si elle est plus récente, une notification l'annonce aux administrateurs, et un clic dans
-  **Paramètres → Mises à jour** l'installe.
-- Pour publier une version : `./scripts/nouvelle-version.sh` (calcule la version suivante, met à jour
-  `package.json`, pousse `AstraPanel-Latest` et crée `AstraPanel-V.X.Y.Z`).
-
-## Fonctionnement
-
-```
-                Internet (HTTPS, votre nom de domaine)
-                                │
-                     ┌──────────▼──────────┐
-                     │  Cloudflare (edge)  │
-                     └──────────▲──────────┘
-                                │ tunnel sortant (aucun port ouvert sur la box)
-   ┌────────────────────────────┴────────────────────────────────────────┐
-   │ Votre machine (Linux)                                                │
-   │   AstraPanel :8080 ── supervise ──► cloudflared, site :4000,         │
-   │   (interface + API)                  site :4001, bot Discord…        │
-   │   astrapanel-update (root, sur demande) : installe AstraPanel-Latest │
-   │   astrapanel-reboot (root, sur demande) : redémarre la machine       │
-   └──────────────────────────────────────────────────────────────────────┘
-```
-
-- Chaque application est un processus lancé par le panel dans son propre groupe de processus (arrêt propre de tout
-  l'arbre, `npm start` compris), avec redémarrage automatique et backoff en cas de plantage.
-- Les sites reçoivent leur port dans `PORT`. Le tunnel Cloudflare, lancé en même temps que le panel, redirige chaque
-  domaine vers le bon port.
-- Le panel tourne sans privilèges. Pour se mettre à jour, il crée `data/update-request` : une unité systemd `.path`
-  lance alors `astrapanel-update` en root, qui télécharge la branche `AstraPanel-Latest` et relance `install.sh`.
-  Même principe pour redémarrer la machine (Paramètres → Hardware) : `data/reboot-request` → `astrapanel-reboot`.
-- Les données sont dans `/opt/astrapanel/data` : `db.json` (configuration), `apps/<id>/` (fichiers des applis),
-  `logs/` (journaux avec rotation), `metrics.json` (historique des graphiques), `bin/cloudflared`.
-
-## Développement
-
-Node.js 20 ou plus suffit, sans aucun `npm install` :
+Entrez dans le dossier téléchargé :
 
 ```bash
-npm run dev
+cd AstraPanel
 ```
 
-Le panel démarre sur `http://localhost:8080` avec ses données dans `./data` ; le jeton de première connexion
-s'affiche dans le terminal. Variables utiles : `ASTRA_PORT` (ou `PORT`), `ASTRA_DATA_DIR`, `ASTRA_HOST`. Le panel peut donc aussi tourner comme
-application d'un autre AstraPanel (pour tester une version) : il prend le port fourni dans `PORT` et garde ses données
-dans son propre dossier `data/`.
+Lancez l'installation :
 
 ```bash
-npm test
+sudo ./install.sh
 ```
 
+> **Dépôt privé ?** Si `git clone` demande un identifiant, entrez votre nom d'utilisateur GitHub puis, comme mot de
+> passe, un *personal access token* (GitHub → Settings → Developer settings → Personal access tokens).
+
+Le script travaille seul pendant quelques minutes. Il :
+
+- installe les outils nécessaires : git, zip / unzip, rsync et les outils de compilation (utiles à certains modules
+  npm de vos bots, comme ceux pour la voix) ;
+- installe **Node.js 24 LTS** si la machine n'a pas déjà Node.js 20 ou plus récent ;
+- crée l'utilisateur système `astrapanel`, qui fait tourner le panel et vos applications **sans droits
+  administrateur** ;
+- copie le panel dans `/opt/astrapanel` et crée le service `astrapanel`, qui **démarre tout seul avec la machine** ;
+- installe les services de **mise à jour** et de **redémarrage** que le panel déclenche depuis son interface.
+
+À la fin, il affiche l'adresse du panel et un **jeton d'installation** (notez-le) :
+
 ```
-src/
-  server.js          serveur HTTP, routes, arrêt propre
-  auth.js            comptes et grades (scrypt), sessions signées, limitation des tentatives
-  domains.js         validation des noms de domaine
-  tunnel.js          tunnel Cloudflare : cloudflared, API (tunnel, ingress, DNS)
-  update.js          suivi de la branche AstraPanel-Latest, demande de mise à jour
-  audit.js           journal d'activité (qui a fait quoi, quand)
-  hardware.js        informations sur la machine, demande de redémarrage
-  version.js         numéros de version (+0.0.1) et noms des branches
-  metrics.js         historique CPU / température / RAM (1 h, 12 h, 24 h, 3 j, 7 j)
-  storage.js         disques et analyse de l'espace occupé
-  system.js          statistiques de la machine
-  apps/manager.js    cycle de vie des applis : démarrage, plantages, déploiements
-  apps/files.js      opérations sur les fichiers (confinées au dossier de l'app)
-  apps/logs.js       journaux en mémoire + fichiers avec rotation
-  routes/            API REST (/api/...) et webhook (/hooks/...)
-public/              interface web (JavaScript natif, sans build)
-runtime/             serveur de fichiers statiques utilisé par les sites statiques
-templates/           modèles de départ (bot Discord, site Node.js, site statique)
-deploy/              services systemd, scripts de mise à jour (update.sh) et de redémarrage (reboot.sh)
-scripts/             publication d'une nouvelle version (nouvelle-version.sh)
-install.sh           installation / mise à jour sur la machine
+✔ AstraPanel est installé et démarré !
+
+  Adresse du panel : http://192.168.1.50:8080
+
+  Jeton d'installation (à saisir à la première connexion) : Xy3k9QpL2mWa
 ```
 
-## Sécurité
+Le panel utilise le **port 8080**. Pour en choisir un autre, lancez l'installation avec l'option `--port` :
 
-- Le code du panel appartient à `root` et le service tourne sous l'utilisateur sans privilèges `astrapanel`,
-  avec un service systemd durci (`ProtectSystem`, `NoNewPrivileges`).
-- Mots de passe hachés avec scrypt, cookies `HttpOnly` + `SameSite=Strict`, protection CSRF, limitation des
-  tentatives de connexion, jeton à usage unique pour créer le premier compte.
-- Grades : seules les routes d'administration (paramètres, utilisateurs, stockage, mises à jour, tunnel, suppression
-  d'applications) sont réservées aux administrateurs. L'accès à chaque application est vérifié côté serveur pour
-  toutes ses routes : un utilisateur absent de sa liste reçoit « application introuvable ». Un utilisateur peut tout
-  de même exécuter du code via ses applications : ne donnez de compte qu'à des personnes de confiance.
-- Le gestionnaire de fichiers ne sort jamais du dossier de l'application et ne suit pas les liens symboliques qui
-  pointent ailleurs ; les fichiers affichés en aperçu sont servis avec une politique CSP « sandbox ».
-- Le service de mise à jour ne télécharge que le dépôt enregistré à l'installation (fichier appartenant à root) et
-  installe toujours `AstraPanel-Latest`. Le service de redémarrage n'accepte qu'une demande du démarrage en cours.
-- Journal d'activité : chaque action est enregistrée avec le compte et l'adresse IP, sans mot de passe, jeton ni
-  valeur de variable.
-- **Toutes les applications tournent sous le même utilisateur** : une application peut lire les fichiers des
-  autres et la configuration du panel. N'hébergez que du code en lequel vous avez confiance.
-- N'ouvrez jamais le port 8080 sur votre box : pour administrer à distance, utilisez le domaine du panel via le
-  tunnel Cloudflare, ou un VPN.
+```bash
+sudo ./install.sh --port=9000
+```
+
+## 7. Première connexion
+
+1. Sur votre ordinateur (ou votre téléphone), **connecté au même réseau que la machine**, ouvrez dans le navigateur
+   l'adresse affichée par le script : `http://<ip-de-la-machine>:8080`.
+2. Saisissez le **jeton d'installation**. Si vous l'avez perdu, affichez-le sur la machine :
+
+   ```bash
+   sudo cat /opt/astrapanel/data/setup-token
+   ```
+
+3. Choisissez votre **nom d'utilisateur** et un **mot de passe** solide (8 caractères minimum). Ce premier compte est
+   **administrateur** : il pourra ensuite créer d'autres comptes.
+
+C'est installé ! 🎉 Vous arrivez sur le tableau de bord du panel.
+
+> **Pare-feu** : si vous avez activé `ufw` sur la machine, autorisez le panel (le script vous le rappelle) :
+>
+> ```bash
+> sudo ufw allow 8080/tcp
+> ```
+>
+> N'ouvrez **jamais** le port 8080 sur votre box : pour accéder au panel depuis l'extérieur, utilisez le tunnel
+> Cloudflare intégré (voir le [tutoriel Cloudflare](docs/CLOUDFLARE.md)) ou un VPN.
+
+## 8. Commandes utiles
+
+Toutes se tapent sur la machine, en SSH.
+
+| Pour… | Commande |
+| --- | --- |
+| Voir si le panel tourne | `sudo systemctl status astrapanel` |
+| Lire ses messages en direct (Ctrl+C pour quitter) | `sudo journalctl -u astrapanel -f` |
+| Le redémarrer | `sudo systemctl restart astrapanel` |
+| Le mettre à jour (aussi possible depuis **Paramètres → Mises à jour**) | `sudo astrapanel-update` |
+| Revenir à une version précise | `sudo astrapanel-update AstraPanel-V.1.4.4` |
+| Réinitialiser un mot de passe oublié | `sudo astrapanel-cli reset-password admin` |
+| Retrouver l'adresse IP de la machine | `hostname -I` |
+
+Les mises à jour sont annoncées dans le panel (cloche de la barre du haut) : un clic dans **Paramètres → Mises à
+jour** suffit, sans SSH.
+
+Pour **changer le port** plus tard, relancez l'installation depuis le dossier téléchargé, après l'avoir mis à jour
+(vos applications et vos comptes sont conservés) :
+
+```bash
+cd ~/AstraPanel && git pull && sudo ./install.sh --port=9000
+```
+
+## 9. Désinstaller
+
+Depuis le dossier téléchargé à l'étape 6 :
+
+```bash
+cd ~/AstraPanel && sudo ./uninstall.sh
+```
+
+Vos données (applications, comptes, journaux) restent dans `/opt/astrapanel/data`. Pour **tout supprimer**,
+définitivement :
+
+```bash
+cd ~/AstraPanel && sudo ./uninstall.sh --purge
+```
+
+## 10. En cas de problème
+
+**La page du panel ne s'ouvre pas.**
+- Vérifiez que le panel tourne : `sudo systemctl status astrapanel` doit afficher `active (running)`. Sinon, lisez
+  ses derniers messages : `sudo journalctl -u astrapanel -n 50`.
+- Vérifiez l'adresse : `hostname -I` donne l'IP de la machine, et le port est `8080` (sauf si vous l'avez changé).
+- Votre ordinateur doit être sur le même réseau que la machine (pas en 4G, par exemple).
+- Pare-feu `ufw` actif : `sudo ufw allow 8080/tcp`.
+
+**« Lancez ce script avec sudo ».** Tapez bien `sudo ./install.sh`, depuis le dossier `AstraPanel`.
+
+**« sudo : commande introuvable ».** Le système n'a pas `sudo` (installation Debian avec un mot de passe root,
+certains VPS) : passez en root avec `su -`, puis `apt install -y sudo` et `usermod -aG sudo admin` (avec votre nom
+d'utilisateur), puis déconnectez-vous et reconnectez-vous.
+
+**« Système 32 bits détecté ».** Réinstallez la machine avec un système **64 bits** (étape 3).
+
+**L'installation s'arrête sur une erreur réseau** (téléchargement de Node.js ou des paquets). Vérifiez la connexion
+de la machine (`ping -c 3 debian.org`) puis relancez simplement `sudo ./install.sh` : le script peut être relancé
+autant de fois que nécessaire, sans rien perdre.
+
+**Mot de passe du panel oublié.** `sudo astrapanel-cli reset-password admin` (avec votre nom d'utilisateur du panel).
+
+## 11. Et ensuite ?
+
+- 📘 [**Tutoriel complet**](docs/TUTORIEL.md) : prise en main du panel, héberger un bot Discord, un site Node.js ou
+  statique, gérer les fichiers, le déploiement automatique depuis GitHub, les utilisateurs, la sécurité de la
+  machine, les sauvegardes.
+- ☁️ [**Tutoriel Cloudflare**](docs/CLOUDFLARE.md) : mettre vos sites en ligne en HTTPS avec votre nom de domaine,
+  sans ouvrir de port sur votre box.
+- 🛠️ [**Fonctionnement technique**](docs/TECHNIQUE.md) : architecture, versions, développement et sécurité.

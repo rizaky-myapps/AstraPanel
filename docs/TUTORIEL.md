@@ -606,6 +606,11 @@ sudo journalctl -u astrapanel -f
 Les journaux de chaque application sont dans la console du panel (bouton **Télécharger** pour le fichier complet) et
 dans `/opt/astrapanel/data/logs/`. Le journal de la dernière mise à jour est dans `/var/log/astrapanel-update.log`.
 
+La console affiche les **couleurs choisies par vos applications**, comme un terminal (chalk, picocolors, winston,
+pino-pretty, les objets affichés par `console.log`…) : le panel leur donne la variable `FORCE_COLOR`, car sans
+terminal la plupart des outils n'en mettent pas. Pour des journaux sans couleurs, ajoutez la variable `NO_COLOR`
+(valeur `1`) dans l'onglet **Variables**. Le fichier téléchargé reste du texte brut, sans codes de couleur.
+
 **Redémarrer la machine sans SSH.** **Paramètres → Hardware** (administrateurs) affiche la machine : modèle,
 processeur, mémoire, stockage, température (avec le ventilateur et l'alimentation quand la machine les signale),
 système, adresse IP et durée depuis le dernier démarrage.

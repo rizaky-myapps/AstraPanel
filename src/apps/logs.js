@@ -1,11 +1,22 @@
 import { closeSync, createWriteStream, existsSync, openSync, readSync, renameSync, statSync, truncateSync } from 'node:fs';
 
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)/g;
+// Séquences d'échappement des terminaux : CSI (\x1b[…), OSC (\x1b]…), séquences courtes et ESC isolé
+const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[ -/]*[0-~]|\x1b/g;
+// Couleurs et styles du texte (SGR : \x1b[…m), les seules gardées dans les journaux
+const SGR_RE = /^\x1b\[[0-9;:]*m$/;
+// caractères de contrôle invisibles (sauf tabulation et ESC des couleurs)
+const CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g;
 const LINE_RE = /^(\S+) \[(out|err|sys)\] (.*)$/;
 const MAX_LINE = 4000;
 
 export function stripAnsi(text) {
   return text.replace(ANSI_RE, '');
+}
+
+// Garde les couleurs choisies par l'application (affichées par la console du panel) et retire le reste
+// (déplacements du curseur, effacements de ligne, titres de fenêtre, liens…).
+export function keepColors(text) {
+  return text.replace(ANSI_RE, (seq) => (SGR_RE.test(seq) ? seq : '')).replace(CONTROL_RE, '');
 }
 
 // Découpe un flux texte en lignes complètes.
@@ -69,8 +80,9 @@ export class LogBuffer {
   }
 
   push(stream, message) {
-    let text = stripAnsi(String(message)).replace(/\r/g, '');
-    if (text.length > MAX_LINE) text = text.slice(0, MAX_LINE) + '…';
+    let text = keepColors(String(message).replace(/\r/g, ''));
+    // ligne trop longue : coupée, sans laisser une séquence de couleur à moitié
+    if (text.length > MAX_LINE) text = text.slice(0, MAX_LINE).replace(/\x1b[^m]*$/, '') + '\x1b[0m…';
     const line = { t: Date.now(), s: stream, m: text };
     this.lines.push(line);
     if (this.lines.length > this.maxLines) this.lines.splice(0, this.lines.length - this.maxLines);

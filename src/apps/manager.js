@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { HttpError } from '../http/util.js';
 import { assertDomainsFree, normalizeDomains } from '../domains.js';
-import { LogBuffer } from './logs.js';
+import { LogBuffer, stripAnsi } from './logs.js';
 import { baseEnv, killGroup, pipeOutput, runCommand, runShell } from './process.js';
 import { CLK_TCK, sampleProcessGroups } from './stats.js';
 import { addrInUsePort, listProcesses, portOwner } from '../ports.js';
@@ -413,9 +413,15 @@ export class AppManager {
   }
 
   appEnv(app, extra = {}) {
+    const userEnv = app.env || {};
     const env = {
       ...baseEnv(),
       npm_config_update_notifier: 'false',
+      // couleurs : sans terminal, la plupart des outils n'en mettent pas ; on les force (chalk, Node, npm…) pour que
+      // la console du panel affiche les couleurs choisies par l'application (sauf si elle règle elle-même
+      // FORCE_COLOR ou NO_COLOR dans ses variables)
+      ...('FORCE_COLOR' in userEnv || 'NO_COLOR' in userEnv ? {} : { FORCE_COLOR: '3' }),
+      COLORTERM: 'truecolor',
       ...extra,
       ...app.env,
       ASTRA_APP_ID: app.id,
@@ -657,7 +663,7 @@ export class AppManager {
     waiters.forEach((fn) => fn());
     log.system(`✖ Le processus s’est arrêté de façon inattendue (${how})`);
     rt.status = 'crashed';
-    const busyPort = addrInUsePort(log.lines.filter((l) => l.t >= rt.startedAt - 1000).map((l) => l.m).join('\n'));
+    const busyPort = addrInUsePort(stripAnsi(log.lines.filter((l) => l.t >= rt.startedAt - 1000).map((l) => l.m).join('\n')));
     const crashed = this.find(id);
     if (busyPort && crashed) this.explainAddrInUse(crashed, busyPort).catch(() => {});
     // commande qui lance le vrai programme en arrière-plan puis se termine : le panel ne peut pas le surveiller
@@ -988,7 +994,7 @@ export class AppManager {
       await git(['fetch', '-q', '--depth', '1', 'origin', app.git.branch || 'HEAD'], 'git fetch');
     } catch (err) {
       // cause la plus probable, d'après les messages de git
-      const hint = gitHint(log.lines.slice(from).map((l) => l.m).join('\n'), app);
+      const hint = gitHint(stripAnsi(log.lines.slice(from).map((l) => l.m).join('\n')), app);
       if (hint) err.message = `${err.message} : ${hint}`;
       throw err;
     }

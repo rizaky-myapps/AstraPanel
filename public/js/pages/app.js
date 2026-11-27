@@ -3,6 +3,7 @@ import { findApp, isAdmin, onAppsChange, refreshApps, state } from '../state.js'
 import { envEditor } from '../env-editor.js';
 import { filesTab } from './files.js';
 import { formatWhen, renderLineChart } from '../chart.js';
+import { newState, renderAnsi } from '../ansi.js';
 import {
   $,
   avatar,
@@ -228,10 +229,14 @@ function consoleTab(el, page, app) {
     out.appendChild(div);
   };
 
+  // couleurs choisies par l'application : elles se poursuivent d'une ligne à l'autre (comme dans un terminal),
+  // séparément pour la sortie normale et la sortie d'erreur ; un message du panel repart de zéro
+  let colors = { out: newState(), err: newState() };
   const append = (lines) => {
     out.querySelector('.console-empty')?.remove();
     const frag = document.createDocumentFragment();
     for (const line of lines) {
+      if (line.s === 'sys') colors = { out: newState(), err: newState() };
       const row = document.createElement('div');
       row.className = `l ${line.s}`;
       const ts = document.createElement('span');
@@ -239,7 +244,7 @@ function consoleTab(el, page, app) {
       ts.textContent = line.t ? formatLogTime(line.t) : '';
       const msg = document.createElement('span');
       msg.className = 'm';
-      msg.textContent = line.m;
+      renderAnsi(msg, line.m, colors[line.s] || newState());
       row.append(ts, msg);
       frag.appendChild(row);
     }
@@ -253,6 +258,7 @@ function consoleTab(el, page, app) {
   source.addEventListener('backlog', (e) => {
     const lines = JSON.parse(e.data);
     out.textContent = '';
+    colors = { out: newState(), err: newState() };
     if (lines.length) append(lines);
     else showEmpty();
   });

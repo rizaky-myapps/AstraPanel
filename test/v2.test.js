@@ -1220,3 +1220,63 @@ test('statistiques des applications : historique CPU / RAM par palier, API, thè
   await ctx.request('DELETE', `/api/apps/${app.id}`);
   assert.deepEqual(ctx.panel.appMetrics.query(app.id, '1h').points, []);
 });
+
+test('console : couleurs des applications gardées dans les journaux et affichées par la console', async (t) => {
+  const { keepColors, stripAnsi, LogBuffer } = await import('../src/apps/logs.js');
+  const { PALETTE, newState, parseAnsi } = await import('../public/js/ansi.js');
+
+  // serveur : les couleurs (SGR) restent, les autres séquences (curseur, effacement, titre, sonnerie) partent
+  assert.equal(keepColors('\x1b[2K\x1b[1G\x1b[32mprêt\x1b[0m\x07 \x1b]0;titre\x07ok\x1b[?25l'), '\x1b[32mprêt\x1b[0m ok');
+  assert.equal(keepColors('\x1b[38:2::255:0:0mrouge'), '\x1b[38:2::255:0:0mrouge');
+  assert.equal(stripAnsi('\x1b[1;31mErreur\x1b[0m'), 'Erreur');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'astra-ansi-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const log = new LogBuffer(path.join(dir, 'app.log'));
+  assert.equal(log.push('out', '\x1b[32mvert\x1b[0m\r').m, '\x1b[32mvert\x1b[0m');
+  const long = log.push('out', `${'x'.repeat(3998)}\x1b[31mabc`).m; // coupée sans laisser de séquence à moitié
+  assert.ok(long.endsWith('x\x1b[0m…'), JSON.stringify(long.slice(-12)));
+  log.stream.end();
+  await new Promise((r) => log.stream.on('finish', r));
+  assert.equal(new LogBuffer(path.join(dir, 'app.log')).lines[0].m, '\x1b[32mvert\x1b[0m'); // relu depuis le disque
+
+  // console : 16 couleurs, vives, 256 couleurs, RVB, styles, inversion
+  assert.deepEqual(parseAnsi('a \x1b[1;31mrouge\x1b[0m b'), [
+    { text: 'a ', style: null },
+    { text: 'rouge', style: { color: PALETTE[1], fontWeight: '700' } },
+    { text: ' b', style: null },
+  ]);
+  assert.equal(parseAnsi('\x1b[94mx')[0].style.color, PALETTE[12]);
+  assert.equal(parseAnsi('\x1b[38;5;208mx')[0].style.color, 'rgb(255, 135, 0)');
+  assert.equal(parseAnsi('\x1b[38;5;244mx')[0].style.color, 'rgb(128, 128, 128)');
+  assert.deepEqual(parseAnsi('\x1b[38;2;10;20;30;48;2;1;2;3mx')[0].style, { color: 'rgb(10, 20, 30)', backgroundColor: 'rgb(1, 2, 3)' });
+  assert.equal(parseAnsi('\x1b[38:2::255:0:0mx')[0].style.color, 'rgb(255, 0, 0)');
+  assert.deepEqual(parseAnsi('\x1b[3;4;9;2mx')[0].style, { opacity: '0.65', fontStyle: 'italic', textDecoration: 'underline line-through' });
+  assert.deepEqual(parseAnsi('\x1b[7mx')[0].style, { color: '#08090b', backgroundColor: '#f1f3f9' });
+  assert.deepEqual(parseAnsi('\x1b[2Kplain\x1b[1Gtext'), [{ text: 'plaintext', style: null }]);
+  // la couleur continue sur la ligne suivante jusqu'à sa remise à zéro, comme dans un terminal
+  const st = newState();
+  parseAnsi('\x1b[33mdébut', st);
+  assert.equal(parseAnsi('suite', st)[0].style.color, PALETTE[3]);
+  assert.equal(parseAnsi('\x1b[39mfin', st)[0].style, null);
+
+  // application réelle : Node colore ses sorties grâce à FORCE_COLOR, sauf si l'application demande NO_COLOR
+  const ctx = await startTestPanel();
+  t.after(() => ctx.close());
+  await ctx.setupAdmin();
+  const run = async (name, env) => {
+    const { app } = (await ctx.request('POST', '/api/apps', { body: { name, type: 'bot', source: 'empty', startCommand: 'node -e "console.log({ nombre: 42 })"', autoRestart: false, env } })).data;
+    await ctx.request('POST', `/api/apps/${app.id}/start`);
+    const lines = ctx.panel.apps.logsFor(app.id).lines;
+    for (let i = 0; i < 100 && !lines.some((l) => l.s === 'out'); i++) await new Promise((r) => setTimeout(r, 50));
+    return { app, line: lines.find((l) => l.s === 'out')?.m };
+  };
+  const colored = await run('Couleurs', {});
+  assert.equal(colored.line, '{ nombre: \x1b[33m42\x1b[39m }');
+  assert.equal((await run('Sans couleurs', { NO_COLOR: '1' })).line, '{ nombre: 42 }');
+  // le journal téléchargé reste du texte brut
+  const res = await fetch(`${ctx.base}/api/apps/${colored.app.id}/logs/download`, { headers: { Cookie: ctx.getCookie() } });
+  const text = await res.text();
+  assert.match(text, /\[out\] \{ nombre: 42 \}/);
+  assert.ok(!text.includes('\x1b'));
+});
+
