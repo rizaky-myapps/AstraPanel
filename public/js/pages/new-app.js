@@ -62,13 +62,22 @@ export function renderNewApp(view) {
                 <input id="na-name" type="text" name="name" class="new-app-name" value="${f.name}" placeholder="${type.placeholder}" maxlength="60" autocomplete="off" />
               </div>
               <div class="field">
-                <label for="na-type">Type d'application ${tip(type.desc)}</label>
-                <div class="type-select">
-                  <span class="app-icon ${f.type}">${icon(type.icon)}</span>
-                  <select id="na-type" name="type">
-                    ${TYPES.map((t) => html`<option value="${t.id}" ${t.id === f.type ? 'selected' : ''}>${t.title}</option>`)}
-                  </select>
-                  <span class="type-select-caret">${icon('chevronDown')}</span>
+                <label for="na-type" id="na-type-label">Type d'application ${tip(type.desc)}</label>
+                <div class="type-picker">
+                  <button type="button" class="type-picker-btn" id="na-type" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="na-type-label na-type">
+                    <span class="app-icon ${f.type}">${icon(type.icon)}</span>
+                    <span class="type-picker-value">${type.title}</span>
+                    <span class="type-select-caret">${icon('chevronDown')}</span>
+                  </button>
+                  <ul class="type-picker-list" role="listbox" aria-labelledby="na-type-label" hidden>
+                    ${TYPES.map(
+                      (t) => html`<li role="option" data-type="${t.id}" aria-selected="${t.id === f.type}" tabindex="-1">
+                        <span class="app-icon ${t.id}">${icon(t.icon)}</span>
+                        <span class="type-picker-name">${t.title}</span>
+                        <span class="type-picker-check">${icon('check')}</span>
+                      </li>`,
+                    )}
+                  </ul>
                 </div>
               </div>
             </div>
@@ -169,16 +178,75 @@ export function renderNewApp(view) {
     if (e.target.name === 'mcFlavor') {
       keepMc();
       fillVersions(root, e.target.value);
+    }
+  });
+
+  // ---- Menu « Type d'application » : liste sur mesure (icônes, coche, clavier) ----
+  const setType = (id) => {
+    if (id !== f.type) {
+      keepMc();
+      f.type = id;
+      if (!f.startTouched) f.startCommand = defaultStart(f.type);
+      render();
+      loadVersions();
+    } else closeTypes();
+    $('#na-type', root).focus();
+  };
+  const typeList = () => $('.type-picker-list', root);
+  const options = () => [...typeList().querySelectorAll('[role=option]')];
+  const openTypes = () => {
+    const list = typeList();
+    list.hidden = false;
+    $('#na-type', root).setAttribute('aria-expanded', 'true');
+    (list.querySelector('[aria-selected=true]') || options()[0]).focus();
+  };
+  function closeTypes() {
+    const list = typeList();
+    if (!list || list.hidden) return;
+    list.hidden = true;
+    $('#na-type', root).setAttribute('aria-expanded', 'false');
+  }
+  root.addEventListener('click', (e) => {
+    if (e.target.closest('#na-type')) {
+      if (typeList().hidden) openTypes();
+      else closeTypes();
       return;
     }
-    if (e.target.name !== 'type') return;
-    keepMc();
-    f.type = e.target.value;
-    if (!f.startTouched) f.startCommand = defaultStart(f.type);
-    render();
-    loadVersions();
-    $('#na-type', root).focus();
+    const option = e.target.closest('.type-picker-list [role=option]');
+    if (option) setType(option.dataset.type);
   });
+  root.addEventListener('keydown', (e) => {
+    if (e.target.closest('#na-type') && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
+      e.preventDefault();
+      openTypes();
+      return;
+    }
+    const option = e.target.closest('.type-picker-list [role=option]');
+    if (!option) return;
+    const all = options();
+    const i = all.indexOf(option);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      all[(i + (e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length].focus();
+    } else if (e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      all[e.key === 'Home' ? 0 : all.length - 1].focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setType(option.dataset.type);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeTypes();
+      $('#na-type', root).focus();
+    } else if (e.key === 'Tab') closeTypes();
+  });
+  // clic ailleurs : la liste se ferme (écouteur retiré quand on quitte la page)
+  const outside = (e) => {
+    if (!root.isConnected) return document.removeEventListener('mousedown', outside);
+    if (!e.target.closest('.type-picker')) closeTypes();
+    return undefined;
+  };
+  document.addEventListener('mousedown', outside);
 
   root.addEventListener('input', (e) => {
     const { name } = e.target;

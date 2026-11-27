@@ -5691,34 +5691,7 @@ body.os .console-output {
   font-size: 16px;
   font-weight: 600;
 }
-.type-select {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.type-select select {
-  appearance: none;
-  -webkit-appearance: none;
-  min-height: 52px;
-  padding: 10px 42px 10px 58px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.type-select .app-icon {
-  position: absolute;
-  left: 8px;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  pointer-events: none;
-}
-.type-select .app-icon svg {
-  width: 19px;
-  height: 19px;
-}
 .type-select-caret {
-  position: absolute;
-  right: 13px;
   display: grid;
   color: var(--muted);
   pointer-events: none;
@@ -5727,8 +5700,7 @@ body.os .console-output {
   width: 18px;
   height: 18px;
 }
-.type-select select:focus + .type-select-caret,
-.type-select:hover .type-select-caret {
+.type-picker-btn:hover .type-select-caret {
   color: var(--text);
 }
 .new-app-toggles {
@@ -6514,9 +6486,6 @@ select option {
   background: var(--panel);
   color: var(--text);
 }
-.type-select select {
-  background-image: none;
-}
 
 /* navigateurs récents : la liste elle-même prend le style du panel (verre dépoli, coins arrondis, choix en couleur) */
 @supports (appearance: base-select) {
@@ -6763,5 +6732,120 @@ select option {
 }
 .mc-eula a {
   color: var(--accent-fg);
+}
+
+/* ---- Menu « Type d'application » : bouton et liste sur mesure (icônes en couleur, coche, clavier) ---- */
+.type-picker {
+  position: relative;
+}
+.type-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 7px 14px 7px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background-color 0.15s;
+}
+.type-picker-btn:hover {
+  border-color: var(--faint);
+  background-color: rgba(var(--ink-rgb), 0.04);
+}
+.type-picker-btn:focus-visible,
+.type-picker-btn[aria-expanded='true'] {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.16);
+}
+.type-picker-btn .app-icon,
+.type-picker-list .app-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.type-picker-btn .app-icon svg,
+.type-picker-list .app-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.type-picker-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.type-picker-btn .type-select-caret {
+  position: static;
+  transition: transform 0.18s ease;
+}
+.type-picker-btn[aria-expanded='true'] .type-select-caret {
+  transform: rotate(180deg);
+  color: var(--text);
+}
+.type-picker-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 18px 44px rgba(var(--shadow-rgb), calc(0.42 * var(--shadow-k)));
+  animation: pop 0.14s ease;
+}
+.type-picker-list[hidden] {
+  display: none;
+}
+.type-picker-list [role='option'] {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px 7px 7px;
+  border-radius: 11px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.type-picker-list [role='option']:hover,
+.type-picker-list [role='option']:focus-visible {
+  outline: none;
+  background: rgba(var(--ink-rgb), 0.07);
+}
+.type-picker-list [role='option'][aria-selected='true'] {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--accent-fg);
+  font-weight: 650;
+}
+.type-picker-name {
+  flex: 1;
+  min-width: 0;
+}
+.type-picker-check {
+  display: grid;
+  color: var(--accent-fg);
+  opacity: 0;
+}
+.type-picker-check svg {
+  width: 17px;
+  height: 17px;
+}
+[aria-selected='true'] > .type-picker-check {
+  opacity: 1;
 }
 
