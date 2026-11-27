@@ -252,66 +252,52 @@ vide dans les courbes. 100 % correspond à un cœur de processeur entièrement o
    **New Application**. Donnez-lui un nom.
 2. Dans l'onglet **Bot**, cliquez sur **Reset Token** et copiez le token affiché.
    **Ce token est un mot de passe** : ne le publiez jamais (ni sur GitHub, ni sur Discord).
-3. Le modèle d'AstraPanel utilise uniquement les commandes slash et n'a besoin d'aucun *intent* privilégié. Si votre
-   propre bot lit le contenu des messages, activez **Message Content Intent** dans ce même onglet.
+3. Si votre bot lit le contenu des messages, activez **Message Content Intent** dans ce même onglet (un bot qui
+   n'utilise que des commandes slash n'a besoin d'aucun *intent* privilégié).
 4. Invitez le bot sur votre serveur : onglet **OAuth2** → **URL Generator**, cochez les scopes **bot** et
    **applications.commands**, puis les permissions utiles (au minimum *View Channels* et *Send Messages*). Ouvrez l'URL générée et
    choisissez votre serveur.
 
-### 7.2 Lancer le bot d'exemple
+### 7.2 Créer l'application
 
 1. Dans AstraPanel, cliquez sur le **+** à côté de **Applications** dans le panneau latéral (ou sur la tuile **Ajouter**
    du tableau de bord) : la page **Nouvelle application** s'ouvre.
-2. Type : **Bot Discord**. Source : **Modèle de départ**.
-3. Donnez-lui un nom, puis dans **Variables d'environnement**, collez votre token comme valeur de `DISCORD_TOKEN`.
-4. Laissez cochés « Redémarrage automatique » et « Démarrer après la création », puis cliquez sur **Créer l'application**.
-   Un écran d'attente s'affiche pendant la création, puis l'application s'ouvre toute seule : son installation se
-   poursuit dans l'onglet **Console**.
+2. Tout en haut, donnez-lui un **nom**, puis choisissez **Bot Discord** dans le menu **Type d'application**.
+3. **Commande de démarrage** : la commande que vous tapez d'habitude, par exemple `node index.js` ou `npm start`
+   (`node index.js` consomme un peu moins de mémoire).
+4. Cliquez sur **Créer l'application**. Un écran d'attente s'affiche un court instant, puis l'application s'ouvre sur
+   son onglet **Fichiers** : son dossier est vide, prêt à recevoir votre code.
 
-La console s'ouvre : le panel installe discord.js (`npm install`, environ une minute) puis démarre le bot.
-Vous devez voir :
+### 7.3 Ajouter le code du bot
 
-```
-✅ Connecté en tant que MonBot#1234 sur 1 serveur(s)
-📝 2 commandes slash enregistrées
-```
+- **Depuis GitHub** : onglet **Déploiement** → **Dépôt Git**, collez l'URL du dépôt (et la branche si ce n'est pas
+  celle par défaut), **Enregistrer**, puis **Déployer maintenant** : le panel clone le dépôt et installe les
+  dépendances.
+- **Depuis votre ordinateur** : compressez le dossier du projet en `.zip` **sans le dossier `node_modules`**, puis
+  onglet **Déploiement** → **Importer une archive** (laissez « Déployer ensuite » sur **ON**). Pour quelques fichiers,
+  vous pouvez aussi les glisser-déposer directement dans l'onglet **Fichiers**, puis cliquer sur **Installer les
+  dépendances** dans l'onglet **Déploiement**.
 
-Sur Discord, tapez `/ping` : le bot répond. 🎉
+Le panel lance `npm install` à chaque déploiement : les dépendances sont toujours à jour.
 
-La commande **`/text`** fait parler le bot : `/text message:Bonjour à tous !` envoie le message dans le salon
-actuel, et l'option `salon` permet d'en choisir un autre. Écrivez `\n` pour aller à la ligne. Par sécurité :
+### 7.4 Ajouter le token et démarrer
 
-- seuls les membres qui ont la permission **Gérer les messages** voient la commande (un administrateur peut changer
-  ça dans **Paramètres du serveur → Intégrations → votre bot**) ;
-- les mentions `@everyone`, `@here` et de rôles sont désactivées dans les messages envoyés par `/text` ;
-- le bot doit avoir le droit d'écrire dans le salon choisi, sinon il vous le signale.
+1. Onglet **Variables** : ajoutez la variable `DISCORD_TOKEN` et collez votre token comme valeur, puis
+   **Enregistrer**. Dans votre code, lisez-la avec `process.env.DISCORD_TOKEN`. Si votre projet utilise un fichier
+   `.env` avec le paquet `dotenv`, collez son contenu en **Mode texte (.env)** : les variables définies dans le panel
+   sont prioritaires.
+2. Cliquez sur **Démarrer** : la **Console** affiche les messages de votre bot, qui se connecte à Discord. 🎉
 
-Dans l'onglet **Paramètres** de chaque application, deux interrupteurs règlent son lancement :
+Dans l'onglet **Paramètres** de chaque application, deux interrupteurs règlent son lancement (ils sont aussi proposés
+à la création) :
 
 - **Redémarrage automatique en cas de plantage** : relance l'application si elle s'arrête de façon inattendue ;
 - **Démarrer avec la machine** : lance l'application à chaque démarrage de la machine. Sur **OFF**, elle reste arrêtée
   jusqu'à ce que vous cliquiez sur **Démarrer** (un simple redémarrage du panel, lors d'une mise à jour par exemple,
   remet toujours chaque application dans l'état où elle était).
 
-Pour modifier le bot, ouvrez l'onglet **Fichiers**, cliquez sur `index.js`, éditez puis **Enregistrer** (ou Ctrl+S),
-et cliquez sur **Redémarrer** (voir l'étape 9 pour tout ce que permet le gestionnaire de fichiers).
-
-### 7.3 Héberger votre propre bot
-
-**Depuis GitHub** : Nouvelle application → Bot Discord → **Dépôt Git**, collez l'URL du dépôt (et la branche si ce
-n'est pas celle par défaut).
-
-**Depuis votre ordinateur** : compressez le dossier du projet en `.zip` **sans le dossier `node_modules`**, puis
-Nouvelle application → Bot Discord → **Archive ZIP**.
-
-Dans les deux cas :
-
-- **Commande de démarrage** : la commande que vous tapez d'habitude, par exemple `node index.js` ou `npm start`
-  (`node index.js` consomme un peu moins de mémoire).
-- **Variables d'environnement** : mettez-y le token et vos autres secrets. Dans votre code, lisez-les avec
-  `process.env.DISCORD_TOKEN`. Si votre projet utilise un fichier `.env` avec le paquet `dotenv`, vous pouvez coller
-  son contenu en « Mode texte (.env) » : les variables définies dans le panel sont prioritaires.
-- Le panel lance `npm install` puis démarre le bot. Les dépendances sont réinstallées à chaque déploiement.
+Pour modifier le bot, ouvrez l'onglet **Fichiers**, double-cliquez sur `index.js`, éditez puis **Enregistrer** (ou
+Ctrl+S), et cliquez sur **Redémarrer** (voir l'étape 9 pour tout ce que permet le gestionnaire de fichiers).
 
 **Bot musical / vocal** : installez ffmpeg sur la machine, puis redéployez le bot :
 
@@ -339,7 +325,8 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Site en ligne sur le port ${port}`));
 ```
 
-Créez l'application avec le type **Site Node.js** et la source de votre choix (modèle, Git, ZIP). Exemples de réglages :
+Créez l'application avec le type **Site Node.js**, puis ajoutez son code comme pour un bot (onglet **Fichiers**, ou
+onglet **Déploiement** : dépôt Git ou archive ZIP, voir l'étape 7.3). Exemples de réglages :
 
 | Projet | Commande de démarrage | Commande de build |
 | --- | --- | --- |

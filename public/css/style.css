@@ -5606,3 +5606,76 @@ body.os .console-output {
 .desk-hero {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* ---- Nouvelle application : nom en haut, type dans un menu déroulant ---- */
+.new-app-id {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr);
+  gap: 16px;
+  align-items: end;
+}
+.new-app-id .field {
+  margin-bottom: 0;
+}
+.new-app .new-app-name {
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.type-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.type-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 52px;
+  padding: 10px 42px 10px 58px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.type-select .app-icon {
+  position: absolute;
+  left: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  pointer-events: none;
+}
+.type-select .app-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.type-select-caret {
+  position: absolute;
+  right: 13px;
+  display: grid;
+  color: var(--muted);
+  pointer-events: none;
+}
+.type-select-caret svg {
+  width: 18px;
+  height: 18px;
+}
+.type-select select:focus + .type-select-caret,
+.type-select:hover .type-select-caret {
+  color: var(--text);
+}
+.new-app-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 32px;
+  padding-top: 4px;
+}
+.new-app-toggles .check {
+  margin-bottom: 10px;
+}
+.new-app .error-text:empty {
+  min-height: 0;
+}
+@media (max-width: 760px) {
+  .new-app-id {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -3,7 +3,7 @@
 **Un panel web auto-hébergé pour faire tourner vos sites et vos bots Discord en JavaScript sur votre propre machine
 Linux : ordinateur, mini-PC, serveur à la maison, VPS…**
 
-Créez une application en quelques clics (depuis un modèle, un dépôt Git ou une archive ZIP), suivez ses logs en direct,
+Créez une application en quelques clics, déposez-y votre code (fichiers, dépôt Git ou archive ZIP), suivez ses logs en direct,
 gérez ses fichiers, ses variables d'environnement, et mettez vos sites en ligne en HTTPS avec votre nom de domaine grâce
 au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 
@@ -61,7 +61,8 @@ au tunnel Cloudflare intégré. Le panel se met à jour lui-même depuis GitHub.
 - **Grades ADMIN et UTILISATEUR** : chaque application a sa liste d'utilisateurs (onglet **Utilisateurs** : le
   créateur, figé, puis les comptes à qui il a donné accès) ; les administrateurs voient toutes les applications et
   gèrent aussi le panel
-- **Modèles de départ** : bot discord.js (commandes `/ping` et `/text`), site Node.js, site statique
+- **Création express** : un nom, un type (bot Discord, site Node.js ou site statique) et l'application est prête,
+  avec un dossier vide où déposer votre code
 - Applications relancées automatiquement au démarrage de la machine, interface utilisable sur mobile
 - **Zéro dépendance npm** : le panel n'utilise que Node.js, rien à compiler
 
