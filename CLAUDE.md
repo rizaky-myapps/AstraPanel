@@ -17,3 +17,6 @@
   `package.json` à la leur ; `sudo astrapanel-update` installe aussi `AstraPanel-Latest`.
 - Pour publier : `./scripts/nouvelle-version.sh` (sans argument : calcule la version suivante, commite
   `package.json`, pousse `AstraPanel-Latest` et `AstraPanel-V.X.Y.Z` en une seule fois).
+- **Claude ne publie pas** : il pousse ses commits uniquement sur sa branche de travail (`claude/…`), sans créer de
+  branche ni toucher à `AstraPanel-Latest`, et ne lance pas `./scripts/nouvelle-version.sh` (ni ne change la
+  `version` de `package.json`) : la publication se fait à part.

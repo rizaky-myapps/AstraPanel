@@ -19,7 +19,7 @@ export function sendDownload(res, file, size, name, type = 'application/octet-st
   createReadStream(file).pipe(res);
 }
 
-export function appRoutes(router, { apps, appMetrics, config, store }) {
+export function appRoutes(router, { apps, appMetrics, config, store, ports }) {
   const q = (ctx, key) => ctx.query.get(key) ?? '';
 
   // --- Applications -------------------------------------------------------
@@ -47,10 +47,16 @@ export function appRoutes(router, { apps, appMetrics, config, store }) {
 
   // Serveurs Minecraft : adresses utiles pour les joueurs (IP publique de la box, IP de la machine sur le réseau
   // local) et gestion du DNS (automatique si le panel est relié à un compte Cloudflare)
-  router.get('/api/minecraft/network', async () => {
-    const lanIp = Object.values(os.networkInterfaces())
-      .flat()
-      .find((i) => i && i.family === 'IPv4' && !i.internal)?.address || null;
+  // ?app=<id> : en plus, l'état de l'ouverture de son port sur la box (onglet « Gestion de PORT »)
+  router.get('/api/minecraft/network', async (ctx) => {
+    const appId = ctx.query.get('app');
+    const portForward = appId && ports && apps.list(ctx.user).some((a) => a.id === appId) ? ports.routeFor(appId) : null;
+    const lanIp =
+      portForward?.lanIp ||
+      Object.values(os.networkInterfaces())
+        .flat()
+        .find((i) => i && i.family === 'IPv4' && !i.internal)?.address ||
+      null;
     const cf = store.data.settings.tunnel;
     let ip = null;
     try {
@@ -58,7 +64,7 @@ export function appRoutes(router, { apps, appMetrics, config, store }) {
     } catch {
       // pas d'accès à Internet : l'interface l'indique
     }
-    return { publicIp: ip, lanIp, dnsAuto: Boolean(cf.mode === 'api' && cf.api?.apiToken && cf.api?.accountId) };
+    return { publicIp: ip, lanIp, dnsAuto: Boolean(cf.mode === 'api' && cf.api?.apiToken && cf.api?.accountId), portForward };
   });
 
   // Historique processeur / mémoire de l'application (onglet Statistiques)

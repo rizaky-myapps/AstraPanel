@@ -60,6 +60,13 @@ sécurité. Pour l'installer, suivez le [README](../README.md) ; pour l'utiliser
   `/apps/<id>/<onglet>`, `/settings/<onglet>`, `/storage/…`, `/aide/…` ; le serveur renvoie `index.html` pour ces
   adresses (`src/http/panel-assets.js`) et `public/js/router.js` affiche la bonne page. Les anciennes adresses
   `/#/…` sont converties.
+- Ports de la box (`src/nat/`) : détection de la box et de l'opérateur (`/api_version` de la Freebox, recherche SSDP
+  UPnP, nom inverse de l'adresse IP publique), puis redirections tenues à jour toutes les 5 minutes vers l'adresse
+  locale de la machine : API Freebox OS (`freebox.js` : autorisation validée sur la box, session HMAC-SHA1,
+  `fw/redir/`, HTTPS avec les certificats racine de Free `freebox-ca.pem`), UPnP IGD (`upnp.js` : SOAP
+  `AddPortMapping`…), ou guide manuel. Ports voulus : serveurs de jeux + `settings.ports.rules` ; les redirections du
+  panel portent le commentaire « AstraPanel · … », les autres ne sont jamais touchées. Le jeton d'application de la
+  Freebox reste dans `db.json`, jamais renvoyé au navigateur.
 - Liste des applications : rangée par catégorie (`APP_GROUPS` dans `public/js/ui.js` : bots, sites, serveurs), puis
   dans l'ordre choisi par glisser-déposer (`public/js/sortable.js` : souris, appui long au toucher, Alt + flèches).
   Cet ordre est propre à chaque compte : `prefs.appOrder` (identifiants des applications), enregistré par

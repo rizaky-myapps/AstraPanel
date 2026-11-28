@@ -208,11 +208,13 @@ panel se présente comme le **bureau d'un système d'exploitation** :
 - chaque page s'ouvre en **plein écran** dans une fenêtre posée sur le fond d'écran : la page elle-même ne défile
   jamais, seul le contenu de la fenêtre défile quand il est long (la console, elle, remplit exactement la fenêtre) ;
 - le **clic droit** ouvre le menu du panel : sur une application (panneau latéral ou bureau) pour l'ouvrir, aller
-  à sa console, ses statistiques, ses fichiers, la démarrer, l'arrêter ou la redémarrer ; ailleurs pour rechercher,
+  à sa console, ses statistiques, ses fichiers, la démarrer, l'arrêter ou la redémarrer, et, si elle a un domaine,
+  **Ouvrir <domaine>** (un site, dans un nouvel onglet) ou **Copier l'IP** (un serveur de jeux : copie son adresse
+  de connexion) ; ailleurs pour rechercher,
   créer une application, actualiser, changer de thème ou masquer le panneau latéral. Dans les champs de saisie, et
   avec **Maj + clic droit**, c'est le menu habituel du navigateur ;
 - le panel a un **thème sombre et un thème clair** : par défaut (et pour tout nouveau compte) il est en
-  **automatique** et suit le réglage de votre appareil ; **Paramètres → Mon compte → Apparence** permet aussi de
+  **automatique** et suit le réglage de votre appareil ; **Mon compte → Apparence** (menu du compte, en haut à droite) permet aussi de
   choisir la couleur du panel et du fond d'écran (voir l'étape 13).
 
 Le **tableau de bord** (adresse `/home`) est le bureau lui-même, sans fenêtre : ses widgets sont posés sur le fond
@@ -388,8 +390,9 @@ démarre. Au premier démarrage, le serveur prépare le monde (une à deux minut
 - Dans Minecraft : **Multijoueur → Ajouter un serveur**, adresse : l'**adresse IP de la machine**, suivie de
   `:port` si ce n'est pas 25565 (ou son nom de domaine, voir plus bas). Le bouton avec l'adresse, en haut de la page
   du serveur, la copie.
-- **Depuis Internet** : redirigez le port TCP du serveur (25565) vers la machine dans l'interface de votre box
-  (rubrique NAT / redirection de ports).
+- **Depuis Internet** : le port TCP du serveur (25565) doit être ouvert dans votre box, vers la machine. Le panel
+  peut le faire pour vous : voir [9.4](#94-ouvrir-les-ports-de-la-box-gestion-de-port). Sinon, créez la redirection
+  dans l'interface de votre box (rubrique NAT / redirection de ports).
 - **Avec un nom de domaine** (par exemple `mc.mondomaine.fr`) : indiquez-le dans le champ **Nom de domaine** du
   serveur (à la création ou dans l'onglet **Paramètres**). Le tunnel Cloudflare ne transporte que le web, pas
   Minecraft : le panel crée donc chez Cloudflare un enregistrement `A` **« DNS uniquement »** (nuage gris) vers
@@ -397,8 +400,9 @@ démarre. Au premier démarrage, le serveur prépare le monde (une à deux minut
   alors seulement `mc.mondomaine.fr`, sans le port). Si votre box change d'adresse IP publique, le panel met
   l'enregistrement à jour tout seul (vérification toutes les 5 minutes). Cela demande le mode « Géré depuis le
   panel » du tunnel Cloudflare ; sinon, l'onglet **Paramètres** du serveur indique les enregistrements à créer
-  vous-même. Dans tous les cas, la **redirection du port** dans la box reste nécessaire : le guide affiché sous le
-  domaine donne le port et l'adresse de la machine.
+  vous-même. Dans tous les cas, le **port doit être ouvert** dans la box (automatiquement avec la
+  [Gestion de PORT](#94-ouvrir-les-ports-de-la-box-gestion-de-port), sinon à la main) : le guide affiché sous le
+  domaine indique où en est le port et l'adresse de la machine.
 - Si le pare-feu `ufw` est actif sur la machine : `sudo ufw allow 25565/tcp`.
 - La **console** accepte les commandes du serveur : `op Pseudo`, `whitelist add Pseudo`, `say Bonjour`, `list`…
 
@@ -414,6 +418,45 @@ démarre. Au premier démarrage, le serveur prépare le monde (une à deux minut
   le dossier `plugins` (Paper : déposez-y les fichiers `.jar` des plugins puis redémarrez) et les mondes (`world`…) :
   pour les sauvegarder, clic droit → **Compresser en ZIP**, puis **Télécharger**.
 - **Statistiques** : processeur et mémoire du serveur sur 1 h à 7 jours.
+
+### 9.4 Ouvrir les ports de la box (Gestion de PORT)
+
+Pour qu'on rejoigne un serveur de jeux depuis Internet, son port doit être **redirigé** par la box vers la machine.
+**Paramètres → Gestion de PORT** (administrateurs) s'en charge :
+
+1. **Détecter** : le panel reconnaît votre box et votre opérateur (Free, Orange, SFR, Bouygues Telecom…) et choisit
+   la méthode, affichée dans **Méthode → Automatique** :
+   - **API Freebox** (Freebox Ultra, Pop, Delta, Revolution…) : le panel crée lui-même les redirections dans la
+     Freebox ;
+   - **UPnP** (Livebox, Bbox, box SFR et la plupart des autres) : la box accepte les demandes d'ouverture des machines
+     du réseau, si l'option **UPnP** est activée dans son interface ;
+   - **Manuel** : le panel affiche les redirections à créer vous-même dans la box (adresse de son interface, menu,
+     protocole, ports et adresse de la machine).
+
+   Vous pouvez aussi choisir la méthode vous-même dans la liste.
+2. Activez **Ouvrir les ports automatiquement**.
+3. **Freebox uniquement**, une seule fois : **Connecter le panel**, puis acceptez la demande **AstraPanel** sur
+   l'écran de la Freebox Server. Ensuite, dans Freebox OS (`https://mafreebox.freebox.fr`) : **Paramètres de la
+   Freebox → Gestion des accès → Applications → AstraPanel**, cochez **Modification des réglages de la Freebox**,
+   puis **Vérifier** dans le panel.
+
+Le tableau **Ports ouverts** liste les serveurs de jeux (ils y apparaissent tout seuls ; l'interrupteur de la ligne
+ferme un serveur sur Internet) et les ports ajoutés avec **Ajouter** (un nom, TCP, UDP ou les deux, le port public et,
+si besoin, le port de la machine). Chaque ligne indique son état : **Ouvert**, **Conflit** (le port est déjà
+redirigé vers autre chose : **Remplacer** le reprend), **Erreur** (avec l'explication) ou **À créer dans la box**
+(méthode Manuel).
+
+Bon à savoir :
+
+- les redirections créées par le panel portent le commentaire « AstraPanel · … » ; celles que vous avez faites
+  vous-même ne sont jamais modifiées (sauf **Remplacer**). Désactiver l'ouverture automatique, ou changer de méthode,
+  retire celles du panel ;
+- elles sont vérifiées toutes les 5 minutes : si l'adresse de la machine change, le panel les corrige. Donnez quand
+  même une adresse fixe à la machine dans la box (bail DHCP statique, voir l'[étape 4](#4-donner-une-adresse-ip-fixe-à-la-machine)) ;
+- **Free, IPv4 partagée** : seule une plage de ports (affichée dans le panel) peut être ouverte. Pour tous les ports,
+  demandez une **IPv4 full-stack** (gratuite) dans votre espace abonné Free ;
+- les **sites** n'ont pas besoin d'ouvrir de port : ils passent par le tunnel Cloudflare. N'ouvrez jamais le port du
+  panel (8080).
 
 ## 10. Gérer les fichiers d'une application
 
@@ -538,11 +581,11 @@ AstraPanel a deux grades :
 | Donner ou retirer l'accès à une application (onglet **Utilisateurs**) | toutes | celles qu'il a créées |
 | Supprimer une application | ✔ | |
 | Explorateur de stockage | ✔ | |
-| Paramètres : utilisateurs, mises à jour, tunnel Cloudflare, ports | ✔ | |
+| Paramètres : général, utilisateurs, mises à jour, tunnel Cloudflare, gestion de PORT, hardware, journal | ✔ | |
 | Gérer son compte : pseudo, photo de profil, mot de passe, autres appareils, apparence | ✔ | ✔ |
 
-**Mon compte.** Chaque compte gère son profil dans **Paramètres → Mon compte** (ou par sa photo, en haut à droite de
-l'écran, puis **Mon compte**). En haut, une carte présente votre **photo**, votre **pseudo**, votre grade, votre date
+**Mon compte.** Chaque compte gère son profil dans **Mon compte** : cliquez sur sa photo, en haut à droite de
+l'écran, puis **Mon compte** (adresse `/settings/compte`). En haut, une carte présente votre **photo**, votre **pseudo**, votre grade, votre date
 d'arrivée et le nombre de vos applications :
 
 - **Photo de profil** : cliquez sur la photo (ou sur l'initiale). Sans photo, choisissez une image (PNG, JPEG, WebP ou

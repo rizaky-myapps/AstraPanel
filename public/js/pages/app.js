@@ -795,6 +795,22 @@ function settingsTab(el, page, app) {
 }
 
 // ---- Paramètres d'un serveur Minecraft ------------------------------------------------------
+// Étape « box internet » du guide de connexion d'un serveur Minecraft : port ouvert par le panel
+// (onglet Paramètres → Gestion de PORT), problème à corriger, ou redirection à créer soi-même
+function boxStep(net, port) {
+  const pf = net.portForward;
+  const to = html`<code>${net.lanIp || 'l’adresse de la machine'}</code>`;
+  const settingsLink = isAdmin() ? html` (<a href="/settings/ports">Paramètres → Gestion de PORT</a>)` : '';
+  if (pf?.enabled && pf.status === 'ok') {
+    return html`<li>Box internet : le port TCP <b>${port}</b> est ouvert automatiquement vers ${to}${pf.operator ? ` (${pf.operator})` : ''}.</li>`;
+  }
+  if (pf?.enabled && (pf.status === 'error' || pf.status === 'conflict')) {
+    return html`<li><b class="text-err">Box internet : le port ${port} n’a pas pu être ouvert.</b> ${pf.message}${settingsLink}</li>`;
+  }
+  if (pf?.status === 'closed') return html`<li>Box internet : ce serveur est volontairement fermé${settingsLink}.</li>`;
+  return html`<li>Dans votre box (NAT / redirection de ports) : port TCP <b>${port}</b> vers ${to}, port <b>${port}</b>.${isAdmin() ? html` Le panel peut s’en charger : <a href="/settings/ports">Paramètres → Gestion de PORT</a>.` : ''}</li>`;
+}
+
 async function minecraftSettings(el, page, app) {
   const mc = app.mc;
   const draw = (machine) =>
@@ -847,7 +863,7 @@ async function minecraftSettings(el, page, app) {
           ${net.dnsAuto
             ? html`<li>Cloudflare : le panel crée l'enregistrement A <code>${domain}</code> → <code>${ip}</code> (« DNS uniquement »)${port !== 25565 ? html` et l'enregistrement SRV du port ${port}` : ''}, et le met à jour si votre adresse IP publique change.</li>`
             : html`<li>Cloudflare → votre domaine → DNS → <b>Add record</b> : type <code>A</code>, nom <code>${domain}</code>, IPv4 <code>${ip}</code>, proxy <b>désactivé</b> (nuage gris).${port !== 25565 ? html` Puis un enregistrement <code>SRV</code> : nom <code>_minecraft._tcp.${domain}</code>, priorité 0, poids 5, port ${port}, cible <code>${domain}</code>.` : ''} Pour que le panel s'en charge, reliez-le à Cloudflare (Paramètres → Tunnel Cloudflare, « Géré depuis le panel »).</li>`}
-          <li>Dans votre box (NAT / redirection de ports) : port TCP <b>${port}</b> vers <code>${net.lanIp || 'l’adresse de la machine'}</code>, port <b>${port}</b>.</li>
+          ${boxStep(net, port)}
           <li>Les joueurs se connectent avec <code>${domain}</code>.</li>
         </ol>
       </div></div>`,
@@ -855,7 +871,7 @@ async function minecraftSettings(el, page, app) {
   };
   const loadNet = () =>
     api
-      .get('/minecraft/network')
+      .get(`/minecraft/network?app=${encodeURIComponent(app.id)}`)
       .then((n) => {
         net = n;
         if (page.active) drawGuide();

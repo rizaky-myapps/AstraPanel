@@ -86,7 +86,8 @@ function route() {
   const params = match.m.slice(1);
   // page d'où l'on ouvre l'aide (elle n'est plus dans la barre latérale) : son bouton « Retour » y ramène
   if (match.r.nav !== 'aide') state.returnTo = path + location.search;
-  setActiveNav(match.r.nav, params[0]);
+  // « Mon compte » (/settings/compte, ouvert depuis le menu en haut à droite) : aucun lien du panneau latéral en surbrillance
+  setActiveNav(match.r.nav === 'settings' && params[0] === 'compte' && isAdmin() ? 'compte' : match.r.nav, params[0]);
   const view = $('#view');
   // le contenu défile dans la fenêtre : on revient en haut en changeant de page (pas d'onglet d'une même application)
   if (match.r.nav !== 'app' || view.dataset.app !== params[0]) $('#window-body')?.scrollTo(0, 0);

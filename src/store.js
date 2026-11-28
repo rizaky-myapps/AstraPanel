@@ -12,16 +12,26 @@ const DEFAULT_SETTINGS = {
     token: '',
     api: { apiToken: '', accountId: '', accountName: '', tunnelId: '', tunnelName: '', tunnelToken: '' },
   },
+  // Gestion des ports de la box (onglet « Gestion de PORT ») : désactivée tant que l'administrateur ne l'active pas
+  ports: {
+    enabled: false,
+    method: 'auto', // auto | freebox | upnp | manual
+    skip: [], // serveurs de jeux à ne pas ouvrir
+    rules: [], // redirections ajoutées à la main : { id, name, proto, port, lanPort }
+    freebox: { appToken: '', trackId: null, status: null, https: false },
+    detected: null, // dernière détection de l'opérateur
+  },
 };
 
+// Réglages enregistrés complétés par les valeurs par défaut. Toujours des copies : les valeurs par défaut
+// (objets, listes) ne doivent jamais être partagées ni modifiées par la suite.
 function mergeDefaults(defaults, value) {
   if (typeof defaults !== 'object' || defaults === null || Array.isArray(defaults)) {
-    return value === undefined ? defaults : value;
+    return value === undefined ? structuredClone(defaults) : value;
   }
-  const out = { ...defaults };
-  for (const [key, val] of Object.entries(value || {})) {
-    out[key] = key in defaults ? mergeDefaults(defaults[key], val) : val;
-  }
+  const out = {};
+  for (const key of Object.keys(defaults)) out[key] = mergeDefaults(defaults[key], value?.[key]);
+  for (const [key, val] of Object.entries(value || {})) if (!(key in defaults)) out[key] = val;
   return out;
 }
 

@@ -192,9 +192,9 @@ Le tunnel ne transporte que le web : un serveur Minecraft n'y passe pas. Pour qu
   joueurs tapent seulement `mc.monsite.fr`.
 
 Si votre box change d'adresse IP publique (c'est fréquent chez les particuliers), le panel met l'enregistrement à
-jour tout seul. Il reste à **rediriger le port** du serveur vers la machine dans votre box (rubrique NAT /
-redirection de ports) : le guide affiché dans l'onglet **Paramètres** du serveur donne le port et l'adresse de la
-machine. Dans le tableau des domaines, ces domaines apparaissent avec la mention **Minecraft · DNS uniquement**.
+jour tout seul. Il reste à **ouvrir le port** du serveur vers la machine dans votre box : automatiquement avec
+**Paramètres → Gestion de PORT** (API Freebox ou UPnP), sinon à la main (rubrique NAT / redirection de ports). Le
+guide affiché dans l'onglet **Paramètres** du serveur indique où en est le port et l'adresse de la machine. Dans le tableau des domaines, ces domaines apparaissent avec la mention **Minecraft · DNS uniquement**.
 
 ## 6. Mode B : tunnel géré depuis le site Cloudflare
 

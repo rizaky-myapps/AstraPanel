@@ -29,43 +29,54 @@ import {
 import { renderAnsi } from '../ansi.js';
 import { refreshRoute } from '../router.js';
 
+// Onglets des paramètres (administrateurs), dans cet ordre. « Mon compte » n'est pas dans la barre :
+// on l'ouvre depuis le menu du compte, en haut à droite (/settings/compte).
 const TABS = [
-  { id: 'compte', label: 'Mon compte', icon: 'user' },
-  { id: 'utilisateurs', label: 'Utilisateurs', icon: 'users', admin: true },
-  { id: 'mises-a-jour', label: 'Mises à jour', icon: 'arrowUpCircle', admin: true },
-  { id: 'tunnel', label: 'Tunnel Cloudflare', icon: 'cloud', admin: true },
-  { id: 'general', label: 'Général', icon: 'sliders', admin: true },
-  { id: 'hardware', label: 'Hardware', icon: 'cpu', admin: true },
-  { id: 'journal', label: 'Journal', icon: 'clock', admin: true },
+  { id: 'general', label: 'Général', icon: 'sliders' },
+  { id: 'utilisateurs', label: 'Utilisateurs', icon: 'users' },
+  { id: 'mises-a-jour', label: 'Mises à jour', icon: 'arrowUpCircle' },
+  { id: 'tunnel', label: 'Tunnel Cloudflare', icon: 'cloud' },
+  { id: 'ports', label: 'Gestion de PORT', icon: 'router' },
+  { id: 'hardware', label: 'Hardware', icon: 'cpu' },
+  { id: 'journal', label: 'Journal', icon: 'clock' },
 ];
 
 const short = (sha) => (sha ? sha.slice(0, 7) : '—');
 const rerender = () => refreshRoute();
 
-export function renderSettings(view, page, tab = 'compte', arg = '') {
-  const tabs = TABS.filter((t) => !t.admin || isAdmin());
-  if (!tabs.some((t) => t.id === tab)) tab = 'compte';
+// Onglet affiché : « Mon compte » pour un utilisateur (il n'a pas accès aux réglages du panel),
+// « Général » par défaut pour un administrateur
+export function settingsTab(tab) {
+  if (!isAdmin() || tab === 'compte') return 'compte';
+  return TABS.some((t) => t.id === tab) ? tab : 'general';
+}
+
+export function renderSettings(view, page, requested = '', arg = '') {
+  const tab = settingsTab(requested);
   const root = document.createElement('div');
   view.replaceChildren(root);
   setHTML(
     root,
-    html`${pageHero({
-        icon: 'sliders',
-        title: 'Paramètres',
-        info: 'Votre compte et, pour les administrateurs : les utilisateurs, les mises à jour, le tunnel Cloudflare, les réglages du panel, la machine et le journal d’activité.',
-      })}
-      ${tabs.length > 1 ? html`<nav class="tabs">${tabs.map((t) => html`<a href="/settings/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}</nav>` : ''}
-      <div id="settings-tab"></div>`,
+    tab === 'compte'
+      ? html`${pageHero({ icon: 'user', title: 'Mon compte', info: 'Votre pseudo, votre photo, votre mot de passe, vos appareils connectés, l’apparence du panel et votre activité récente.' })}
+          <div id="settings-tab"></div>`
+      : html`${pageHero({
+            icon: 'sliders',
+            title: 'Paramètres',
+            info: 'Les réglages du panel : utilisateurs, mises à jour, tunnel Cloudflare, ouverture des ports de la box, machine et journal d’activité. Votre compte est dans le menu en haut à droite.',
+          })}
+          <nav class="tabs">${TABS.map((t) => html`<a href="/settings/${t.id}" class="${t.id === tab ? 'active' : ''}">${icon(t.icon)} ${t.label}</a>`)}</nav>
+          <div id="settings-tab"></div>`,
   );
   const el = $('#settings-tab', root);
-  const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, general: generalTab, hardware: hardwareTab, journal: journalTab };
+  const renderers = { compte: accountTab, utilisateurs: usersTab, 'mises-a-jour': updateTab, tunnel: tunnelTab, ports: portsTab, general: generalTab, hardware: hardwareTab, journal: journalTab };
   return Promise.resolve(renderers[tab](el, page, arg)).catch((err) => {
     if (page.active) setHTML(el, html`<div class="alert err">${icon('alert')}<div>${err.message}</div></div>`);
   });
 }
 
 // ---- Mon compte ----------------------------------------------------------------
-const ACTIVITY_ICONS = { compte: 'user', application: 'box', fichiers: 'folder', tunnel: 'cloud', machine: 'server', panel: 'sliders' };
+const ACTIVITY_ICONS = { compte: 'user', application: 'box', fichiers: 'folder', tunnel: 'cloud', ports: 'router', machine: 'server', panel: 'sliders' };
 const DAY_FORMAT = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 // Force d'un mot de passe (indication, pas une règle) : longueur et variété des caractères
@@ -1123,7 +1134,7 @@ async function tunnelTab(el, page) {
                   return html`<tr>
                     <td>${mc ? html`<b>${r.hostname}</b>` : html`<a href="https://${r.hostname}" target="_blank" rel="noopener">${r.hostname}</a>`}<div class="hint">${r.label}</div></td>
                     <td class="hide-sm">${mc
-                      ? html`<span class="route-mc">${icon('cube')} Minecraft ${tip(html`Le tunnel ne transporte pas Minecraft : le domaine pointe directement sur l'adresse IP publique de la box (enregistrement A « DNS uniquement », tenu à jour si elle change)${r.port !== 25565 ? html`, plus un enregistrement SRV pour le port ${r.port}` : ''}. Redirigez le port TCP ${r.port} vers la machine dans votre box.`)}</span><div class="hint">DNS uniquement · port ${r.port}</div>`
+                      ? html`<span class="route-mc">${icon('cube')} Minecraft ${tip(html`Le tunnel ne transporte pas Minecraft : le domaine pointe directement sur l'adresse IP publique de la box (enregistrement A « DNS uniquement », tenu à jour si elle change)${r.port !== 25565 ? html`, plus un enregistrement SRV pour le port ${r.port}` : ''}. Le port TCP ${r.port} doit aussi être ouvert dans la box, vers cette machine : onglet <b>Gestion de PORT</b>.`)}</span><div class="hint">DNS uniquement · port ${r.port}</div>`
                       : html`<code>${r.service}</code>`}</td>
                     <td>
                       <span class="badge ${cls}">${label}</span>${s && s.status !== 'ok' ? html`<div class="hint">${s.message}</div>` : ''}
@@ -1313,6 +1324,301 @@ async function generalTab(el, page) {
   el.querySelector('[data-copy]')?.addEventListener('click', (e) => copyText(e.currentTarget.dataset.copy));
 }
 
+// ---- Gestion de PORT --------------------------------------------------------------------
+const PORT_METHODS = { freebox: 'API Freebox', upnp: 'UPnP', manual: 'Manuel' };
+const PORT_STATUS = {
+  ok: ['st-running', 'Ouvert'],
+  conflict: ['st-crashed', 'Conflit'],
+  error: ['st-crashed', 'Erreur'],
+  manual: ['st-restarting', 'À créer dans la box'],
+  off: ['', 'Non géré'],
+  closed: ['', 'Fermé'],
+};
+const PROTO_LABEL = { tcp: 'TCP', udp: 'UDP', both: 'TCP + UDP' };
+
+async function portsTab(el, page) {
+  let data = await api.get('/ports');
+  if (!page.active) return;
+  let fbx = null; // connexion du panel à la Freebox
+  let poll = null;
+  page.onCleanup(() => clearTimeout(poll));
+  const set = (next) => {
+    data = next;
+    draw();
+  };
+
+  function boxCard() {
+    const d = data.detected;
+    const op = d?.operator ? data.operators[d.operator] : null;
+    const chip = (ok, label) => html`<span class="badge ${ok ? 'st-running' : 'plain'}">${icon(ok ? 'check' : 'x')} ${label}</span>`;
+    return html`<section class="card">
+      <div class="card-header">
+        <h2>${icon('router')} Box internet ${tip(
+          html`Le panel détecte votre box et votre opérateur, puis choisit comment ouvrir les ports :<br /><br />
+            <b>API Freebox</b> : le panel crée les redirections dans la Freebox, après une autorisation à valider sur la box.<br />
+            <b>UPnP</b> : la plupart des box (Livebox, Bbox, box SFR…) acceptent les demandes d’ouverture des machines du réseau, si l’option UPnP est activée dans la box.<br />
+            <b>Manuel</b> : le panel indique les redirections à créer vous-même dans l’interface de la box.`,
+        )}</h2>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" data-detect>${icon('search')} Détecter</button>
+      </div>
+      <div class="card-body port-box-body">
+        <div class="port-box">
+          <span class="port-box-icon" aria-hidden="true">${icon('router')}</span>
+          <div class="port-box-text">
+            ${d
+              ? html`<b>${op?.label || 'Opérateur inconnu'}</b>${d.box ? html` · ${d.box}` : ''}
+                  <div class="hint">Détectée le ${formatDate(d.at)}${d.publicIp ? html` · IP publique <code>${d.publicIp}</code>` : ''}</div>
+                  <div class="port-chips">${chip(d.freebox, 'API Freebox')} ${chip(d.upnp, 'UPnP')}</div>`
+              : html`<b>Box pas encore détectée</b><div class="hint">Cliquez sur « Détecter » (quelques secondes)</div>`}
+          </div>
+        </div>
+        <div class="port-settings">
+          <label class="check port-auto">${toggle('enabled', data.enabled, { id: 'ports-enabled' })}<span>Ouvrir les ports automatiquement ${tip('Le panel ouvre lui-même, dans la box, les ports des serveurs de jeux et ceux ajoutés plus bas, vers cette machine. Il les tient à jour (toutes les 5 minutes) et retire ceux qui ne servent plus. Désactiver retire les redirections qu’il avait créées ; celles que vous avez faites vous-même ne sont jamais touchées.')}</span></label>
+          <div class="field">
+            <label for="port-method">Méthode</label>
+            <select id="port-method" name="method">
+              <option value="auto" ${data.method === 'auto' ? 'selected' : ''}>Automatique${d ? ` (${PORT_METHODS[d.method]})` : ''}</option>
+              ${Object.entries(PORT_METHODS).map(([id, label]) => html`<option value="${id}" ${data.method === id ? 'selected' : ''}>${label}</option>`)}
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function freeboxBody() {
+    if (!fbx) return html`<div class="card-body muted">${icon('refresh')} Vérification de la connexion…</div>`;
+    if (fbx.pending) {
+      return html`<div class="card-body">
+        <div class="alert info">${icon('router')}<div><b>Validez la demande « AstraPanel » sur l’écran de la Freebox Server</b> (avec les boutons en façade). Cette page se met à jour toute seule.</div></div>
+        <div class="row-actions"><button class="btn btn-ghost btn-sm" data-fbx-forget>Annuler</button></div>
+      </div>`;
+    }
+    if (!fbx.connected) {
+      return html`<div class="card-body">
+        ${fbx.outcome === 'denied' ? html`<div class="alert err">${icon('alert')}<div>Demande refusée sur la Freebox.</div></div>` : ''}
+        ${fbx.outcome === 'timeout' ? html`<div class="alert err">${icon('alert')}<div>La demande n’a pas été validée à temps sur la Freebox : recommencez.</div></div>` : ''}
+        <ol class="guide">
+          <li>Cliquez sur <b>Connecter le panel</b>.</li>
+          <li>Sur l’écran de la Freebox Server, acceptez la demande <b>AstraPanel</b>.</li>
+          <li>Dans Freebox OS (<a href="https://mafreebox.freebox.fr" target="_blank" rel="noopener">mafreebox.freebox.fr</a>) : <b>Paramètres de la Freebox → Gestion des accès → Applications → AstraPanel</b>, cochez <b>Modification des réglages de la Freebox</b>.</li>
+        </ol>
+        <div class="row-actions"><button class="btn btn-primary" data-fbx-connect>${icon('link')} Connecter le panel</button></div>
+      </div>`;
+    }
+    return html`<div class="card-body">
+      ${fbx.error ? html`<div class="alert err">${icon('alert')}<div>${fbx.error}</div></div>` : ''}
+      ${fbx.rights === false ? html`<div class="alert warn">${icon('alert')}<div><b>Il manque un droit au panel.</b> ${fbx.rightsHelp}</div></div>` : ''}
+      <div class="port-fbx">
+        <span class="badge ${fbx.rights ? 'st-running' : fbx.rights === false ? 'st-restarting' : 'plain'}">${fbx.rights ? 'Connectée' : fbx.rights === false ? 'Droit manquant' : 'Connectée'}</span>
+        <span class="muted">${fbx.model || 'Freebox'}</span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" data-fbx-check>${icon('refresh')} Vérifier</button>
+        <button class="btn btn-ghost btn-sm" data-fbx-forget>${icon('logout')} Déconnecter</button>
+      </div>
+    </div>`;
+  }
+
+  function rowsHTML() {
+    const routes = data.sync?.routes || [];
+    if (!routes.length) {
+      return html`<tr><td colspan="6" class="muted">Aucun port à ouvrir ${tip('Les serveurs de jeux apparaissent ici tout seuls. Pour un autre programme de cette machine, cliquez sur « Ajouter ».')}</td></tr>`;
+    }
+    return routes.map((r) => {
+      const [cls, label] = PORT_STATUS[r.status] || ['', r.status];
+      const game = r.kind === 'game';
+      return html`<tr>
+        <td>
+          <span class="port-name">${icon(game ? 'cube' : 'link')}<b>${r.label}</b></span>
+          <div class="hint">${game ? 'Serveur Minecraft' : 'Ajouté à la main'}</div>
+        </td>
+        <td class="hide-sm">${PROTO_LABEL[r.proto] || r.proto}</td>
+        <td><b>${r.port}</b></td>
+        <td class="hide-sm">${data.sync.lanIp ? html`<code>${data.sync.lanIp}:${r.lanPort}</code>` : r.lanPort}</td>
+        <td>
+          <span class="badge ${cls}">${label}</span>
+          ${r.message && r.message !== data.sync.error ? html`<div class="hint">${r.message}</div>` : ''}
+          ${r.status === 'conflict' ? html`<button class="btn btn-sm port-replace" data-replace="${r.key}" title="Remplacer la redirection existante par celle du panel">${icon('refresh')} Remplacer</button>` : ''}
+        </td>
+        <td class="port-actions">
+          ${game
+            ? html`<span title="${r.open ? 'Fermer ce serveur sur Internet' : 'Ouvrir ce serveur sur Internet'}">${toggle(`open-${r.appId}`, r.open, { sm: true, label: `Ouvrir ${r.label} sur Internet` })}</span>`
+            : html`<button class="btn btn-ghost btn-sm btn-icon" data-del-rule="${r.ruleId}" title="Retirer cette redirection" aria-label="Retirer ${r.label}">${icon('trash')}</button>`}
+        </td>
+      </tr>`;
+    });
+  }
+
+  function portsCard() {
+    const s = data.sync;
+    const op = data.detected?.operator ? data.operators[data.detected.operator] : data.operators.other;
+    return html`<section class="card">
+      <div class="card-header">
+        <h2>${icon('link')} Ports ouverts ${tip('Redirections de la box vers cette machine. Les sites n’en ont pas besoin : ils passent par le tunnel Cloudflare.')}</h2>
+        <span class="spacer"></span>
+        ${s && data.enabled && data.automatic ? html`<span class="hint hide-sm">Synchronisé à ${formatTime(s.at)}</span><button class="btn btn-sm" data-sync>${icon('refresh')} Synchroniser</button>` : ''}
+        <button class="btn btn-sm btn-primary" data-add-rule>${icon('plus')} Ajouter</button>
+      </div>
+      ${s?.error ? html`<div class="alert err port-alert">${icon('alert')}<div>${s.error}</div></div>` : ''}
+      ${data.enabled && !data.automatic && s?.routes.some((r) => r.status === 'manual')
+        ? html`<div class="alert info port-alert">${icon('info')}<div>
+            Créez ces redirections dans l’interface de votre box${op.admin ? html` (<a href="${op.admin}" target="_blank" rel="noopener">${op.admin.replace(/^https?:\/\//, '')}</a>)` : ''}, menu <b>${op.where}</b> : protocole, port public, puis l’adresse de cette machine et son port (colonne « Vers »).
+          </div></div>`
+        : ''}
+      <div class="ports-machine">
+        <span>${icon('server')} Cette machine : <code>${s?.lanIp || '—'}</code> ${tip('Donnez-lui une adresse fixe dans la box (bail DHCP statique) : si elle change, le panel corrige ses redirections, mais une adresse fixe évite toute coupure.')}</span>
+        ${s?.publicIp ? html`<span>${icon('globe')} IP publique : <code>${s.publicIp}</code></span>` : ''}
+        ${s?.portRange ? html`<span class="text-warn">${icon('alert')} IPv4 partagée : ports ${s.portRange[0]} à ${s.portRange[1]}</span>` : ''}
+      </div>
+      <div class="fm-scroll">
+        <table class="table compact ports-table">
+          <thead><tr><th>Nom</th><th class="hide-sm">Protocole</th><th>Port</th><th class="hide-sm">Vers</th><th>État</th><th></th></tr></thead>
+          <tbody>${rowsHTML()}</tbody>
+        </table>
+      </div>
+    </section>`;
+  }
+
+  function draw() {
+    if (!page.active) return;
+    setHTML(
+      el,
+      html`<div class="ports-page">
+        ${boxCard()}
+        ${data.effective === 'freebox'
+          ? html`<section class="card" id="fbx-card">
+              <div class="card-header"><h2>${icon('key')} Connexion à la Freebox ${tip('Une seule fois : la Freebox demande de valider l’accès du panel sur son écran. Le jeton reçu reste sur cette machine.')}</h2></div>
+              <div id="fbx-body">${freeboxBody()}</div>
+            </section>`
+          : ''}
+        ${portsCard()}
+      </div>`,
+    );
+  }
+
+  const drawFbx = () => {
+    const body = $('#fbx-body', el);
+    if (body) setHTML(body, freeboxBody());
+  };
+  async function loadFbx() {
+    clearTimeout(poll);
+    if (data.effective !== 'freebox' || !page.active) return;
+    try {
+      fbx = await api.get('/ports/freebox');
+    } catch (err) {
+      fbx = { connected: false, error: err.message };
+    }
+    if (!page.active) return;
+    drawFbx();
+    // validation sur l'écran de la box : on surveille ; une fois acceptée, les ports sont ouverts tout de suite
+    if (fbx.pending) poll = setTimeout(loadFbx, 2000);
+    else if (fbx.connected && data.enabled && !data.sync?.ok) set(await api.post('/ports/sync', {}));
+  }
+
+  const patch = (body, done) =>
+    api
+      .patch('/ports', body)
+      .then((next) => {
+        set(next);
+        loadFbx();
+        if (done) toast(done);
+      })
+      .catch((err) => {
+        toast(err.message, 'err');
+        draw();
+      });
+
+  el.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.name === 'enabled') patch({ enabled: t.checked }, t.checked ? 'Ouverture automatique des ports activée' : 'Ouverture automatique des ports désactivée');
+    else if (t.name === 'method') patch({ method: t.value }, 'Méthode enregistrée');
+    else if (t.name?.startsWith('open-')) {
+      const id = t.name.slice(5);
+      const skip = new Set(data.skip);
+      if (t.checked) skip.delete(id);
+      else skip.add(id);
+      patch({ skip: [...skip] });
+    }
+  });
+
+  el.addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.matches('[data-detect]')) {
+      await withBusy(b, async () => {
+        b.textContent = 'Détection…';
+        const next = await api.post('/ports/detect', {});
+        set(next);
+        toast(next.detected.label ? `Box détectée : ${next.detected.label}${next.detected.box ? ` · ${next.detected.box}` : ''}` : 'Aucune box reconnue : méthode « Manuel »');
+        loadFbx();
+      });
+      draw();
+    } else if (b.matches('[data-sync]')) {
+      await withBusy(b, async () => set(await api.post('/ports/sync', {})));
+    } else if (b.matches('[data-replace]')) {
+      const route = data.sync.routes.find((r) => r.key === b.dataset.replace);
+      const ok = await confirmDialog('Remplacer la redirection existante ?', html`${route?.message}.<br />Le panel la supprime de la box et la remplace par celle de <b>${route?.label}</b>.`, {
+        confirmLabel: 'Remplacer',
+        danger: true,
+      });
+      if (ok) await withBusy(b, async () => set(await api.post('/ports/sync', { replace: [b.dataset.replace] })));
+    } else if (b.matches('[data-del-rule]')) {
+      const rule = data.rules.find((r) => r.id === b.dataset.delRule);
+      const ok = await confirmDialog(`Retirer « ${rule?.name} » ?`, 'La redirection est aussi retirée de la box.', { confirmLabel: 'Retirer', danger: true });
+      if (ok) await withBusy(b, async () => set(await api.del(`/ports/rules/${b.dataset.delRule}`)));
+    } else if (b.matches('[data-add-rule]')) {
+      addRule();
+    } else if (b.matches('[data-fbx-connect]')) {
+      await withBusy(b, async () => {
+        fbx = await api.post('/ports/freebox/authorize', {});
+        drawFbx();
+        poll = setTimeout(loadFbx, 2000);
+      });
+    } else if (b.matches('[data-fbx-check]')) {
+      await withBusy(b, loadFbx);
+    } else if (b.matches('[data-fbx-forget]')) {
+      const ok =
+        fbx?.pending ||
+        (await confirmDialog('Déconnecter la Freebox ?', 'Le panel retire les redirections qu’il avait créées dans la Freebox, puis oublie son autorisation.', { confirmLabel: 'Déconnecter', danger: true }));
+      if (ok) {
+        await withBusy(b, async () => {
+          clearTimeout(poll);
+          set(await api.del('/ports/freebox'));
+          fbx = null;
+          loadFbx();
+        });
+      }
+    }
+  });
+
+  function addRule() {
+    modal({
+      title: 'Ouvrir un port',
+      confirmLabel: 'Ajouter',
+      body: html`<div class="field"><label for="rule-name">Nom</label><input id="rule-name" name="name" maxlength="40" placeholder="Serveur vocal" required /></div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="rule-proto">Protocole</label>
+            <select id="rule-proto" name="proto"><option value="tcp">TCP</option><option value="udp">UDP</option><option value="both">TCP + UDP</option></select>
+          </div>
+          <div class="field"><label for="rule-port">Port public ${tip('Le port que l’on joint depuis Internet (adresse IP publique ou domaine).')}</label><input id="rule-port" name="port" type="number" min="1" max="65535" required /></div>
+        </div>
+        <div class="field"><label for="rule-lan">Port de la machine ${tip('Le port sur lequel le programme écoute sur cette machine. Vide : le même que le port public.')}</label><input id="rule-lan" name="lanPort" type="number" min="1" max="65535" placeholder="Même port" /></div>`,
+      onConfirm: async (v) => {
+        const next = await api.post('/ports/rules', { name: v.name, proto: v.proto, port: Number(v.port), lanPort: v.lanPort ? Number(v.lanPort) : null });
+        set(next);
+        const route = next.sync?.routes.find((r) => r.kind === 'custom' && r.label === v.name.trim());
+        if (route && (route.status === 'error' || route.status === 'conflict')) toast(`${v.name} : ${route.message}`, 'err');
+        else toast(`Port ${v.port} ajouté`);
+      },
+    });
+  }
+
+  draw();
+  loadFbx();
+}
+
 // ---- Hardware ---------------------------------------------------------------------------
 async function hardwareTab(el, page) {
   let info = await api.get('/hardware');
@@ -1394,8 +1700,8 @@ async function hardwareTab(el, page) {
 }
 
 // ---- Journal d'activité ---------------------------------------------------------------
-const CATEGORIES = { application: 'Applications', fichiers: 'Fichiers', compte: 'Comptes et connexions', tunnel: 'Tunnel Cloudflare', panel: 'Panel', machine: 'Machine' };
-const CATEGORY_ICONS = { application: 'box', fichiers: 'folder', compte: 'user', tunnel: 'cloud', panel: 'sliders', machine: 'cpu' };
+const CATEGORIES = { application: 'Applications', fichiers: 'Fichiers', compte: 'Comptes et connexions', tunnel: 'Tunnel Cloudflare', ports: 'Gestion de PORT', panel: 'Panel', machine: 'Machine' };
+const CATEGORY_ICONS = { application: 'box', fichiers: 'folder', compte: 'user', tunnel: 'cloud', ports: 'router', panel: 'sliders', machine: 'cpu' };
 
 async function journalTab(el, page, userFilter = '') {
   const filters = { user: userFilter, app: '', category: '', q: '' };

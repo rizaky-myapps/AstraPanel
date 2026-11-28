@@ -43,6 +43,7 @@ export async function startTestPanel({ dataDir = mkdtempSync(path.join(os.tmpdir
   }
 
   async function close() {
+    panel.ports.shutdown();
     await Promise.all([panel.apps.shutdown(), panel.tunnel.shutdown()]);
     await new Promise((resolve) => panel.server.close(resolve));
   }
