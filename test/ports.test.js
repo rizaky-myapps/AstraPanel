@@ -21,7 +21,8 @@ function fakeFreebox() {
     portRange: [0, 65535],
     redirs: [{ id: 1, enabled: true, ip_proto: 'tcp', wan_port_start: 8080, wan_port_end: 8080, lan_ip: '192.168.1.50', lan_port: 80, src_ip: '0.0.0.0', comment: 'NAS' }],
     nextId: 2,
-    sessions: new Set(),
+    sessions: new Map(), // jeton de session → droits de la session (fixés à son ouverture, comme sur une vraie Freebox)
+    logins: 0,
     authorizeBody: null,
   };
   box.server = http.createServer(async (req, res) => {
@@ -50,13 +51,14 @@ function fakeFreebox() {
       const expected = crypto.createHmac('sha1', box.appToken).update(box.challenge).digest('hex');
       if (appId !== 'fr.astrapanel' || password !== expected) return send(null, false, { error_code: 'invalid_token', msg: 'mauvais mot de passe' });
       const token = crypto.randomBytes(8).toString('hex');
-      box.sessions.add(token);
+      box.logins += 1;
+      box.sessions.set(token, { settings: box.settingsRight });
       return send({ session_token: token, permissions: { settings: box.settingsRight, explorer: true } });
     }
     if (!box.sessions.has(req.headers['x-fbx-app-auth'])) return send(null, false, { error_code: 'auth_required', msg: 'session' });
     if (route === 'connection/') return send({ state: 'up', ipv4: '203.0.113.9', ipv4_port_range: box.portRange });
     if (route === 'fw/redir/' && req.method === 'GET') return send(box.redirs.length ? box.redirs : undefined);
-    const write = !box.settingsRight && req.method !== 'GET';
+    const write = !box.sessions.get(req.headers['x-fbx-app-auth']).settings && req.method !== 'GET';
     if (write) return send(null, false, { error_code: 'insufficient_rights', msg: 'droits' });
     if (route === 'fw/redir/' && req.method === 'POST') {
       const r = { id: box.nextId++, ...JSON.parse(body) };
@@ -201,8 +203,13 @@ test('Gestion de PORT avec une Freebox : détection, autorisation, droits, redir
   // le jeton d'application ne sort jamais du panel
   assert.ok(!JSON.stringify((await ctx.request('GET', '/api/ports')).data).includes(box.appToken));
 
-  // droit accordé : redirections créées vers cette machine, commentées « AstraPanel · … »
+  // droit accordé dans Freebox OS : la session en cours ne l'a pas, « Vérifier » en ouvre une nouvelle
   box.settingsRight = true;
+  res = await ctx.request('POST', '/api/ports/sync', { body: {} });
+  assert.equal(res.data.sync.ok, false);
+  res = await ctx.request('POST', '/api/ports/freebox/check', { body: {} });
+  assert.equal(res.data.rights, true);
+  // redirections créées vers cette machine, commentées « AstraPanel · … »
   res = await ctx.request('POST', '/api/ports/sync', { body: {} });
   assert.equal(res.data.sync.ok, true, JSON.stringify(res.data.sync));
   const ours = () => box.redirs.filter((r) => r.comment.startsWith('AstraPanel')).map((r) => [r.comment, r.ip_proto, r.wan_port_start, r.lan_port, r.lan_ip]).sort();
@@ -221,14 +228,41 @@ test('Gestion de PORT avec une Freebox : détection, autorisation, droits, redir
   await ctx.request('POST', '/api/ports/sync', { body: {} });
   assert.equal(ours().length, 2);
 
-  // IPv4 partagée : port hors de la plage → expliqué
-  box.portRange = [16384, 32767];
+  // IPv4 partagée : la box n'ouvre que 49152 à 65535 → plage mémorisée, ports choisis dedans
+  box.portRange = [49152, 65535];
   res = await ctx.request('POST', '/api/ports/sync', { body: {} });
-  const voice = res.data.sync.routes.find((r) => r.kind === 'custom');
-  assert.equal(voice.status, 'error');
-  assert.match(voice.message, /IPv4 partagée : seuls les ports 16384 à 32767/);
-  assert.equal(res.data.sync.routes.find((r) => r.appId === appId).status, 'ok');
+  assert.deepEqual(res.data.range, [49152, 65535]);
+  assert.deepEqual((await ctx.request('GET', '/api/ports/range')).data.range, [49152, 65535]);
+  const survie = res.data.sync.routes.find((r) => r.appId === appId);
+  assert.equal(survie.status, 'error');
+  assert.equal(survie.outOfRange, true);
+  assert.match(survie.message, /n’ouvre que les ports 49152 à 65535\. Donnez-lui un port de cette plage/);
+  assert.equal(res.data.sync.routes.find((r) => r.kind === 'custom').status, 'error');
+  // nouvelle redirection hors plage : refusée ; nouveau port de serveur hors plage : refusé
+  res = await ctx.request('POST', '/api/ports/rules', { body: { name: 'Hors plage', proto: 'tcp', port: 8081 } });
+  assert.equal(res.status, 400);
+  assert.match(res.data.error, /n’ouvre que les ports 49152 à 65535/);
+  res = await ctx.request('PATCH', `/api/apps/${appId}`, { body: { port: 25571 } });
+  assert.equal(res.status, 400);
+  assert.match(res.data.error, /n’ouvre que les ports 49152 à 65535/);
+  // « Port disponible » : port libre de la plage attribué par le panel, puis ouvert
+  res = await ctx.request('PATCH', `/api/apps/${appId}`, { body: { port: null } });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const moved = res.data.app.port;
+  assert.ok(moved >= 49152 && moved <= 65535, String(moved));
+  // un nouveau serveur reçoit directement un port de la plage
+  res = await ctx.request('POST', '/api/apps', { body: { name: 'Créatif', type: 'minecraft', mc: { ramMin: 512, ramMax: 1024, eula: true } } });
+  assert.ok(res.data.app.port >= 49152 && res.data.app.port !== moved, String(res.data.app.port));
+  await ctx.request('DELETE', `/api/apps/${res.data.app.id}`);
+  res = await ctx.request('DELETE', `/api/ports/rules/${(await ctx.request('GET', '/api/ports')).data.rules.find((r) => r.name === 'Serveur vocal').id}`);
+  res = await ctx.request('POST', '/api/ports/rules', { body: { name: 'Serveur vocal', proto: 'udp', port: 50000 } });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  res = await ctx.request('POST', '/api/ports/sync', { body: {} });
+  assert.equal(res.data.sync.ok, true, JSON.stringify(res.data.sync));
+  assert.equal(res.data.sync.routes.find((r) => r.appId === appId).port, moved);
   box.portRange = [0, 65535];
+  res = await ctx.request('POST', '/api/ports/sync', { body: {} });
+  assert.equal(res.data.range, null);
 
   // conflit : le port 8080 est déjà redirigé (NAS) → signalé, puis remplacé à la demande
   res = await ctx.request('POST', '/api/ports/rules', { body: { name: 'Web perso', proto: 'tcp', port: 8080, lanPort: 3000 } });
@@ -244,7 +278,10 @@ test('Gestion de PORT avec une Freebox : détection, autorisation, droits, redir
   assert.equal(res.data.sync.routes.find((r) => r.appId === appId).status, 'closed');
   res = await ctx.request('DELETE', `/api/ports/rules/${res.data.rules.find((r) => r.name === 'Web perso').id}`);
   assert.equal(res.status, 200);
-  assert.deepEqual(ours(), [['AstraPanel · Serveur vocal', 'udp', 9987, 9987, '127.0.0.1']]);
+  assert.deepEqual(ours(), [['AstraPanel · Serveur vocal', 'udp', 50000, 50000, '127.0.0.1']]);
+
+  // une seule session ouverte par le panel, plus celle de « Vérifier » : pas une par requête ni par synchronisation
+  assert.equal(box.logins, 2);
 
   // désactivée : le panel retire ce qu'il avait créé
   res = await ctx.request('PATCH', '/api/ports', { body: { enabled: false } });

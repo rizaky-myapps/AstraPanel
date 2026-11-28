@@ -29,8 +29,13 @@ export function portRoutes(router, { ports, apps }) {
   router.post('/api/ports/rules', async (ctx) => (await ports.addRule(await ctx.json()), full()), admin);
   router.delete('/api/ports/rules/:id', async (ctx) => (await ports.removeRule(ctx.params.id), full()), admin);
 
+  // Ports joignables depuis Internet (tous les comptes : champ « Port » des serveurs de jeux)
+  router.get('/api/ports/range', () => ({ range: ports.range() }));
+
   // Freebox : connexion du panel (validation sur l'écran de la box), état, déconnexion
   router.get('/api/ports/freebox', () => ports.freeboxStatus(), admin);
+  // « Vérifier » : nouvelle session, pour voir un droit accordé entre-temps dans Freebox OS
+  router.post('/api/ports/freebox/check', () => ports.freeboxStatus({ refresh: true }), admin);
   router.post('/api/ports/freebox/authorize', () => ports.freeboxAuthorize(), admin);
   router.delete('/api/ports/freebox', async () => (await ports.freeboxForget(), full()), admin);
 }

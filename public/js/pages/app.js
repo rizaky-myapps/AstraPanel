@@ -4,7 +4,7 @@ import { envEditor } from '../env-editor.js';
 import { filesTab } from './files.js';
 import { renderLineChart } from '../chart.js';
 import { newState, renderAnsi } from '../ansi.js';
-import { FLAVOR_LABELS, fillVersions, mcFieldsHTML, mcInfo, readMcFields } from '../minecraft-ui.js';
+import { FLAVOR_LABELS, fillVersions, limitPortField, mcFieldsHTML, mcInfo, readMcFields } from '../minecraft-ui.js';
 import {
   $,
   avatar,
@@ -823,7 +823,7 @@ async function minecraftSettings(el, page, app) {
             <div class="field full"><label>Nom</label><input type="text" name="name" value="${app.name}" maxlength="60" /></div>
             ${mcFieldsHTML(mc, machine)}
             <div class="field">
-              <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port. Pour jouer depuis Internet, redirigez ce port vers la machine dans votre box.')}</label>
+              <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port. Pour jouer depuis Internet, ce port doit être ouvert dans votre box : Paramètres → Gestion de PORT peut s’en charger.')}</label>
               <input id="mc-port" type="number" name="port" value="${app.port || ''}" min="1024" max="65535" />
             </div>
             <div class="field">
@@ -880,6 +880,7 @@ async function minecraftSettings(el, page, app) {
   page.onCleanup(onAppsChange(() => drawGuide()));
 
   draw(null);
+  limitPortField(el);
   loadNet();
   fillVersions(el, mc.flavor);
   // limites de la machine (mémoire, cœurs) : connues après le premier chargement
@@ -892,6 +893,7 @@ async function minecraftSettings(el, page, app) {
       draw({ memory: info.memory, cores: info.cores });
       $('#settings-form [name=name]', el).value = keep.name;
       $('#settings-form [name=domains]', el).value = domains;
+      limitPortField(el);
       fillVersions(el, keep.flavor);
       drawGuide();
       wire();

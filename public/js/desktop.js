@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { isAdmin, refreshApps, sortedApps, state } from './state.js';
 import { THEMES, applyAppearance, effectiveTheme } from './theme.js';
-import { $, ROLE_LABEL, TYPE_INFO, avatar, copyText, domainUrl, html, icon, localUrl, openContextMenu, setHTML, statusOf, toast } from './ui.js';
+import { $, ROLE_LABEL, TYPE_INFO, avatar, copyText, domainUrl, html, icon, openContextMenu, setHTML, statusOf, toast } from './ui.js';
 import { currentPath, navigate, refreshRoute } from './router.js';
 
 const APP_TABS = {
@@ -586,7 +586,6 @@ function appMenu(app) {
   };
   const game = app.type === 'minecraft';
   const domain = app.domains?.[0];
-  const url = game ? null : localUrl(app);
   return [
     { label: 'Ouvrir', icon: 'external', onClick: () => navigate(`/apps/${app.id}`) },
     { label: 'Console', icon: 'terminal', onClick: () => navigate(`/apps/${app.id}/console`) },
@@ -609,7 +608,6 @@ function appMenu(app) {
       },
     },
     ...(game ? [] : app.domains || []).slice(0, 2).map((d) => ({ label: `Ouvrir ${d}`, icon: 'globe', onClick: () => window.open(domainUrl(d), '_blank', 'noopener') })),
-    url && { label: 'Ouvrir le site (réseau local)', icon: 'external', onClick: () => window.open(url, '_blank', 'noopener') },
   ];
 }
 

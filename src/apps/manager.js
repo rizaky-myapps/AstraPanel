@@ -124,6 +124,8 @@ export class AppManager {
     // appelé quand les domaines ou les ports changent (tunnel Cloudflare)
     this.publish = publish || (async () => ({}));
     this.onPortsChange = () => {}; // gestion des ports de la box (serveurs de jeux)
+    // ports joignables depuis Internet ([début, fin], IPv4 partagée) ou null : tous (voir nat/index.js)
+    this.publicPortRange = () => null;
     this.config = config;
     this.runtime = new Map();
     this.logs = new Map();
@@ -314,13 +316,18 @@ export class AppManager {
     throw new HttpError(409, `Aucun port libre entre ${start} et ${end}`);
   }
 
-  // Serveur Minecraft : le port habituel (25565) s'il est libre, sinon le suivant
+  // Serveur Minecraft : le port habituel (25565) s'il est libre, sinon le suivant. Si la box n'ouvre qu'une plage
+  // de ports (IPv4 partagée), un port de cette plage, pour que le serveur reste joignable depuis Internet.
   async allocateMinecraftPort(exceptId = null) {
     const used = new Set(this.apps.filter((a) => a.id !== exceptId && a.port).map((a) => a.port));
     used.add(this.config.port);
-    for (let port = MC_PORT; port < MC_PORT + 100; port++) {
+    const range = this.publicPortRange();
+    const start = range && (MC_PORT < range[0] || MC_PORT > range[1]) ? Math.max(range[0], 1024) : MC_PORT;
+    const end = range ? range[1] : 65535;
+    for (let port = start; port <= Math.min(end, start + 199); port++) {
       if (!used.has(port) && (await isPortFree(port))) return port;
     }
+    if (range) throw new HttpError(409, `Aucun port libre entre ${range[0]} et ${range[1]} : indiquez-en un`);
     return this.allocatePort(exceptId);
   }
 
@@ -354,6 +361,11 @@ export class AppManager {
     if ('port' in input && needsPort(app.type)) {
       const port = cleanPort(input.port);
       if (port === this.config.port) throw new HttpError(409, `Le port ${port} est celui du panel AstraPanel lui-même : choisissez-en un autre`);
+      // serveur de jeux : un nouveau port doit être joignable depuis Internet (IPv4 partagée : plage de la box)
+      const range = app.type === 'minecraft' && port && port !== app.port ? this.publicPortRange() : null;
+      if (range && (port < range[0] || port > range[1])) {
+        throw new HttpError(400, `Le port ${port} n’est pas joignable depuis Internet : votre box (IPv4 partagée) n’ouvre que les ports ${range[0]} à ${range[1]}`);
+      }
       const other = port && this.apps.find((a) => a.id !== app.id && a.port === port);
       if (other) throw new HttpError(409, `Le port ${port} est déjà utilisé par « ${other.name} »`);
       app.port = port;

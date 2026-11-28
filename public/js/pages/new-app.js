@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { refreshApps } from '../state.js';
 import { openOverlay, stepsAt } from '../overlay.js';
 import { $, html, icon, pageHero, routingWarnings, setHTML, tip, toast, toggle } from '../ui.js';
-import { fillVersions, mcFieldsHTML, readMcFields } from '../minecraft-ui.js';
+import { fillVersions, limitPortField, mcFieldsHTML, readMcFields } from '../minecraft-ui.js';
 import { navigate } from '../router.js';
 
 const TYPES = [
@@ -89,7 +89,7 @@ export function renderNewApp(view) {
               ${isMc
                 ? html`${mcFieldsHTML(f.mc, machine)}
                     <div class="field">
-                      <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port (25565 : port habituel de Minecraft, qu’on n’a pas besoin de taper). Pour jouer depuis Internet, redirigez ce port vers la machine dans votre box.')}</label>
+                      <label for="mc-port">Port ${tip('Les joueurs se connectent avec l’adresse de la machine et ce port (25565 : port habituel de Minecraft, qu’on n’a pas besoin de taper). Pour jouer depuis Internet, ce port doit être ouvert dans votre box : Paramètres → Gestion de PORT peut s’en charger.')}</label>
                       <input id="mc-port" type="number" name="port" value="${f.port}" placeholder="Automatique (25565)" min="1024" max="65535" />
                     </div>
                     <div class="field full">
@@ -154,6 +154,8 @@ export function renderNewApp(view) {
           </div>
         </form>`,
     );
+    // serveur de jeux : seulement les ports joignables depuis Internet (IPv4 partagée)
+    if (isMc) limitPortField(root);
   }
 
   // serveur Minecraft : versions disponibles (et mémoire / cœurs de la machine pour les limites)
