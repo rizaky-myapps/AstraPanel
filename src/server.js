@@ -10,6 +10,7 @@ import { AppManager } from './apps/manager.js';
 import { Metrics } from './metrics.js';
 import { AppMetrics } from './app-metrics.js';
 import { Tunnel } from './tunnel.js';
+import { PortManager } from './nat/index.js';
 import { Updater } from './update.js';
 import { AuditLog } from './audit.js';
 import { Hardware } from './hardware.js';
@@ -23,6 +24,7 @@ import { authRoutes } from './routes/auth.js';
 import { accountRoutes } from './routes/account.js';
 import { appRoutes } from './routes/apps.js';
 import { settingsRoutes } from './routes/settings.js';
+import { portRoutes } from './routes/ports.js';
 import { fileRoutes } from './routes/files.js';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -47,6 +49,9 @@ export function createPanel(cfg = config) {
   // les domaines des applis sont publiés par le tunnel Cloudflare
   const publish = async () => ({ tunnel: await tunnel.sync() });
   const apps = new AppManager({ store, config: cfg, publish });
+  // ports de la box : serveurs de jeux créés, supprimés ou changés de port → redirections mises à jour
+  const ports = new PortManager({ store, config: cfg, apps });
+  apps.onPortsChange = () => ports.schedule();
   const metrics = new Metrics(path.join(cfg.dataDir, 'metrics.json'));
   const appMetrics = new AppMetrics(path.join(cfg.dataDir, 'app-metrics.json'), apps);
   const updater = new Updater({ store, config: cfg });
@@ -56,12 +61,13 @@ export function createPanel(cfg = config) {
   const hardware = new Hardware({ config: cfg });
 
   const router = new Router();
-  const deps = { store, auth, apps, config: cfg, metrics, appMetrics, tunnel, updater, publish, audit, hardware };
+  const deps = { store, auth, apps, config: cfg, metrics, appMetrics, tunnel, updater, publish, audit, hardware, ports };
   authRoutes(router, deps);
   accountRoutes(router, deps);
   appRoutes(router, deps);
   fileRoutes(router, deps);
   settingsRoutes(router, deps);
+  portRoutes(router, deps);
 
   async function handle(req, res) {
     securityHeaders(res);
@@ -126,7 +132,7 @@ export function createPanel(cfg = config) {
   server.requestTimeout = 60 * 60 * 1000; // gros téléversements sur une connexion lente
   server.headersTimeout = 60 * 1000;
 
-  return { server, store, auth, apps, metrics, appMetrics, tunnel, updater, audit, hardware };
+  return { server, store, auth, apps, metrics, appMetrics, tunnel, updater, audit, hardware, ports };
 }
 
 async function main() {
@@ -146,7 +152,7 @@ async function main() {
   }
 
   const panel = createPanel();
-  const { server, store, auth, apps, metrics, appMetrics, tunnel, updater } = panel;
+  const { server, store, auth, apps, metrics, appMetrics, tunnel, updater, ports } = panel;
 
   // Premier lancement depuis le démarrage de la machine ? (sans identifiant connu, on considère un simple redémarrage)
   const currentBoot = bootId();
@@ -173,6 +179,8 @@ async function main() {
     appMetrics.start();
     updater.start();
     apps.bootstrap({ systemBoot });
+    // ports de la box : détection de l'opérateur au premier lancement, puis redirections tenues à jour
+    ports.bootstrap();
   });
   server.on('error', (err) => {
     console.error(`Impossible de démarrer le serveur : ${err.message}`);
@@ -188,6 +196,7 @@ async function main() {
     metrics.stop();
     appMetrics.stop();
     updater.stop();
+    ports.shutdown();
     await Promise.all([apps.shutdown(), tunnel.shutdown()]);
     process.exit(0);
   };

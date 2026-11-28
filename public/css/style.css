@@ -6981,3 +6981,126 @@ select option {
   background: linear-gradient(90deg, var(--c1, var(--accent)), var(--c2, var(--accent-2)));
   box-shadow: none;
 }
+
+.text-err {
+  color: var(--err);
+}
+
+/* ---- Paramètres → Gestion de PORT ---- */
+.ports-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.port-box-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 18px 28px;
+  align-items: center;
+}
+.port-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.port-box-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(var(--accent-rgb), 0.3);
+}
+.port-box-icon svg {
+  width: 26px;
+  height: 26px;
+}
+.port-box-text {
+  min-width: 0;
+}
+.port-box-text > b {
+  font-size: 16px;
+}
+.port-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.port-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.port-settings .field {
+  margin: 0;
+}
+.port-auto {
+  align-items: center;
+}
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.port-fbx {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.port-alert {
+  margin: 12px 16px 0;
+}
+.ports-machine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 12px 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.ports-machine > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ports-machine svg {
+  width: 15px;
+  height: 15px;
+}
+.text-warn {
+  color: var(--warn);
+}
+.port-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.port-name > svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--accent-fg);
+}
+.ports-table .port-actions {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+.port-replace {
+  margin-top: 6px;
+}
+@media (max-width: 760px) {
+  .port-box-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.port-settings .check {
+  margin: 0;
+}

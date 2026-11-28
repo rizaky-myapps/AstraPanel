@@ -123,6 +123,7 @@ export class AppManager {
     this.store = store;
     // appelé quand les domaines ou les ports changent (tunnel Cloudflare)
     this.publish = publish || (async () => ({}));
+    this.onPortsChange = () => {}; // gestion des ports de la box (serveurs de jeux)
     this.config = config;
     this.runtime = new Map();
     this.logs = new Map();
@@ -406,6 +407,7 @@ export class AppManager {
     this.logsFor(app.id).system(`Application « ${app.name} » créée`);
 
     const routing = app.domains.length ? await this.publish() : {};
+    if (mc) this.onPortsChange();
     if (source === 'git' || source === 'template') this.runTask(app.id, 'deploy', { start: Boolean(input.start) });
     // serveur Minecraft : téléchargement de Java et du serveur, puis démarrage (suivi dans la console)
     if (mc) this.runTask(app.id, 'deploy', { start: input.start !== false });
@@ -422,6 +424,7 @@ export class AppManager {
     Object.assign(app, copy, { updatedAt: Date.now() });
     this.store.save();
     const routing = routingChanged ? await this.publish() : {};
+    if (routingChanged && copy.type === 'minecraft') this.onPortsChange();
     // autre version ou autre type de serveur Minecraft : téléchargé tout de suite (redémarré s'il tournait)
     if (serverChanged && !this.rt(id).busy) this.runTask(id, 'deploy');
     return { app: this.serialize(app), ...routing };
@@ -442,6 +445,7 @@ export class AppManager {
     const logFile = path.join(this.config.logsDir, `${id}.log`);
     await Promise.all([rm(logFile, { force: true }), rm(`${logFile}.1`, { force: true })]);
     await rm(this.dir(app), { recursive: true, force: true });
+    if (app.type === 'minecraft') this.onPortsChange();
     return app.domains?.length ? this.publish() : {};
   }
 

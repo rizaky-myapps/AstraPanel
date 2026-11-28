@@ -116,6 +116,8 @@ const ICONS = {
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
   chevronUp: '<path d="m18 15-6-6-6 6"/>',
+  // box internet (gestion des ports)
+  router: '<rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6.01 18H6"/><path d="M10.01 18H10"/><path d="M15 10v4"/><path d="M17.84 7.17a4 4 0 0 0-5.66 0"/><path d="M20.66 4.34a8 8 0 0 0-11.31 0"/>',
   // bloc façon Minecraft (cube vu en perspective, face du dessus marquée)
   cube: '<path d="M12 2.5 3 7.25v9.5L12 21.5l9-4.75v-9.5z"/><path d="M3 7.25 12 12l9-4.75"/><path d="M12 12v9.5"/><path d="m7.5 9.6 0 2.2M16.5 9.6v2.2"/>',
   arrowUpCircle: '<circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/>',

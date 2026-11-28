@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { isAdmin, refreshApps, sortedApps, state } from './state.js';
 import { THEMES, applyAppearance, effectiveTheme } from './theme.js';
-import { $, ROLE_LABEL, TYPE_INFO, avatar, copyText, html, icon, localUrl, openContextMenu, setHTML, statusOf, toast } from './ui.js';
+import { $, ROLE_LABEL, TYPE_INFO, avatar, copyText, domainUrl, html, icon, localUrl, openContextMenu, setHTML, statusOf, toast } from './ui.js';
 import { currentPath, navigate, refreshRoute } from './router.js';
 
 const APP_TABS = {
@@ -18,14 +18,16 @@ const APP_TABS = {
   users: 'Utilisateurs',
 };
 const SETTINGS_TABS = {
-  compte: 'Mon compte',
+  general: 'Général',
   utilisateurs: 'Utilisateurs',
   'mises-a-jour': 'Mises à jour',
   tunnel: 'Tunnel Cloudflare',
-  general: 'Général',
+  ports: 'Gestion de PORT',
   hardware: 'Hardware',
   journal: 'Journal',
 };
+// Onglet des paramètres réellement affiché (même règle que pages/settings.js) : « Mon compte » pour un utilisateur
+const settingsTab = (tab) => (!isAdmin() || tab === 'compte' ? 'compte' : tab in SETTINGS_TABS ? tab : 'general');
 const HELP_DOCS = { tutoriel: 'Installation et utilisation', cloudflare: 'Tunnel Cloudflare' };
 
 const sys = { update: null, tunnel: null, system: null };
@@ -43,7 +45,10 @@ function describe(nav, params) {
     const tab = APP_TABS[currentPath().split('/')[3] || ''];
     return { key: `app:${a}`, title: app?.name || 'Application', sub: tab, icon: type.icon, tone: app?.type || 'accent' };
   }
-  if (nav === 'settings') return { key: 'settings', title: 'Paramètres', sub: SETTINGS_TABS[a || 'compte'], icon: 'sliders', tone: 'accent' };
+  if (nav === 'settings') {
+    const tab = settingsTab(a);
+    return tab === 'compte' ? { key: 'compte', title: 'Mon compte', icon: 'user', tone: 'accent' } : { key: 'settings', title: 'Paramètres', sub: SETTINGS_TABS[tab], icon: 'sliders', tone: 'accent' };
+  }
   if (nav === 'new') return { key: 'new', title: 'Nouvelle application', icon: 'plus', tone: 'green' };
   if (nav === 'storage') return { key: 'storage', title: 'Stockage', icon: 'disk', tone: 'blue' };
   if (nav === 'aide') return { key: 'aide', title: 'Aide', sub: HELP_DOCS[a || 'tutoriel'], icon: 'book', tone: 'cyan' };
@@ -406,10 +411,8 @@ function searchItems() {
   const page = (title, href, ic, sub = '', tone = 'accent') => items.push({ group: 'Pages', icon: ic, tone, title, sub, href });
   page('Tableau de bord', '/home', 'grid', 'Bureau');
   page('Nouvelle application', '/new', 'plus', 'Site ou bot Discord', 'green');
-  for (const [id, label] of Object.entries(SETTINGS_TABS)) {
-    if (id !== 'compte' && !isAdmin()) continue;
-    page(label, `/settings/${id}`, id === 'compte' ? 'user' : 'sliders', 'Paramètres');
-  }
+  page('Mon compte', '/settings/compte', 'user', 'Pseudo, photo, mot de passe, apparence');
+  if (isAdmin()) for (const [id, label] of Object.entries(SETTINGS_TABS)) page(label, `/settings/${id}`, id === 'ports' ? 'router' : 'sliders', 'Paramètres');
   if (isAdmin()) page('Stockage', '/storage', 'disk', 'Disques et espace occupé', 'blue');
   page('Tutoriel d’installation et d’utilisation', '/aide/tutoriel', 'book', 'Aide', 'cyan');
   page('Tutoriel du tunnel Cloudflare', '/aide/cloudflare', 'cloud', 'Aide', 'cyan');
@@ -581,7 +584,9 @@ function appMenu(app) {
     toast(`${app.name} : ${label}`);
     await refreshApps();
   };
-  const url = localUrl(app);
+  const game = app.type === 'minecraft';
+  const domain = app.domains?.[0];
+  const url = game ? null : localUrl(app);
   return [
     { label: 'Ouvrir', icon: 'external', onClick: () => navigate(`/apps/${app.id}`) },
     { label: 'Console', icon: 'terminal', onClick: () => navigate(`/apps/${app.id}/console`) },
@@ -594,7 +599,16 @@ function appMenu(app) {
       : { label: 'Démarrer', icon: 'play', disabled: Boolean(app.runtime.busy), onClick: act('start', 'démarrage') },
     { label: 'Redémarrer', icon: 'restart', disabled: Boolean(app.runtime.busy), onClick: act('restart', 'redémarrage') },
     '-',
-    ...(app.domains || []).slice(0, 2).map((d) => ({ label: `Ouvrir ${d}`, icon: 'globe', onClick: () => window.open(`https://${d}`, '_blank', 'noopener') })),
+    // serveur de jeux : son adresse de connexion (le domaine) ; site : son domaine, ouvert dans un nouvel onglet
+    game && domain && {
+      label: 'Copier l’IP',
+      icon: 'copy',
+      onClick: async () => {
+        await copyText(domain);
+        toast(`Adresse du serveur copiée : ${domain}`);
+      },
+    },
+    ...(game ? [] : app.domains || []).slice(0, 2).map((d) => ({ label: `Ouvrir ${d}`, icon: 'globe', onClick: () => window.open(domainUrl(d), '_blank', 'noopener') })),
     url && { label: 'Ouvrir le site (réseau local)', icon: 'external', onClick: () => window.open(url, '_blank', 'noopener') },
   ];
 }
@@ -604,9 +618,10 @@ function contextItems(target, x, y) {
   const selection = String(window.getSelection?.() || '').trim();
   if (selection) items.push({ label: 'Copier', icon: 'copy', hint: 'Ctrl+C', onClick: () => copyText(selection) }, '-');
   const link = target.closest('a[href]');
-  const appLink = link && /^#\/apps\/([^/]+)/.exec(link.getAttribute('href') || '');
+  // une application (panneau latéral, tuile du tableau de bord, résultat de recherche) : son propre menu
+  const appLink = link && /^\/apps\/([^/?#]+)/.exec(link.getAttribute('href') || '');
   const app = appLink && state.apps.find((a) => a.id === appLink[1]);
-  if (app && link.closest('.side-app, .app-tile, .spotlight-item')) return [...items, ...appMenu(app)];
+  if (app && link.closest('.side-app, .dash-app, .spotlight-item')) return [...items, ...appMenu(app)];
   if (link && /^https?:/.test(link.getAttribute('href'))) {
     items.push(
       { label: 'Ouvrir le lien dans un nouvel onglet', icon: 'external', onClick: () => window.open(link.href, '_blank', 'noopener') },

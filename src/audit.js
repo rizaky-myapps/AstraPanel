@@ -120,6 +120,24 @@ const ACTIONS = {
   'POST /api/tunnel/sync': () => ({ label: 'Synchronisation des domaines' }),
   'POST /api/tunnel/dns/replace': (c) => ({ label: 'Enregistrement DNS remplacé', detail: c.body?.hostname }),
   'POST /api/tunnel/reset': () => ({ label: 'Configuration du tunnel supprimée' }),
+  // --- Gestion des ports de la box
+  'POST /api/ports/detect': (c) => ({ label: 'Détection de la box internet', detail: list([c.result?.detected?.label, c.result?.detected?.box].filter(Boolean)) || 'aucune box trouvée' }),
+  'PATCH /api/ports': (c) =>
+    ({
+      label: 'Gestion des ports modifiée',
+      detail: list(
+        [
+          'enabled' in (c.body || {}) && `ouverture automatique ${onOff(c.body.enabled)}`,
+          c.body?.method && `méthode : ${{ auto: 'automatique', freebox: 'API Freebox', upnp: 'UPnP', manual: 'manuel' }[c.body.method] || c.body.method}`,
+          Array.isArray(c.body?.skip) && `${c.body.skip.length} serveur(s) de jeux fermé(s)`,
+        ].filter(Boolean),
+      ),
+    }),
+  'POST /api/ports/sync': (c) => ({ label: 'Synchronisation des ports', detail: c.body?.replace?.length ? 'avec remplacement d’une redirection existante' : null }),
+  'POST /api/ports/rules': (c) => ({ label: 'Redirection de port ajoutée', detail: `${short(c.body?.name, 40)} · ${String(c.body?.proto || 'tcp').toUpperCase()} ${c.body?.port}` }),
+  'DELETE /api/ports/rules/:id': () => ({ label: 'Redirection de port retirée' }),
+  'POST /api/ports/freebox/authorize': () => ({ label: 'Demande d’autorisation envoyée à la Freebox' }),
+  'DELETE /api/ports/freebox': () => ({ label: 'Freebox déconnectée du panel' }),
 };
 
 const CATEGORY = [
@@ -127,6 +145,7 @@ const CATEGORY = [
   [/^\/api\/apps/, 'application'],
   [/^\/api\/(users|auth|account)/, 'compte'],
   [/^\/api\/tunnel/, 'tunnel'],
+  [/^\/api\/ports/, 'ports'],
   [/^\/api\/hardware/, 'machine'],
   [/^\/api\/(update|settings)/, 'panel'],
 ];
