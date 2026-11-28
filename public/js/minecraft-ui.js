@@ -1,6 +1,6 @@
 // Champs d'un serveur Minecraft (création et onglet Paramètres) : type de serveur, version, mémoire, cœurs.
 import { api } from './api.js';
-import { html, setHTML, tip } from './ui.js';
+import { html, icon, setHTML, tip } from './ui.js';
 
 export const FLAVOR_LABELS = { paper: 'Paper', vanilla: 'Vanilla' };
 const cache = new Map();
@@ -87,4 +87,37 @@ export function readMcFields(form) {
     ramMax: Math.round(num('ramMax') * 1024),
     cores: Number(form.querySelector('[name=cores]').value) || 0,
   };
+}
+
+// Ports joignables depuis Internet : avec une IPv4 partagée (Free), la box n'ouvre qu'une plage de ports
+// (par exemple 49152 à 65535). Le champ « Port » (#mc-port) n'accepte alors que ceux-là, et un port déjà choisi
+// hors de la plage est signalé. Retourne la plage, ou null si tous les ports sont joignables.
+export async function limitPortField(root) {
+  const input = root.querySelector('#mc-port');
+  if (!input) return null;
+  let range = null;
+  try {
+    ({ range } = await api.get('/ports/range'));
+  } catch {
+    return null;
+  }
+  if (!range || !input.isConnected) return range;
+  const [a, b] = range;
+  input.min = String(a);
+  input.max = String(b);
+  input.placeholder = `Automatique (${a} à ${b})`;
+  const field = input.closest('.field');
+  const check = () => {
+    field.querySelector('.port-range-warn')?.remove();
+    const port = Number(input.value);
+    if (input.value && (port < a || port > b)) {
+      const warn = document.createElement('div');
+      warn.className = 'hint text-warn port-range-warn';
+      setHTML(warn, html`${icon('alert')} Injoignable depuis Internet : votre box n’ouvre que les ports ${a} à ${b}`);
+      field.append(warn);
+    }
+  };
+  check();
+  input.addEventListener('input', check);
+  return range;
 }

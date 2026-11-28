@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = {
     rules: [], // redirections ajoutées à la main : { id, name, proto, port, lanPort }
     freebox: { appToken: '', trackId: null, status: null, https: false },
     detected: null, // dernière détection de l'opérateur
+    portRange: null, // IPv4 partagée : seule plage de ports joignable depuis Internet, [début, fin]
   },
 };
 

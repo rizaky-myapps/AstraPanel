@@ -1440,6 +1440,7 @@ async function portsTab(el, page) {
           <span class="badge ${cls}">${label}</span>
           ${r.message && r.message !== data.sync.error ? html`<div class="hint">${r.message}</div>` : ''}
           ${r.status === 'conflict' ? html`<button class="btn btn-sm port-replace" data-replace="${r.key}" title="Remplacer la redirection existante par celle du panel">${icon('refresh')} Remplacer</button>` : ''}
+          ${r.outOfRange && game ? html`<button class="btn btn-sm port-replace" data-move="${r.appId}" title="Donner au serveur un port libre de la plage ouverte par la box">${icon('refresh')} Port disponible</button>` : ''}
         </td>
         <td class="port-actions">
           ${game
@@ -1469,7 +1470,7 @@ async function portsTab(el, page) {
       <div class="ports-machine">
         <span>${icon('server')} Cette machine : <code>${s?.lanIp || '—'}</code> ${tip('Donnez-lui une adresse fixe dans la box (bail DHCP statique) : si elle change, le panel corrige ses redirections, mais une adresse fixe évite toute coupure.')}</span>
         ${s?.publicIp ? html`<span>${icon('globe')} IP publique : <code>${s.publicIp}</code></span>` : ''}
-        ${s?.portRange ? html`<span class="text-warn">${icon('alert')} IPv4 partagée : ports ${s.portRange[0]} à ${s.portRange[1]}</span>` : ''}
+        ${data.range ? html`<span class="text-warn">${icon('alert')} IPv4 partagée : ports ${data.range[0]} à ${data.range[1]} ${tip('Votre box ne peut ouvrir que ces ports : les serveurs de jeux et les redirections ajoutées ici les utilisent. Pour tous les ports, demandez une IPv4 « full-stack » (gratuite) dans votre espace abonné Free.')}</span>` : ''}
       </div>
       <div class="fm-scroll">
         <table class="table compact ports-table">
@@ -1567,6 +1568,21 @@ async function portsTab(el, page) {
       const rule = data.rules.find((r) => r.id === b.dataset.delRule);
       const ok = await confirmDialog(`Retirer « ${rule?.name} » ?`, 'La redirection est aussi retirée de la box.', { confirmLabel: 'Retirer', danger: true });
       if (ok) await withBusy(b, async () => set(await api.del(`/ports/rules/${b.dataset.delRule}`)));
+    } else if (b.matches('[data-move]')) {
+      const app = state.apps.find((a) => a.id === b.dataset.move);
+      const ok = await confirmDialog(
+        `Changer le port de « ${app?.name || 'ce serveur'} » ?`,
+        html`Le panel lui donne un port libre de la plage ouverte par votre box (${data.range[0]} à ${data.range[1]}), puis l’ouvre.${app?.runtime.status === 'running' ? ' Le serveur redémarre.' : ''}${app?.domains?.length ? ' Le domaine suit tout seul s’il est géré par le panel.' : ''}`,
+        { confirmLabel: 'Changer le port' },
+      );
+      if (ok) {
+        await withBusy(b, async () => {
+          const { app: moved } = await api.patch(`/apps/${b.dataset.move}`, { port: null });
+          if (app?.runtime.status === 'running') await api.post(`/apps/${b.dataset.move}/restart`);
+          set(await api.post('/ports/sync', {}));
+          toast(`${moved.name} : port ${moved.port}`);
+        });
+      }
     } else if (b.matches('[data-add-rule]')) {
       addRule();
     } else if (b.matches('[data-fbx-connect]')) {
@@ -1576,7 +1592,13 @@ async function portsTab(el, page) {
         poll = setTimeout(loadFbx, 2000);
       });
     } else if (b.matches('[data-fbx-check]')) {
-      await withBusy(b, loadFbx);
+      // nouvelle session : un droit accordé entre-temps dans Freebox OS est pris en compte
+      await withBusy(b, async () => {
+        fbx = await api.post('/ports/freebox/check', {});
+        drawFbx();
+        set(await api.get('/ports'));
+        if (data.enabled && fbx.rights) set(await api.post('/ports/sync', {}));
+      });
     } else if (b.matches('[data-fbx-forget]')) {
       const ok =
         fbx?.pending ||
@@ -1602,7 +1624,7 @@ async function portsTab(el, page) {
             <label for="rule-proto">Protocole</label>
             <select id="rule-proto" name="proto"><option value="tcp">TCP</option><option value="udp">UDP</option><option value="both">TCP + UDP</option></select>
           </div>
-          <div class="field"><label for="rule-port">Port public ${tip('Le port que l’on joint depuis Internet (adresse IP publique ou domaine).')}</label><input id="rule-port" name="port" type="number" min="1" max="65535" required /></div>
+          <div class="field"><label for="rule-port">Port public ${tip('Le port que l’on joint depuis Internet (adresse IP publique ou domaine).')}</label><input id="rule-port" name="port" type="number" min="${data.range ? data.range[0] : 1}" max="${data.range ? data.range[1] : 65535}" placeholder="${data.range ? `${data.range[0]} à ${data.range[1]}` : ''}" required /></div>
         </div>
         <div class="field"><label for="rule-lan">Port de la machine ${tip('Le port sur lequel le programme écoute sur cette machine. Vide : le même que le port public.')}</label><input id="rule-lan" name="lanPort" type="number" min="1" max="65535" placeholder="Même port" /></div>`,
       onConfirm: async (v) => {

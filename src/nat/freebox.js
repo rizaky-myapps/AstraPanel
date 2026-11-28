@@ -8,7 +8,8 @@ import { lanRequest } from './lan.js';
 // - autorisation, une seule fois : POST login/authorize/ → l'utilisateur valide sur l'écran de la Freebox,
 //   le panel reçoit un jeton d'application (app_token) ;
 // - session : GET login/ donne un défi, mot de passe = HMAC-SHA1(défi, clé = app_token), POST login/session/
-//   → jeton de session, envoyé dans l'en-tête X-Fbx-App-Auth ;
+//   → jeton de session, envoyé dans l'en-tête X-Fbx-App-Auth. Une seule session, gardée et réutilisée pour toutes
+//   les requêtes : une nouvelle n'est ouverte que si la box a fermé la précédente (ou sur « Vérifier ») ;
 // - redirections de ports : fw/redir/ (le droit « Modification des réglages de la Freebox » est nécessaire).
 //
 // HTTPS avec les certificats racine de Free (freebox-ca.pem) ; HTTP seulement si HTTPS n'a jamais fonctionné
@@ -18,7 +19,7 @@ export const FREEBOX_APP_ID = 'fr.astrapanel';
 const CA = readFileSync(new URL('./freebox-ca.pem', import.meta.url));
 
 export const RIGHTS_HELP =
-  'Dans Freebox OS (mafreebox.freebox.fr) : Paramètres de la Freebox → Gestion des accès → Applications → AstraPanel → cochez « Modification des réglages de la Freebox ».';
+  'Dans Freebox OS (mafreebox.freebox.fr) : Paramètres de la Freebox → Gestion des accès → Applications → AstraPanel → cochez « Modification des réglages de la Freebox », puis cliquez sur « Vérifier ».';
 
 const MESSAGES = {
   insufficient_rights: `Le panel n’a pas le droit de modifier les réglages de la Freebox. ${RIGHTS_HELP}`,
@@ -46,6 +47,7 @@ export class Freebox {
     this.base = null;
     this.info = null;
     this.session = null;
+    this.opening = null;
     this.permissions = null;
   }
 
@@ -85,7 +87,7 @@ export class Freebox {
 
   async call(method, path, body, { auth = true, retry = true } = {}) {
     if (!this.base && !(await this.discover())) throw new FreeboxError('Aucune Freebox ne répond sur le réseau local (mafreebox.freebox.fr)', 'not_found');
-    if (auth && !this.session) await this.login();
+    if (auth && !this.session) await this.ensureSession();
     const res = await lanRequest(this.base + path, {
       method,
       ca: CA,
@@ -127,6 +129,15 @@ export class Freebox {
     return r?.status || 'unknown';
   }
 
+  // Session en cours, ou une nouvelle (une seule à la fois, même si plusieurs requêtes arrivent ensemble)
+  async ensureSession() {
+    if (this.session) return;
+    this.opening ??= this.login().finally(() => {
+      this.opening = null;
+    });
+    await this.opening;
+  }
+
   async login() {
     if (!this.appToken) throw new FreeboxError(MESSAGES.no_token, 'no_token');
     const { challenge } = await this.call('GET', 'login/', undefined, { auth: false });
@@ -137,10 +148,11 @@ export class Freebox {
     return r;
   }
 
-  // Droit de modifier les réglages (redirections de ports) : accordé ou non dans Freebox OS.
-  // Nouvelle session à chaque fois : les droits d'une session ne changent pas après coup.
-  async canChangeSettings() {
-    await this.login();
+  // Droit de modifier les réglages (redirections de ports) : accordé ou non dans Freebox OS. Les droits d'une session
+  // ne changent pas après coup : refresh ouvre une nouvelle session (bouton « Vérifier », après les avoir accordés).
+  async canChangeSettings({ refresh = false } = {}) {
+    if (refresh) this.session = null;
+    await this.ensureSession();
     return Boolean(this.permissions?.settings);
   }
 

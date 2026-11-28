@@ -453,8 +453,13 @@ Bon à savoir :
   retire celles du panel ;
 - elles sont vérifiées toutes les 5 minutes : si l'adresse de la machine change, le panel les corrige. Donnez quand
   même une adresse fixe à la machine dans la box (bail DHCP statique, voir l'[étape 4](#4-donner-une-adresse-ip-fixe-à-la-machine)) ;
-- **Free, IPv4 partagée** : seule une plage de ports (affichée dans le panel) peut être ouverte. Pour tous les ports,
-  demandez une **IPv4 full-stack** (gratuite) dans votre espace abonné Free ;
+- **Free, IPv4 partagée** : la Freebox n'ouvre qu'une plage de ports (par exemple **49152 à 65535**), affichée dans
+  le panel une fois la Freebox connectée. Le panel n'utilise alors que ces ports : un nouveau serveur de jeux reçoit
+  un port de la plage, le champ **Port** et le bouton **Ajouter** refusent les autres, et un serveur créé avant avec
+  un port hors plage affiche **Port disponible**, qui lui en donne un libre (et le redémarre s'il tournait). Pour
+  tous les ports, demandez une **IPv4 full-stack** (gratuite) dans votre espace abonné Free ;
+- le panel garde **une seule session** ouverte sur la Freebox pour toutes ses demandes ; **Vérifier** en ouvre une
+  nouvelle (nécessaire après avoir accordé le droit dans Freebox OS) ;
 - les **sites** n'ont pas besoin d'ouvrir de port : ils passent par le tunnel Cloudflare. N'ouvrez jamais le port du
   panel (8080).
 

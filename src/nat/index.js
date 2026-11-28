@@ -118,6 +118,7 @@ export class PortManager {
       method: fbxInfo ? 'freebox' : gateway ? 'upnp' : 'manual',
     };
     this.settings.detected = detected;
+    if (!detected.freebox) this.settings.portRange = null; // autre box : la plage de ports de la Freebox ne vaut plus
     this.store.save();
     this.schedule();
     return detected;
@@ -154,6 +155,7 @@ export class PortManager {
     if (!rule.name) throw new HttpError(400, 'Donnez un nom à cette redirection');
     if (!PROTOS.includes(rule.proto)) throw new HttpError(400, 'Protocole inconnu (TCP, UDP ou les deux)');
     if (!validPort(rule.port) || !validPort(rule.lanPort)) throw new HttpError(400, 'Port invalide (1 à 65535)');
+    if (!this.inRange(rule.port)) throw new HttpError(400, this.rangeError(rule.port));
     if (this.settings.rules.length >= MAX_RULES) throw new HttpError(400, `${MAX_RULES} redirections au maximum`);
     const used = this.desired().flatMap((e) => e.mappings.map((m) => ({ ...m, label: e.label })));
     const clash = used.find((m) => m.port === rule.port && (rule.proto === 'both' || m.proto === rule.proto));
@@ -182,7 +184,9 @@ export class PortManager {
   }
 
   // État de la connexion à la Freebox (et suite de la demande d'autorisation en attente)
-  async freeboxStatus() {
+  // refresh : nouvelle session (bouton « Vérifier », après avoir accordé le droit dans Freebox OS) ;
+  // sinon la session en cours est réutilisée
+  async freeboxStatus({ refresh = false } = {}) {
     const f = this.settings.freebox;
     if (f.appToken && f.trackId !== null && f.trackId !== undefined) {
       const status = await this.fbx()
@@ -200,7 +204,8 @@ export class PortManager {
     let rights = null;
     if (f.appToken && f.trackId === null) {
       try {
-        rights = await this.fbx().canChangeSettings();
+        rights = await this.fbx().canChangeSettings({ refresh });
+        await this.refreshRange();
         this.freeboxError = null;
       } catch (err) {
         this.freeboxError = err.message;
@@ -221,9 +226,40 @@ export class PortManager {
   async freeboxForget() {
     if (this.settings.freebox.appToken && this.method() === 'freebox') await this.cleanup('freebox');
     Object.assign(this.settings.freebox, { appToken: '', trackId: null, status: null });
+    this.settings.portRange = null; // plage de ports propre à la ligne Free : oubliée avec la Freebox
     this.store.save();
     this.freebox = null;
     return this.sync();
+  }
+
+  // ---- Ports joignables depuis Internet --------------------------------------------------------------
+  // IPv4 partagée (Free) : la box n'ouvre qu'une plage de ports (par exemple 49152 à 65535). Mémorisée pour que les
+  // serveurs de jeux et les redirections ajoutées à la main n'utilisent que des ports de cette plage.
+  range() {
+    return this.settings.portRange || null;
+  }
+  inRange(port) {
+    const r = this.range();
+    return !r || (port >= r[0] && port <= r[1]);
+  }
+  rangeError(port) {
+    const [a, b] = this.range();
+    return `Le port ${port} n’est pas joignable depuis Internet : votre box (IPv4 partagée) n’ouvre que les ports ${a} à ${b}`;
+  }
+
+  // Lit la plage auprès de la Freebox (session en cours) et la mémorise. Retourne l'état de la connexion.
+  async refreshRange() {
+    const conn = await this.fbx()
+      .connection()
+      .catch(() => null);
+    if (!conn) return null;
+    const r = Array.isArray(conn.ipv4_port_range) && conn.ipv4_port_range.length === 2 ? conn.ipv4_port_range.map(Number) : null;
+    const range = r && (r[0] > 1 || r[1] < 65535) ? r : null;
+    if (JSON.stringify(range) !== JSON.stringify(this.range())) {
+      this.settings.portRange = range;
+      this.store.save();
+    }
+    return conn;
   }
 
   // ---- Ports voulus ----------------------------------------------------------------------------------
@@ -249,15 +285,13 @@ export class PortManager {
     if (method === 'freebox') {
       const fbx = this.fbx();
       if (!this.settings.freebox.appToken || this.settings.freebox.trackId !== null) throw new HttpError(400, 'Connectez d’abord le panel à la Freebox (ci-dessus)');
-      await fbx.login();
-      const conn = await fbx.connection().catch(() => null);
-      const range = Array.isArray(conn?.ipv4_port_range) && conn.ipv4_port_range.length === 2 ? conn.ipv4_port_range.map(Number) : null;
+      const conn = await this.refreshRange();
       const body = (m, lanIp) => ({ enabled: true, comment: m.description, ip_proto: m.proto, wan_port_start: m.port, wan_port_end: m.port, lan_ip: lanIp, lan_port: m.lanPort, src_ip: '0.0.0.0' });
       return {
         lanIp: await localIpv4(fbx.host),
         publicIp: conn?.ipv4 || null,
         // IPv4 partagée (Free) : seuls certains ports peuvent être ouverts
-        portRange: range && (range[0] > 1 || range[1] < 65535) ? range : null,
+        portRange: this.range(),
         list: async () =>
           (await fbx.redirections()).map((r) => ({
             id: r.id,
@@ -364,11 +398,13 @@ export class PortManager {
         }
         let status = 'ok';
         let message = '';
+        const extra = {};
         for (const m0 of e.mappings) {
           const m = { ...m0, description: comment(e.label) };
-          if (box.portRange && (m.port < box.portRange[0] || m.port > box.portRange[1])) {
+          if (!this.inRange(m.port)) {
             status = 'error';
-            message = `IPv4 partagée : seuls les ports ${box.portRange[0]} à ${box.portRange[1]} peuvent être ouverts. Choisissez un port de cette plage, ou demandez une IPv4 « full-stack » (gratuite) dans votre espace abonné Free.`;
+            message = `${this.rangeError(m.port)}. ${e.kind === 'game' ? 'Donnez-lui un port de cette plage' : 'Retirez-la et ajoutez-la avec un port de cette plage'}, ou demandez une IPv4 « full-stack » (gratuite) dans votre espace abonné Free.`;
+            extra.outOfRange = true;
             continue;
           }
           const covering = current.filter((c) => c.proto === m.proto && c.start <= m.port && m.port <= c.end);
@@ -397,7 +433,7 @@ export class PortManager {
             message = err.message;
           }
         }
-        route(e, status, message);
+        route(e, status, message, extra);
       }
       // redirections du panel qui ne servent plus (serveur supprimé, port fermé ou changé)
       for (const c of current) {
@@ -429,6 +465,7 @@ export class PortManager {
       operators: OPERATORS,
       rules: s.rules,
       skip: s.skip,
+      range: this.range(),
       freebox: { connected: Boolean(s.freebox.appToken) && s.freebox.trackId === null, pending: Boolean(s.freebox.appToken) && s.freebox.trackId !== null },
       sync: this.state,
     };
@@ -445,6 +482,8 @@ export class PortManager {
   bootstrap() {
     if (!this.settings.detected) this.detect().catch(() => {});
     else this.schedule();
+    const f = this.settings.freebox;
+    if (f.appToken && f.trackId === null && !this.settings.enabled) this.refreshRange().catch(() => {});
     // l'adresse de la machine ou de la box peut changer : redirections vérifiées régulièrement
     this.timer = setInterval(() => {
       if (this.settings.enabled && this.automatic()) this.sync().catch(() => {});

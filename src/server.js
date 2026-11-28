@@ -52,6 +52,7 @@ export function createPanel(cfg = config) {
   // ports de la box : serveurs de jeux créés, supprimés ou changés de port → redirections mises à jour
   const ports = new PortManager({ store, config: cfg, apps });
   apps.onPortsChange = () => ports.schedule();
+  apps.publicPortRange = () => ports.range();
   const metrics = new Metrics(path.join(cfg.dataDir, 'metrics.json'));
   const appMetrics = new AppMetrics(path.join(cfg.dataDir, 'app-metrics.json'), apps);
   const updater = new Updater({ store, config: cfg });
